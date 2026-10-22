@@ -1760,6 +1760,10 @@ mod tests {
             StatusCode::SERVICE_UNAVAILABLE => assert!(body.contains("bun run build")),
             other => panic!("client route answered {other}"),
         }
+        // The short address to type into a TV's downloader, no sign-in needed.
+        let reply = app.call("GET", "/tv", None, None).await;
+        assert_eq!(reply.status, StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(reply.headers[header::LOCATION], crate::web::TV_APP_URL);
         let reply = app.call("GET", "/api/openapi.json", None, None).await;
         assert_eq!(reply.status, StatusCode::OK);
         reply.json();

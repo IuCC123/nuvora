@@ -8,12 +8,16 @@
 
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
 use axum::http::{StatusCode, Uri};
-use axum::response::{IntoResponse, Response};
+use axum::response::{IntoResponse, Redirect, Response};
 use rust_embed::{EmbeddedFile, RustEmbed};
 
 #[derive(RustEmbed)]
 #[folder = "../../apps/web/dist"]
 struct WebAssets;
+
+/// The newest TV app, attached to every GitHub release under one name.
+pub const TV_APP_URL: &str =
+    "https://github.com/IuCC123/nuvora/releases/latest/download/nuvora-tv.apk";
 
 const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 const NO_CACHE: &str = "no-cache";
@@ -24,11 +28,16 @@ const NO_CACHE: &str = "no-cache";
 ///   `no-cache`;
 /// - any other path => `index.html` (client-side routing), `no-cache`;
 /// - `/api/*` that reached the fallback => 404 `ErrorBody`, never index.html;
+/// - `/tv` => a redirect to the TV app's download ([`TV_APP_URL`]): short
+///   enough to type with a remote, in Downloader on a Fire TV;
 /// - no `index.html` in the embedded (or, in debug, on-disk) dist => [`not_built`].
 pub async fn serve_app(uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
     if path == "api" || path.starts_with("api/") {
         return crate::api::ApiError::not_found().into_response();
+    }
+    if matches!(path, "tv" | "tv/" | "tv.apk") {
+        return Redirect::temporary(TV_APP_URL).into_response();
     }
     let Some(index) = WebAssets::get("index.html") else {
         return not_built();
