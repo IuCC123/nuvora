@@ -10,16 +10,18 @@ mod artwork;
 mod name;
 mod playback;
 mod probe;
+#[cfg(test)]
+mod test_fixtures;
 mod tools;
 
 pub use artwork::{
     ArtworkError, ArtworkRole, ArtworkSource, Frame, ImageSize, PIPELINE_VERSION, Placeholder,
     RenderedArtwork,
 };
-pub use name::{IdentityKey, MovieName, PathClass, classify_path};
+pub use name::{IdentityKey, MovieName, PathClass, classify_path, is_skipped_dir};
 pub use playback::{AudioSupport, DeviceProfile, Incompatibility, PlaybackDecision, VideoSupport};
 pub use probe::{
     AudioCodec, AudioStream, ColorInfo, Container, HdrFormat, MediaInfo, PROBE_VERSION, ProbeError,
-    SubtitleCodec, SubtitleStream, VideoCodec, VideoStream,
+    SubtitleCodec, SubtitleStream, VideoCodec, VideoStream, probe,
 };
 pub use tools::{MediaTools, ToolsError};

@@ -238,14 +238,12 @@ fn folder_title_year(folder: &str) -> Option<(String, u16)> {
     let mut search = 0;
     while let Some(open) = folder[search..].find(['(', '[']) {
         let start = search + open;
-        let inner = folder.get(start + 1..start + 5)?;
-        let close = folder.get(start + 5..start + 6);
-        if matches!(close, Some(")") | Some("]")) {
-            if let Some(year) = year_of(inner) {
-                let title = folder[..start].trim().trim_end_matches('-').trim();
-                if !title.is_empty() {
-                    return Some((title.to_owned(), year));
-                }
+        let closed = matches!(folder.get(start + 5..start + 6), Some(")") | Some("]"));
+        let year = folder.get(start + 1..start + 5).and_then(year_of);
+        if let (true, Some(year)) = (closed, year) {
+            let title = folder[..start].trim().trim_end_matches('-').trim();
+            if !title.is_empty() {
+                return Some((title.to_owned(), year));
             }
         }
         search = start + 1;

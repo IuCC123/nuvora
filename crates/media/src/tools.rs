@@ -1,5 +1,8 @@
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::time::Duration;
+
+use tokio::process::Command;
 
 /// Resolved ffprobe/ffmpeg executables. Constructed once at startup; every
 /// subprocess call in this crate goes through it, so timeouts and binary paths
@@ -37,7 +40,35 @@ impl MediaTools {
         ffprobe: Option<PathBuf>,
         ffmpeg: Option<PathBuf>,
     ) -> Result<Self, ToolsError> {
-        let _ = (ffprobe, ffmpeg);
-        todo!("resolve each binary, run `-version`, keep probe_timeout = 30s")
+        let ffprobe = check("ffprobe", ffprobe.unwrap_or_else(|| "ffprobe".into())).await?;
+        let ffmpeg = check("ffmpeg", ffmpeg.unwrap_or_else(|| "ffmpeg".into())).await?;
+        Ok(MediaTools {
+            ffprobe,
+            ffmpeg,
+            probe_timeout: Duration::from_secs(30),
+        })
+    }
+}
+
+async fn check(tool: &'static str, path: PathBuf) -> Result<PathBuf, ToolsError> {
+    let status = Command::new(&path)
+        .arg("-version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await;
+    match status {
+        Ok(status) if status.success() => Ok(path),
+        Ok(status) => Err(ToolsError::Broken {
+            tool,
+            path,
+            source: std::io::Error::other(format!("`-version` exited with {status}")),
+        }),
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => Err(ToolsError::NotFound {
+            tool,
+            looked_for: path,
+        }),
+        Err(source) => Err(ToolsError::Broken { tool, path, source }),
     }
 }
