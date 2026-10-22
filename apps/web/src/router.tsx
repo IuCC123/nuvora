@@ -162,9 +162,10 @@ const play = createRoute({
   getParentRoute: () => root,
   path: "/movie/$id/play",
   params: movieParams,
-  validateSearch: (s: Record<string, unknown>): { file: number; t?: number } => {
-    const t = Number(s.t);
-    return Number.isFinite(t) && t > 0 ? { file: Number(s.file), t: Math.floor(t) } : { file: Number(s.file) };
+  // The router lays this over the raw search, so a rejected `t` has to be overwritten, not just left out.
+  validateSearch: (s: Record<string, unknown>): { file: number; t?: number | undefined } => {
+    const t = Math.floor(Number(s.t));
+    return { file: Number(s.file), t: Number.isFinite(t) && t > 0 ? t : undefined };
   },
   beforeLoad: requireUser,
   loader: ({ params }) =>

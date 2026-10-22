@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useCanGoBack, useNavigate, useParams, useRouter, useSearch } from "@tanstack/react-router";
+import { useCanGoBack, useNavigate, useParams, useRouter, useRouterState, useSearch } from "@tanstack/react-router";
 import { formatClock } from "@nuvora/core";
 import { client, queries } from "../nuvora";
 import { ArrowLeftIcon, Back10Icon, Forward10Icon, FullscreenIcon, PauseIcon, PipIcon, PlayIcon, SpinIcon, VolumeIcon } from "../components/Icon";
@@ -53,6 +53,14 @@ export function Player() {
     [navigate, id, file],
   );
   const version = movie?.versions.find((v) => v.file_id === file);
+  const durationMs = version?.media?.duration_ms;
+  // A time at or past the end would open on the last frame; such a link starts from the beginning.
+  const startAt = t !== undefined && (durationMs == null || t < durationMs / 1000 - 1) ? t : undefined;
+  // The router drops a `t` it can't use but leaves it in the address. On opening, put back the one actually used.
+  const rawT = useRouterState({ select: (s) => new URLSearchParams(s.location.searchStr).get("t") });
+  useEffect(() => {
+    if (rawT !== (startAt === undefined ? null : String(startAt))) keepPlace((startAt ?? 0) * 1000);
+  }, [id, file]);
   const decided = version ? playState([version]) : undefined;
   const notice = failed ? playerFailed : movie && !version ? fileGone : decided?.kind === "blocked" ? decided.notice : undefined;
   const src = !notice && version?.playback.kind === "direct_play" ? client.resolve(version.playback.url) : undefined;
@@ -65,7 +73,7 @@ export function Player() {
       title={movie?.title}
       year={movie?.year}
       src={src}
-      startAt={t}
+      startAt={startAt}
       notice={notice}
       onBack={back}
       onFailed={() => setFailed(true)}
@@ -244,8 +252,14 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
           aria-label={title}
           onLoadedMetadata={(e) => {
             const v = e.currentTarget;
-            // The `#t=` fragment normally starts there already; this covers a browser that ignored it.
-            if (startAt && Math.abs(v.currentTime - startAt) > 0.5) v.currentTime = Math.min(startAt, v.duration);
+            if (!startAt) return;
+            if (startAt >= v.duration - 1) {
+              v.currentTime = 0;
+              onPosition(0);
+            } else if (Math.abs(v.currentTime - startAt) > 0.5) {
+              // The `#t=` fragment normally starts there already; this covers a browser that ignored it.
+              v.currentTime = startAt;
+            }
           }}
           onLoadedData={(e) => !e.currentTarget.seeking && setReady(true)}
           onSeeked={() => setReady(true)}
