@@ -33,6 +33,11 @@ export type UpdateServerRequest = Schemas["UpdateServerRequest"];
 export type ErrorBody = Schemas["ErrorBody"];
 export type ProgressRequest = Schemas["ProgressRequest"];
 export type WatchState = Schemas["WatchState"];
+export type AudioTrack = Schemas["AudioTrack"];
+export type SubtitleTrack = Schemas["SubtitleTrack"];
+export type SubtitleFormat = Schemas["SubtitleFormat"];
+export type SubtitleMode = Schemas["SubtitleMode"];
+export type FontAttachment = Schemas["FontAttachment"];
 
 export interface ClientOptions {
   /** Origin of the Nuvora server, e.g. `""` (same origin, web) or `"http://192.168.1.10:8640"` (TV). */
@@ -78,10 +83,17 @@ export interface NuvoraClient {
   reportProgress(id: number, body: ProgressRequest, options?: { keepalive?: boolean }): Promise<void>;
   markWatched(id: number): Promise<void>;
   markUnwatched(id: number): Promise<void>;
+  /** A file's embedded fonts, which its styled subtitle tracks may name. Empty for most files. */
+  fonts(fileId: number, signal?: AbortSignalLike): Promise<FontAttachment[]>;
   /** Admin role only; anyone else gets 403. */
   admin: AdminClient;
   /** Absolute URL of an artwork size. Immutable: safe to cache forever. */
   imageUrl(image: Image, size: ImageSize): string;
+  /**
+   * Absolute URL of a renderable subtitle track (`SubtitleTrack.index`) as WebVTT or,
+   * for styled tracks, ASS. Immutable: safe to cache forever.
+   */
+  subtitleUrl(fileId: number, streamIndex: number, format: "vtt" | "ass"): string;
   /** Absolute URL for a server-relative URL the API returned (e.g. `playback.url`). */
   resolve(url: string): string;
 }
@@ -167,6 +179,7 @@ export function createClient(options: ClientOptions): NuvoraClient {
     reportProgress: (id, body, opts) => put("/api/items/{id}/progress", { id }, body, opts?.keepalive),
     markWatched: (id) => put("/api/items/{id}/watched", { id }),
     markUnwatched: (id) => remove("/api/items/{id}/watched", { id }),
+    fonts: (fileId, signal) => get<FontAttachment[]>("/api/files/{id}/fonts", { id: fileId }, signal),
     admin: {
       libraries: (signal) => get<AdminLibrary[]>("/api/admin/libraries", {}, signal),
       createLibrary: (body) => post<AdminLibrary>("/api/admin/libraries", {}, body),
@@ -182,6 +195,8 @@ export function createClient(options: ClientOptions): NuvoraClient {
       updateServer: (body) => patch<ServerInfo>("/api/admin/server", {}, body),
     },
     imageUrl: (image, size) => options.baseUrl + fill("/api/images/{id}/{size}", { id: image.id, size }),
+    subtitleUrl: (fileId, streamIndex, format) =>
+      options.baseUrl + fill("/api/files/{id}/subtitles/{stream_index}", { id: fileId, stream_index: streamIndex }) + queryString({ format }),
     resolve: (url) => (url.startsWith("/") ? options.baseUrl + url : url),
   };
 }

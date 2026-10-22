@@ -40,6 +40,11 @@ export type {
   ScanStatus,
   Version,
   WatchState,
+  AudioTrack,
+  FontAttachment,
+  SubtitleFormat,
+  SubtitleMode,
+  SubtitleTrack,
 } from "./client";
 export { createQueries, findCard, isScanRunning, queryKeys, rowCards, watchStateKeys } from "./queries";
 export type { InfiniteQueryDef, Queries, QueryDef } from "./queries";
@@ -71,3 +76,9 @@ export { folderCrumbs } from "./folders";
 export type { FolderCrumb } from "./folders";
 export { createProgressReporter, PROGRESS_INTERVAL_MS, PROGRESS_SETTLE_MS } from "./progress";
 export type { PlaybackPosition, ProgressReporter, ProgressReporterOptions, Timers } from "./progress";
+export { audioLanguage, chooseSubtitle, nextSubtitle, preferredLanguage, rememberSubtitle, subtitleDescription, subtitleLabel } from "./subtitles";
+export type { RememberedSubtitle, SubtitleLabel, SubtitlePrefs, SubtitleTag } from "./subtitles";
+export { findLanguage, LANGUAGES, languageCode, languageName } from "./languages";
+export type { Language } from "./languages";
+export { activeCues, parseVtt } from "./vtt";
+export type { Cue, CueRun } from "./vtt";
