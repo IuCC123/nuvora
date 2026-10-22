@@ -42,6 +42,10 @@ export type AdminUser = Schemas["AdminUser"];
 export type CreateUserRequest = Schemas["CreateUserRequest"];
 export type UpdateUserRequest = Schemas["UpdateUserRequest"];
 export type ServerInfo = Schemas["ServerInfo"];
+export type Details = Schemas["Details"];
+export type CastMember = Schemas["CastMember"];
+export type MetadataSettings = Schemas["MetadataSettings"];
+export type UpdateMetadataRequest = Schemas["UpdateMetadataRequest"];
 export type UpdateServerRequest = Schemas["UpdateServerRequest"];
 export type ErrorBody = Schemas["ErrorBody"];
 export type ProgressRequest = Schemas["ProgressRequest"];
@@ -139,6 +143,9 @@ export interface AdminClient {
   deleteUser(id: number): Promise<void>;
   server(signal?: AbortSignalLike): Promise<ServerInfo>;
   updateServer(body: UpdateServerRequest): Promise<ServerInfo>;
+  metadata(signal?: AbortSignalLike): Promise<MetadataSettings>;
+  updateMetadata(body: UpdateMetadataRequest): Promise<MetadataSettings>;
+  refreshMetadata(): Promise<void>;
 }
 
 type Params = Record<string, string | number>;
@@ -223,6 +230,12 @@ export function createClient(options: ClientOptions): NuvoraClient {
       deleteUser: (id) => remove("/api/admin/users/{id}", { id }),
       server: (signal) => get<ServerInfo>("/api/admin/server", {}, signal),
       updateServer: (body) => patch<ServerInfo>("/api/admin/server", {}, body),
+      metadata: (signal) => get<MetadataSettings>("/api/admin/metadata", {}, signal),
+      updateMetadata: async (body) => {
+        await put("/api/admin/metadata", {}, body);
+        return get<MetadataSettings>("/api/admin/metadata");
+      },
+      refreshMetadata: () => post<void>("/api/admin/metadata/refresh"),
     },
     imageUrl: (image, size) => options.baseUrl + fill("/api/images/{id}/{size}", { id: image.id, size }),
     subtitleUrl: (fileId, streamIndex, format) =>

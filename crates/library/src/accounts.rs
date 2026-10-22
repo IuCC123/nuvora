@@ -550,3 +550,53 @@ impl Library {
             .await?)
     }
 }
+
+impl Library {
+    /// Whether a TMDB key is saved (the key itself never leaves the server).
+    pub async fn tmdb_key_set(&self) -> Result<bool, QueryError> {
+        Ok(self
+            .inner
+            .db
+            .read(|c| {
+                c.query_row(
+                    "SELECT count(*) FROM setting WHERE key = ?1 AND trim(value) <> ''",
+                    [crate::metadata::TMDB_KEY],
+                    |r| r.get::<_, i64>(0),
+                )
+            })
+            .await?
+            > 0)
+    }
+
+    /// Save or clear the TMDB key. Movies that found no provider before are
+    /// looked up again right away.
+    pub async fn set_tmdb_key(&self, key: Option<String>) -> Result<(), QueryError> {
+        self.inner
+            .db
+            .write(move |tx| {
+                match key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty()) {
+                    Some(k) => tx.execute(
+                        "INSERT INTO setting (key, value) VALUES (?1, ?2) \
+                         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                        params![crate::metadata::TMDB_KEY, k],
+                    )?,
+                    None => tx.execute("DELETE FROM setting WHERE key = ?1", [crate::metadata::TMDB_KEY])?,
+                };
+                tx.execute("DELETE FROM metadata_lookup WHERE outcome IN ('no_provider', 'no_match', 'error')", [])?;
+                Ok(())
+            })
+            .await?;
+        self.inner.metadata.request();
+        Ok(())
+    }
+
+    /// Forget every lookup and look everything up again.
+    pub async fn refresh_metadata(&self) -> Result<(), QueryError> {
+        self.inner
+            .db
+            .write(|tx| tx.execute("DELETE FROM metadata_lookup", []).map(|_| ()))
+            .await?;
+        self.inner.metadata.request();
+        Ok(())
+    }
+}

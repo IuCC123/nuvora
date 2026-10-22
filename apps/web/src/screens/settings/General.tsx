@@ -17,6 +17,7 @@ export function SettingsGeneral() {
       ) : (
         <>
           <ServerName name={server.data.server_name} />
+          <Metadata />
           <About server={server.data} />
         </>
       )}
@@ -57,6 +58,53 @@ function ServerName({ name }: { name: string }) {
             Save
           </button>
           <Saved show={save.isSuccess && !form.dirty} />
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function Metadata() {
+  const qc = useQueryClient();
+  const settings = useQuery(queries.adminMetadata());
+  const save = useMutation({
+    mutationFn: client.admin.updateMetadata,
+    onSuccess: (saved) => qc.setQueryData(queryKeys.adminMetadata, saved),
+  });
+  const refresh = useMutation({ mutationFn: client.admin.refreshMetadata });
+  const form = useForm({ tmdb_api_key: "" }, () => ({}), save.reset);
+  const failed = serverError(save.error, ["tmdb_api_key"]);
+  const keySet = settings.data?.tmdb_key_set ?? false;
+  return (
+    <section className="settings-section" aria-labelledby="metadata">
+      <h2 id="metadata">Descriptions and artwork</h2>
+      <p className="settings-note">
+        Nuvora looks up synopses, posters, cast and voice actors online. Anime comes from AniList and TV shows from TVmaze, with no setup.
+        Movies need a free TMDB key: create an account at themoviedb.org, then copy the API key from Settings › API.
+      </p>
+      <form
+        className="form settings-form"
+        noValidate
+        onSubmit={form.submit((v) => save.mutate({ tmdb_api_key: v.tmdb_api_key.trim() || null }, { onSuccess: () => form.reset({ tmdb_api_key: "" }) }))}
+      >
+        <TextField
+          label="TMDB API key"
+          hint={keySet ? "A key is saved. Enter a new one to replace it, or save empty to remove it." : "Movies stay without descriptions until a key is saved."}
+          autoComplete="off"
+          spellCheck={false}
+          {...form.field("tmdb_api_key")}
+          error={failed.field.tmdb_api_key}
+        />
+        <FormError message={failed.form} />
+        <div className="form-actions">
+          <button type="submit" className="btn btn-primary" disabled={(!form.dirty && !keySet) || save.isPending} aria-busy={save.isPending}>
+            {form.dirty || !keySet ? "Save key" : "Remove key"}
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={() => refresh.mutate()} disabled={refresh.isPending} aria-busy={refresh.isPending}>
+            Refresh all metadata
+          </button>
+          <Saved show={save.isSuccess && !form.dirty} />
+          {refresh.isSuccess && <span className="settings-note-inline">Looking everything up again. This runs in the background.</span>}
         </div>
       </form>
     </section>

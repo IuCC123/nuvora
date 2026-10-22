@@ -466,6 +466,152 @@
         ]
       }
     },
+    "/api/admin/metadata": {
+      "get": {
+        "operationId": "get_metadata",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetadataSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "update_metadata",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMetadataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetadataSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/metadata/refresh": {
+      "post": {
+        "operationId": "refresh_metadata",
+        "responses": {
+          "202": {
+            "description": ""
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/admin/server": {
       "get": {
         "operationId": "get_server",
@@ -2420,6 +2566,55 @@
           }
         }
       },
+      "CastMember": {
+        "type": "object",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "properties": {
+          "character": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "character_image": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image"
+              }
+            ]
+          },
+          "image": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CreditKind"
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For voice actors: the dub, e.g. `\"Japanese\"`."
+          },
+          "name": {
+            "type": "string",
+            "description": "The actor or voice actor."
+          }
+        }
+      },
       "CreateLibraryRequest": {
         "type": "object",
         "description": "`paths` are absolute folders that exist on the server; at least one, and\nnone already used by another library.",
@@ -2467,6 +2662,76 @@
           }
         },
         "additionalProperties": false
+      },
+      "CreditKind": {
+        "type": "string",
+        "enum": [
+          "cast",
+          "voice"
+        ]
+      },
+      "Details": {
+        "type": "object",
+        "description": "What AniList (anime), TVmaze (TV) or TMDB (movies) know about a title.\nEvery field is empty until the server has matched it online.",
+        "required": [
+          "genres",
+          "cast"
+        ],
+        "properties": {
+          "cast": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CastMember"
+            },
+            "description": "Billing order. Anime lists each character twice when both dubs are\nknown: once with the Japanese voice actor, once with the English one."
+          },
+          "external_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The title's page at the provider."
+          },
+          "genres": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "original_title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rating": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "0 to 10."
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`\"AniList\"`, `\"TVmaze\"` or `\"TMDB\"`."
+          },
+          "studio": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tagline": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "DeviceProfile": {
         "type": "object",
@@ -3281,13 +3546,26 @@
           }
         }
       },
+      "MetadataSettings": {
+        "type": "object",
+        "required": [
+          "tmdb_key_set"
+        ],
+        "properties": {
+          "tmdb_key_set": {
+            "type": "boolean",
+            "description": "Anime (AniList) and TV (TVmaze) need no key. Movies need a TMDB key."
+          }
+        }
+      },
       "MovieDetail": {
         "type": "object",
         "required": [
           "id",
           "title",
           "versions",
-          "watch"
+          "watch",
+          "details"
         ],
         "properties": {
           "backdrop": {
@@ -3299,6 +3577,9 @@
                 "$ref": "#/components/schemas/Image"
               }
             ]
+          },
+          "details": {
+            "$ref": "#/components/schemas/Details"
           },
           "id": {
             "type": "integer",
@@ -3897,7 +4178,8 @@
           "title",
           "seasons",
           "watched_count",
-          "episode_count"
+          "episode_count",
+          "details"
         ],
         "properties": {
           "backdrop": {
@@ -3909,6 +4191,9 @@
                 "$ref": "#/components/schemas/Image"
               }
             ]
+          },
+          "details": {
+            "$ref": "#/components/schemas/Details"
           },
           "episode_count": {
             "type": "integer",
@@ -4145,6 +4430,18 @@
           }
         },
         "additionalProperties": false
+      },
+      "UpdateMetadataRequest": {
+        "type": "object",
+        "properties": {
+          "tmdb_api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A TMDB API key or API Read Access Token. Empty or `null` clears it."
+          }
+        }
       },
       "UpdateServerRequest": {
         "type": "object",

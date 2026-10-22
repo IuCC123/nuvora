@@ -16,6 +16,7 @@ import type {
   RowKind,
   RowPage,
   ScanStatus,
+  MetadataSettings,
   ServerInfo,
 } from "./client";
 import type { AbortSignalLike } from "./transport";
@@ -61,6 +62,7 @@ export const queryKeys = {
   adminInspect: (path: string) => ["admin", "inspect", path] as const,
   adminUsers: ["admin", "users"] as const,
   adminServer: ["admin", "server"] as const,
+  adminMetadata: ["admin", "metadata"] as const,
 };
 
 /**
@@ -111,6 +113,7 @@ export interface Queries {
   adminInspect(path: string): QueryDef<FsInspect>;
   adminUsers(): QueryDef<AdminUser[]>;
   adminServer(): QueryDef<ServerInfo>;
+  adminMetadata(): QueryDef<MetadataSettings>;
 }
 
 /** Long enough that the screen's mount reuses its loader's request, short enough that a revisit shows other admins' changes. */
@@ -146,6 +149,7 @@ export function createQueries(client: NuvoraClient): Queries {
     adminInspect: (path) => ({ queryKey: queryKeys.adminInspect(path), queryFn: ({ signal }) => client.admin.inspect(path, signal), staleTime: 30_000 }),
     adminUsers: () => ({ queryKey: queryKeys.adminUsers, queryFn: ({ signal }) => client.admin.users(signal), staleTime: ADMIN_FRESH }),
     adminServer: () => ({ queryKey: queryKeys.adminServer, queryFn: ({ signal }) => client.admin.server(signal), staleTime: ADMIN_FRESH }),
+    adminMetadata: () => ({ queryKey: queryKeys.adminMetadata, queryFn: ({ signal }) => client.admin.metadata(signal), staleTime: ADMIN_FRESH }),
   };
 }
 

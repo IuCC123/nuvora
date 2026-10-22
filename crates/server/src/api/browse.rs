@@ -61,6 +61,7 @@ pub struct ShowDetail {
     pub watched_count: u32,
     /// Episodes with a file present, specials included.
     pub episode_count: u32,
+    pub details: super::metadata::Details,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -563,6 +564,7 @@ impl From<nuvora_library::Show> for ShowDetail {
             next: show.next.map(EpisodeRef::from),
             watched_count: show.watched_count,
             episode_count: show.episode_count,
+            details: show.extras.into(),
         }
     }
 }

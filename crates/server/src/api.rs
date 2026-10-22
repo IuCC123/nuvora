@@ -31,6 +31,7 @@
 mod accounts;
 mod admin;
 mod browse;
+mod metadata;
 mod subtitles;
 #[cfg(test)]
 mod test_app;
@@ -172,7 +173,9 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(admin::inspect_dir))
         .routes(routes!(admin::list_users, admin::create_user))
         .routes(routes!(admin::update_user, admin::delete_user))
-        .routes(routes!(admin::get_server, admin::update_server));
+        .routes(routes!(admin::get_server, admin::update_server))
+        .routes(routes!(metadata::get_metadata, metadata::update_metadata))
+        .routes(routes!(metadata::refresh_metadata));
     document_access(member.get_openapi_mut(), Access::Member);
     document_access(admin.get_openapi_mut(), Access::Admin);
     if let Some(state) = state {
@@ -402,6 +405,7 @@ pub struct MovieDetail {
     /// Best first. Empty when every file of the movie is currently missing.
     pub versions: Vec<Version>,
     pub watch: watch::WatchState,
+    pub details: metadata::Details,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -913,6 +917,7 @@ impl From<nuvora_library::Item> for ItemDetail {
                 backdrop: movie.backdrop.map(Image::from),
                 versions: movie.versions.into_iter().map(Version::from).collect(),
                 watch: movie.watch.into(),
+                details: movie.extras.into(),
             }),
             nuvora_library::Item::Show(show) => ItemDetail::Show(show.into()),
             nuvora_library::Item::Season(season) => ItemDetail::Season(season.into()),

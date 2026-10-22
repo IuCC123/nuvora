@@ -407,3 +407,16 @@
     display: none;
   }
 }
+
+.settings-note {
+  max-width: 68ch;
+  margin: 0 0 16px;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+}
+
+.settings-note-inline {
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+}

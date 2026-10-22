@@ -20,6 +20,7 @@ import { CheckIcon, ChevronDownIcon, PlayIcon } from "../components/Icon";
 import { Menu, MenuRadio } from "../components/Menu";
 import { PosterMarks } from "../components/PosterCard";
 import { CardArt } from "../components/CardArt";
+import { CastSection, DetailFacts, Overview } from "../components/Details";
 import { titleCardVars } from "../components/TitleCard";
 import { cachedCard } from "../lib/cachedCard";
 import { hasInteracted } from "../lib/interacted";
@@ -96,12 +97,14 @@ export function ShowScreen() {
                 <span className="show-meta-pending" />
               )}
             </div>
-            {show?.overview && <p className="detail-overview">{show.overview}</p>}
+            <DetailFacts details={show?.details} />
+            <Overview text={show?.overview} tagline={show?.details.tagline} />
             {show ? <ShowActions show={show} /> : <div className="detail-actions" />}
           </div>
         </div>
       )}
       {show && season && <Seasons show={show} season={season} />}
+      <CastSection details={show?.details} />
     </div>
   );
 }

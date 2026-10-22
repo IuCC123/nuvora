@@ -10,6 +10,7 @@ mod browse;
 mod db;
 mod ids;
 mod libraries;
+mod metadata;
 mod scan;
 mod shows;
 #[cfg(test)]
@@ -38,6 +39,7 @@ pub use browse::{
 };
 pub use ids::{ArtworkId, FileId, ItemId, LibraryId, ParseIdError, UserId};
 pub use libraries::{LibraryError, LibraryInfo};
+pub use metadata::read::{Credit, Extras};
 pub use scan::{ScanIssue, ScanPhase, ScanProgress, ScanState, ScanStatus, ScanSummary};
 pub use shows::{Episode, EpisodeRef, Season, SeasonSummary, Show};
 pub use subtitles::SubtitleSource;
@@ -133,6 +135,7 @@ struct Inner {
     db: db::Db,
     store: Arc<store::ArtworkStore>,
     scan: scan::ScanHandle,
+    metadata: metadata::MetadataHandle,
 }
 
 impl Library {
@@ -166,8 +169,15 @@ impl Library {
             probe_concurrency: config.probe_concurrency,
             settle_window: config.settle_window,
         });
+        let metadata =
+            metadata::MetadataHandle::spawn(db.clone(), Arc::clone(&store), scan.subscribe());
         Ok(Library {
-            inner: Arc::new(Inner { db, store, scan }),
+            inner: Arc::new(Inner {
+                db,
+                store,
+                scan,
+                metadata,
+            }),
         })
     }
 

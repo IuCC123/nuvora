@@ -17,6 +17,7 @@ import { Artwork } from "../components/Artwork";
 import { CheckIcon, PlayIcon, RestartIcon } from "../components/Icon";
 import { Notice } from "../components/Notice";
 import { CardArt } from "../components/CardArt";
+import { CastSection, DetailFacts, Overview } from "../components/Details";
 import { titleCardVars } from "../components/TitleCard";
 import { hasInteracted } from "../lib/interacted";
 import { languageName } from "../lib/languageName";
@@ -74,12 +75,14 @@ export function MovieScreen() {
           <div className="detail-info">
             <h1>{head.title}</h1>
             <Meta head={head} movie={movie} />
-            {movie?.overview && <p className="detail-overview">{movie.overview}</p>}
+            <DetailFacts details={movie?.details} />
+            <Overview text={movie?.overview} tagline={movie?.details.tagline} />
             {movie ? <Actions movie={movie} /> : <div className="detail-actions" />}
             {movie?.versions[0] && <Facts version={movie.versions[0]} />}
           </div>
         </div>
       )}
+      <CastSection details={movie?.details} />
     </div>
   );
 }

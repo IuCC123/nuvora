@@ -534,7 +534,7 @@ async fn render_job(
     }
 }
 
-fn render_and_store(
+pub(crate) fn render_and_store(
     store: &ArtworkStore,
     role: ArtworkRole,
     source: ArtworkSource<'_>,

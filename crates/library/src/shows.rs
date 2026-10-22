@@ -34,6 +34,7 @@ pub struct Show {
     pub next: Option<EpisodeRef>,
     pub watched_count: u32,
     pub episode_count: u32,
+    pub extras: crate::metadata::read::Extras,
 }
 
 #[derive(Debug, Clone)]
@@ -220,6 +221,7 @@ pub(crate) fn show(conn: &Connection, id: ItemId, user: UserId) -> rusqlite::Res
         watched_count: seasons.iter().map(|s| s.watched_count).sum(),
         episode_count: seasons.iter().map(|s| s.episode_count).sum(),
         seasons,
+        extras: crate::metadata::read::extras(conn, id)?,
     })
 }
 

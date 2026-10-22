@@ -21,6 +21,7 @@ import { libraries } from "./fixtureAccounts";
 import { ARCHIVE, DAY, episodes, findEpisode, findSeason, inOrder, SHOWS, type ArchiveMovie, type FixtureEpisode, type FixtureShow } from "./fixtureCatalog";
 import { blenderCards, blenderItem } from "./fixtures";
 import { continueWatching, lastActivity, watchState, withWatch } from "./fixtureWatch";
+import { NO_DETAILS } from "./noDetails";
 import type { Reply } from "./fixtureAccounts";
 
 /**
@@ -314,6 +315,7 @@ function archiveItem(m: ArchiveMovie): ItemDetail {
   const summary = [res === "4k" ? "4K" : res === "sd" ? "SD" : res, res === "4k" ? "HEVC" : "H.264", ...(m.hdr ? ["HDR10"] : []), "AAC 2.0"].join(" · ");
   return {
     kind: "movie",
+    details: NO_DETAILS,
     id: m.id,
     title: m.title,
     year: m.year,
@@ -353,6 +355,7 @@ export function catalogItem(id: number): ItemDetail | undefined {
     const numbered = show.seasons.filter((s) => s.index > 0).sort((a, b) => a.index - b.index);
     return {
       kind: "show",
+      details: NO_DETAILS,
       id: show.id,
       title: show.title,
       year_range: show.years[0] === show.years[1] ? String(show.years[0]) : `${show.years[0]}–${show.years[1]}`,

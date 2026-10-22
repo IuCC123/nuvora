@@ -558,9 +558,12 @@ pub(crate) fn remove_gone(
 }
 
 pub(crate) fn live_artwork_ids(conn: &Connection) -> rusqlite::Result<HashSet<ArtworkId>> {
-    conn.prepare_cached("SELECT DISTINCT hash FROM artwork")?
-        .query_map([], |r| Ok(ArtworkId(blob16(r.get(0)?))))?
-        .collect()
+    conn.prepare_cached(
+        "SELECT hash FROM artwork UNION SELECT image FROM item_credit WHERE image IS NOT NULL \
+         UNION SELECT character_image FROM item_credit WHERE character_image IS NOT NULL",
+    )?
+    .query_map([], |r| Ok(ArtworkId(blob16(r.get(0)?))))?
+    .collect()
 }
 
 /// `UPDATE catalog SET rev = rev + 1`. Home and row ETags are this number, so a

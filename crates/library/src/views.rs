@@ -277,6 +277,7 @@ pub struct Movie {
     pub versions: Vec<Version>,
     /// The requesting user's.
     pub watch: WatchState,
+    pub extras: crate::metadata::read::Extras,
 }
 
 impl Movie {
@@ -693,6 +694,7 @@ pub(crate) fn item(
         backdrop,
         versions: versions(conn, id, device)?,
         watch: watch_state::load(conn, user, id)?,
+        extras: crate::metadata::read::extras(conn, id)?,
     })))
 }
 

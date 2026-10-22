@@ -1,6 +1,7 @@
 import { accountRoute, hasLibraries, signedIn, signedInAsAdmin, type Reply } from "./fixtureAccounts";
 import { catalogEpisodes, catalogFiles, catalogItem, homeRows, libraryRoute } from "./fixtureLibrary";
 import { continueWatching, watchRoute, watchState, withWatch } from "./fixtureWatch";
+import { NO_DETAILS } from "./noDetails";
 import type { FetchLike, FontAttachment, HomeResponse, HttpMethod, ItemDetail, PosterCard, RowPage, ScanStatus, Version } from "@nuvora/core";
 
 /**
@@ -170,6 +171,7 @@ export function blenderItem(id: number): ItemDetail | undefined {
   const versions = versionOverrides[id]?.(base) ?? [base];
   return {
     kind: "movie",
+    details: NO_DETAILS,
     id,
     title,
     year,

@@ -91,6 +91,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_metadata"];
+        put: operations["update_metadata"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/metadata/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["refresh_metadata"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/server": {
         parameters: {
             query?: never;
@@ -629,6 +661,16 @@ export interface components {
             setup_required: boolean;
             user?: null | components["schemas"]["User"];
         };
+        CastMember: {
+            character?: string | null;
+            character_image?: null | components["schemas"]["Image"];
+            image?: null | components["schemas"]["Image"];
+            kind: components["schemas"]["CreditKind"];
+            /** @description For voice actors: the dub, e.g. `"Japanese"`. */
+            language?: string | null;
+            /** @description The actor or voice actor. */
+            name: string;
+        };
         /**
          * @description `paths` are absolute folders that exist on the server; at least one, and
          *     none already used by another library.
@@ -643,6 +685,32 @@ export interface components {
             password: string;
             role: components["schemas"]["Role"];
             username: string;
+        };
+        /** @enum {string} */
+        CreditKind: "cast" | "voice";
+        /**
+         * @description What AniList (anime), TVmaze (TV) or TMDB (movies) know about a title.
+         *     Every field is empty until the server has matched it online.
+         */
+        Details: {
+            /**
+             * @description Billing order. Anime lists each character twice when both dubs are
+             *     known: once with the Japanese voice actor, once with the English one.
+             */
+            cast: components["schemas"]["CastMember"][];
+            /** @description The title's page at the provider. */
+            external_url?: string | null;
+            genres: string[];
+            original_title?: string | null;
+            /**
+             * Format: float
+             * @description 0 to 10.
+             */
+            rating?: number | null;
+            /** @description `"AniList"`, `"TVmaze"` or `"TMDB"`. */
+            source?: string | null;
+            studio?: string | null;
+            tagline?: string | null;
         };
         /**
          * @description What a device decodes natively. Sent as compact JSON in the `Nuvora-Device`
@@ -927,8 +995,13 @@ export interface components {
             subtitles: components["schemas"]["SubtitleTrack"][];
             video: components["schemas"]["VideoTrack"][];
         };
+        MetadataSettings: {
+            /** @description Anime (AniList) and TV (TVmaze) need no key. Movies need a TMDB key. */
+            tmdb_key_set: boolean;
+        };
         MovieDetail: {
             backdrop?: null | components["schemas"]["Image"];
+            details: components["schemas"]["Details"];
             /** Format: int64 */
             id: number;
             overview?: string | null;
@@ -1136,6 +1209,7 @@ export interface components {
         /** @description A show's page. `next` is what Play starts. */
         ShowDetail: {
             backdrop?: null | components["schemas"]["Image"];
+            details: components["schemas"]["Details"];
             /**
              * Format: int32
              * @description Episodes with a file present, specials included.
@@ -1233,6 +1307,10 @@ export interface components {
              */
             subtitle_language?: string | null;
             subtitle_mode?: null | components["schemas"]["SubtitleMode"];
+        };
+        UpdateMetadataRequest: {
+            /** @description A TMDB API key or API Read Access Token. Empty or `null` clears it. */
+            tmdb_api_key?: string | null;
         };
         UpdateServerRequest: {
             server_name: string;
@@ -1666,6 +1744,127 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_metadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataSettings"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_metadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMetadataRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataSettings"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    refresh_metadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

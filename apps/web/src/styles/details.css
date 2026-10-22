@@ -1,0 +1,193 @@
+/* Online details: facts line, synopsis, and the cast row. */
+.detail-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin: 10px 0 0;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+}
+
+.detail-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--nv-color-text-primary);
+  font-weight: var(--nv-font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-rating svg {
+  color: var(--nv-color-accent);
+}
+
+.overview {
+  max-width: 68ch;
+}
+
+.overview-tagline {
+  margin: 18px 0 0;
+  color: var(--nv-color-text-primary);
+  font-weight: var(--nv-font-weight-medium);
+}
+
+.overview .detail-overview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+
+.overview .detail-overview[data-open="true"] {
+  display: block;
+}
+
+.overview-more {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--nv-color-text-primary);
+  font: inherit;
+  font-weight: var(--nv-font-weight-semibold);
+  cursor: pointer;
+}
+
+.overview-more:hover {
+  color: var(--nv-color-accent);
+}
+
+.cast {
+  position: relative;
+  padding: 8px var(--nv-layout-gutter) var(--nv-space-7);
+}
+
+.cast-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.cast-head h2 {
+  margin: 0;
+  font-size: var(--nv-type-title-size);
+  line-height: var(--nv-type-title-line);
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.cast-source {
+  margin-left: auto;
+  color: var(--nv-color-text-muted);
+  font-size: var(--nv-type-small-size);
+  text-decoration: none;
+}
+
+.cast-source:hover {
+  color: var(--nv-color-text-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-color-surface);
+}
+
+.segmented button {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: var(--nv-radius-pill);
+  background: none;
+  color: var(--nv-color-text-secondary);
+  font: inherit;
+  font-size: var(--nv-type-small-size);
+  font-weight: var(--nv-font-weight-medium);
+  cursor: pointer;
+  transition: background var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--nv-color-surface-raised);
+  color: var(--nv-color-text-primary);
+}
+
+.cast-list {
+  display: flex;
+  gap: 16px;
+  margin: 0;
+  padding: 0 0 8px;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.cast-card {
+  flex: none;
+  width: 124px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cast-photo {
+  position: relative;
+  display: block;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--nv-radius-md);
+  background: var(--nv-color-surface);
+}
+
+.cast-photo > .artwork {
+  position: absolute;
+  inset: 0;
+  /* Provider photos vary a little in shape; the slot keeps every card the same. */
+  aspect-ratio: auto !important;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.cast-initials {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--nv-color-text-muted);
+  font-size: var(--nv-type-title-size);
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+/* The voice actor, small, over the character's corner. */
+.cast-inset {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 3px var(--nv-color-canvas);
+  background: var(--nv-color-surface-raised);
+}
+
+.cast-inset .artwork {
+  height: 100%;
+}
+
+.cast-name {
+  margin-top: 10px;
+  color: var(--nv-color-text-primary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  font-weight: var(--nv-font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.cast-role {
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  overflow-wrap: anywhere;
+}
