@@ -1,0 +1,6 @@
+{
+  // Tests run under Bun, so they get Bun's types. `src` keeps its DOM-free config.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "types": ["bun"], "skipLibCheck": true },
+  "include": ["src", "test"]
+}

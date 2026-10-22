@@ -4,7 +4,13 @@
   "private": true,
   "type": "module",
   "description": "Design tokens: the single source for color, type, spacing, radius and motion on every client.",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "typecheck": "tsc --noEmit" },
-  "devDependencies": { "typescript": "^5.9" }
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.9"
+  }
 }
