@@ -1,7 +1,10 @@
+# Nuvora with Docker Compose. Next to this file, create a `.env` with at least
+#   NUVORA_MEDIA=/path/to/your/media
+# then run `docker compose up -d`. See the README for every setting.
 services:
   nuvora:
-    build: .
-    image: nuvora:local
+    image: ${NUVORA_IMAGE:-ghcr.io/iucc123/nuvora:latest}
+    container_name: nuvora
     user: "${NUVORA_UID:-10001}:${NUVORA_GID:-10001}"
     ports:
       - "${NUVORA_LISTEN:-0.0.0.0}:${NUVORA_PORT:-8640}:8640"
@@ -9,9 +12,8 @@ services:
     security_opt: [no-new-privileges:true]
     volumes:
       - ./data:/data
-      - ${NUVORA_MEDIA:?set NUVORA_MEDIA to your movies folder}:/media:ro
+      - ${NUVORA_MEDIA:?set NUVORA_MEDIA to the folder with your movies and shows}:/media:ro
     environment:
       TZ: ${TZ:-UTC}
       NUVORA_TRUSTED_PROXY: ${NUVORA_TRUSTED_PROXY:-}
-    command: ["--bind", "0.0.0.0:8640", "--data-dir", "/data"]
     restart: unless-stopped

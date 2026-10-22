@@ -8,7 +8,7 @@ COPY apps/web ./apps/web
 RUN bun install --frozen-lockfile
 RUN bun run build
 
-FROM rust:bookworm AS server
+FROM rust:trixie AS server
 ENV RUSTUP_TOOLCHAIN=stable
 WORKDIR /src
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
@@ -20,7 +20,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release --locked -p nuvora-server \
     && install -D target/release/nuvora /out/nuvora
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg ca-certificates tini \
     && rm -rf /var/lib/apt/lists/* \

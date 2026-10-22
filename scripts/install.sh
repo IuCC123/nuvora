@@ -1,29 +1,39 @@
 #!/usr/bin/env bash
-# Install or update Nuvora with Docker, building from this repo checkout.
-# Usage: scripts/install.sh [--media PATH] [--port PORT] [--listen ADDR] [--dir DIR] [--yes]
+# Install or update Nuvora with Docker.
+#
+#   curl -fsSL https://raw.githubusercontent.com/IuCC123/nuvora/main/scripts/install.sh | bash
+#
+# Downloads the published image (ghcr.io/iucc123/nuvora); --build builds it
+# from the checkout this script is in instead. Re-running updates in place.
 set -euo pipefail
 
-SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMAGE_REPO="ghcr.io/iucc123/nuvora"
 DIR="$HOME/nuvora"
 MEDIA=""
 PORT=""
 LISTEN=""
+VERSION=""
+BUILD=0
 ASSUME_YES=0
 
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 usage() {
   cat <<'EOF'
-Usage: scripts/install.sh [--media PATH] [--port PORT] [--listen ADDR] [--dir DIR] [--yes]
+Usage: install.sh [--media PATH] [--port PORT] [--listen ADDR] [--dir DIR] [--version TAG] [--build] [--yes]
 
-  --media PATH   folder with your media, shown as /media in the setup folder picker (read-only)
-  --port PORT    port to serve on (default 8640)
-  --listen ADDR  host address to publish the port on (default 0.0.0.0, every interface;
-                 127.0.0.1 when a reverse proxy on this machine is the only way in)
-  --dir DIR      install directory (default ~/nuvora)
-  --yes         never prompt; fail if a value is missing
+  --media PATH    folder with your movies and shows, shown as /media in the
+                  library folder picker (mounted read-only)
+  --port PORT     port to serve on (default 8640)
+  --listen ADDR   host address to publish the port on (default 0.0.0.0, every
+                  interface; 127.0.0.1 when a reverse proxy on this machine is
+                  the only way in)
+  --dir DIR       install directory (default ~/nuvora)
+  --version TAG   image version to run, e.g. 0.2.0 (default latest)
+  --build         build the image from this checkout instead of downloading it
+  --yes           never prompt; fail if a value is missing
 
-Re-running updates in place and reuses the values saved in DIR/.env.
+Re-running updates to the newest image and reuses the values saved in DIR/.env.
 EOF
 }
 
@@ -33,6 +43,8 @@ while [ $# -gt 0 ]; do
     --port)  [ $# -ge 2 ] || die "--port needs a number"; PORT="$2"; shift 2 ;;
     --listen) [ $# -ge 2 ] || die "--listen needs an IPv4 address"; LISTEN="$2"; shift 2 ;;
     --dir)   [ $# -ge 2 ] || die "--dir needs a path"; DIR="$2"; shift 2 ;;
+    --version) [ $# -ge 2 ] || die "--version needs a tag"; VERSION="$2"; shift 2 ;;
+    --build) BUILD=1; shift ;;
     --yes|-y) ASSUME_YES=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; die "unknown option: $1" ;;
@@ -40,9 +52,18 @@ while [ $# -gt 0 ]; do
 done
 
 command -v docker >/dev/null 2>&1 || die "Docker is not installed. Get it from https://docs.docker.com/get-docker/"
-docker info >/dev/null 2>&1 || die "Docker is installed but its daemon is not running. Start Docker and try again."
+docker info >/dev/null 2>&1 || die "Docker is installed but not running. Start Docker (Docker Desktop on Windows and macOS) and try again."
 docker compose version >/dev/null 2>&1 || die "The Docker Compose plugin is missing. See https://docs.docker.com/compose/install/"
-[ -f "$SRC/Dockerfile" ] || die "run this from a Nuvora checkout: $SRC has no Dockerfile"
+
+SRC=""
+if [ "$BUILD" -eq 1 ]; then
+  SRC="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." 2>/dev/null && pwd || true)"
+  [ -f "$SRC/Dockerfile" ] || die "--build needs a Nuvora checkout; run scripts/install.sh from inside one"
+fi
+
+# Piped from curl, stdin is this script; prompts read the terminal instead.
+TTY=/dev/stdin
+[ -t 0 ] || TTY=/dev/tty
 
 mkdir -p "$DIR"
 DIR="$(cd "$DIR" && pwd)"
@@ -54,22 +75,25 @@ saved() {
 }
 
 ask() {
-  local prompt="$1" default="$2" reply
-  [ "$ASSUME_YES" -eq 0 ] || { printf '%s' "$default"; return; }
+  local prompt="$1" default="$2" reply=""
+  if [ "$ASSUME_YES" -eq 1 ] || ! { : <"$TTY"; } 2>/dev/null; then
+    printf '%s' "$default"
+    return
+  fi
   if [ -n "$default" ]; then
-    read -r -p "$prompt [$default]: " reply
+    read -r -p "$prompt [$default]: " reply <"$TTY"
     printf '%s' "${reply:-$default}"
   else
-    read -r -p "$prompt: " reply
+    read -r -p "$prompt: " reply <"$TTY"
     printf '%s' "$reply"
   fi
 }
 
 [ -n "$MEDIA" ] || MEDIA="$(saved NUVORA_MEDIA)"
-[ -n "$MEDIA" ] || MEDIA="$(ask "Movies folder" "")"
-[ -n "$MEDIA" ] || die "no movies folder given; pass --media PATH"
+[ -n "$MEDIA" ] || MEDIA="$(ask "Folder with your movies and shows" "")"
+[ -n "$MEDIA" ] || die "no media folder given; pass --media PATH"
 case "$MEDIA" in "~"|"~/"*) MEDIA="$HOME${MEDIA#"~"}" ;; esac
-[ -d "$MEDIA" ] || die "movies folder does not exist: $MEDIA"
+[ -d "$MEDIA" ] || die "media folder does not exist: $MEDIA"
 MEDIA="$(cd "$MEDIA" && pwd)"
 
 [ -n "$PORT" ] || PORT="$(saved NUVORA_PORT)"
@@ -95,6 +119,14 @@ valid_ipv4 "$LISTEN" || die "--listen must be an IPv4 address such as 127.0.0.1:
 HEALTH_HOST="$LISTEN"
 [ "$LISTEN" != "0.0.0.0" ] || HEALTH_HOST="127.0.0.1"
 
+if [ "$BUILD" -eq 1 ]; then
+  IMAGE="nuvora:local"
+else
+  # Keep a pinned version across updates; a local build's tag doesn't carry over.
+  [ -n "$VERSION" ] || VERSION="$(saved NUVORA_IMAGE | sed -n "s|^$IMAGE_REPO:||p")"
+  IMAGE="$IMAGE_REPO:${VERSION:-latest}"
+fi
+
 TZ_NAME="$(saved TZ)"
 if [ -z "$TZ_NAME" ]; then
   if [ -r /etc/timezone ]; then
@@ -107,7 +139,7 @@ fi
 mkdir -p "$DIR/data"
 
 cat > "$ENV_FILE" <<EOF
-NUVORA_SRC=$SRC
+NUVORA_IMAGE=$IMAGE
 NUVORA_MEDIA=$MEDIA
 NUVORA_PORT=$PORT
 NUVORA_LISTEN=$LISTEN
@@ -119,8 +151,8 @@ EOF
 cat > "$DIR/compose.yaml" <<'EOF'
 services:
   nuvora:
-    build: ${NUVORA_SRC:?}
-    image: nuvora:local
+    image: ${NUVORA_IMAGE:?}
+    container_name: nuvora
     user: "${NUVORA_UID:-10001}:${NUVORA_GID:-10001}"
     ports:
       - "${NUVORA_LISTEN:-0.0.0.0}:${NUVORA_PORT:-8640}:8640"
@@ -132,12 +164,18 @@ services:
     environment:
       TZ: ${TZ:-UTC}
       NUVORA_TRUSTED_PROXY: ${NUVORA_TRUSTED_PROXY:-}
-    command: ["--bind", "0.0.0.0:8640", "--data-dir", "/data"]
     restart: unless-stopped
 EOF
 
-echo "Building and starting Nuvora in $DIR"
-docker compose --project-directory "$DIR" up -d --build
+if [ "$BUILD" -eq 1 ]; then
+  echo "Building the Nuvora image from $SRC"
+  docker build -t "$IMAGE" "$SRC"
+else
+  echo "Downloading $IMAGE"
+  docker compose --project-directory "$DIR" pull
+fi
+echo "Starting Nuvora in $DIR"
+docker compose --project-directory "$DIR" up -d
 
 lan_ip() {
   local ip=""
@@ -162,9 +200,9 @@ echo "Waiting for Nuvora on port $PORT"
 for _ in $(seq 1 60); do
   if healthy; then
     if [ "$LISTEN" = "0.0.0.0" ]; then
-      printf 'Nuvora is running at http://%s:%s\n' "$(lan_ip)" "$PORT"
+      printf '\nNuvora is running. Open http://%s:%s in a browser to create your account.\n' "$(lan_ip)" "$PORT"
     else
-      printf 'Nuvora is running at http://%s:%s (reachable only on that address)\n' "$LISTEN" "$PORT"
+      printf '\nNuvora is running at http://%s:%s (reachable only on that address).\n' "$LISTEN" "$PORT"
     fi
     exit 0
   fi

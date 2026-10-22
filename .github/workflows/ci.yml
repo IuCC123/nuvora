@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web app
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test
+      - run: bun run build
+
+  server:
+    name: Server
+    runs-on: ubuntu-24.04
+    # The same Debian and FFmpeg as the Docker image, so the tests exercise what ships.
+    container: rust:trixie
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install FFmpeg
+        run: apt-get update && apt-get install -y --no-install-recommends ffmpeg
+      - name: Install the toolchain in rust-toolchain.toml
+        run: rustup toolchain install && rustup component add rustfmt clippy
+      - uses: Swatinem/rust-cache@v2
+      # The server embeds the web app; tests run fine without it built.
+      - run: mkdir -p apps/web/dist
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked

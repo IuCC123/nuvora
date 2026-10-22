@@ -177,15 +177,19 @@ impl DeviceProfile {
             None => None,
             Some(index) => {
                 let stream = media.audio.iter().find(|a| a.index == index)?;
-                let output =
-                    if HLS_AUDIO.contains(&stream.codec) && self.audio_problem(stream).is_none() {
-                        AudioOutput::Copy
-                    } else {
-                        let aac = self.audio.iter().find(|s| s.codec == AudioCodec::Aac)?;
-                        AudioOutput::Aac {
-                            channels: stream.channels.clamp(1, aac.max_channels.clamp(1, 6)),
-                        }
-                    };
+                // Converted video starts exactly where asked, copied audio at the
+                // keyframe before it: a converted picture gets converted sound.
+                let output = if video == VideoPlan::Copy
+                    && HLS_AUDIO.contains(&stream.codec)
+                    && self.audio_problem(stream).is_none()
+                {
+                    AudioOutput::Copy
+                } else {
+                    let aac = self.audio.iter().find(|s| s.codec == AudioCodec::Aac)?;
+                    AudioOutput::Aac {
+                        channels: stream.channels.clamp(1, aac.max_channels.clamp(1, 6)),
+                    }
+                };
                 Some(AudioPlan {
                     stream: index,
                     output,
@@ -283,6 +287,11 @@ impl StreamPlan {
                 })
             }
         };
+        if matches!(video, VideoPlan::H264 { .. })
+            && audio.is_some_and(|a| a.output == AudioOutput::Copy)
+        {
+            return None;
+        }
         Some(StreamPlan { video, audio })
     }
 }
@@ -602,7 +611,8 @@ mod tests {
             Some("copy.a1-aac2")
         );
         assert_eq!(plan(&dts, &chromium()).as_deref(), Some("copy.a1-aac6"));
-        // HEVC on an H.264-only device: converted, never taller than 1080.
+        // HEVC on an H.264-only device: converted, never taller than 1080, and
+        // its sound converted with it, so both start at the same moment.
         let uhd = media(
             Container::Matroska,
             video(VideoCodec::Hevc, 3840, 2160, 10, HdrFormat::Sdr),
@@ -610,7 +620,7 @@ mod tests {
         );
         assert_eq!(
             plan(&uhd, &DeviceProfile::baseline()).as_deref(),
-            Some("h264-1080.a1")
+            Some("h264-1080.a1-aac2")
         );
         let sd = media(
             Container::Avi,
