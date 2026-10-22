@@ -742,6 +742,31 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn swapping_one_folder_for_an_empty_one_takes_its_files_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b, data) = (
+            dir.path().join("a"),
+            dir.path().join("b"),
+            dir.path().join("data"),
+        );
+        sdr_movie(&a.join("Heat (1995)/Heat (1995).mp4"));
+        std::fs::create_dir_all(&b).unwrap();
+        let lib = open(&a, &data).await;
+        scan(&lib).await;
+
+        let movies = lib.libraries().await.unwrap().remove(0);
+        assert_eq!(movies.item_count, 1);
+        let (info, changed) = lib
+            .update_library(movies.id, None, Some(vec![b.clone()]), 0)
+            .await
+            .unwrap();
+        assert!(changed);
+        assert_eq!((info.roots, info.item_count), (vec![b], 0));
+        scan(&lib).await;
+        assert_eq!(lib.library(movies.id).await.unwrap().unwrap().item_count, 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn deleting_a_library_mid_scan_fails_its_files_not_the_scan() {
         let dir = tempfile::tempdir().unwrap();
         let (root, other, data) = (

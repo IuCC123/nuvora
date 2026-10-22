@@ -158,8 +158,10 @@ impl Library {
     }
 
     /// Renames a library and/or replaces its folders. Nothing changes when a
-    /// folder is rejected. Swapping exactly one folder for another repoints
-    /// it, keeping its files (a share remounted elsewhere). Otherwise a
+    /// folder is rejected. Swapping exactly one folder for another that is not
+    /// empty repoints it, keeping its files (a share remounted elsewhere). An
+    /// empty folder would hold the old files forever, since a scan removes
+    /// nothing under an empty root. Otherwise a
     /// removed folder takes its files out of the catalog; items it emptied
     /// are marked missing, so they keep their ids if the folder comes back.
     /// Returns whether the folders changed (the caller then requests a scan).
@@ -170,6 +172,12 @@ impl Library {
         roots: Option<Vec<PathBuf>>,
         now_ms: i64,
     ) -> Result<(LibraryInfo, bool), LibraryError> {
+        let has_entries: Vec<PathBuf> = roots
+            .iter()
+            .flatten()
+            .filter(|root| std::fs::read_dir(root).is_ok_and(|mut d| d.next().is_some()))
+            .cloned()
+            .collect();
         self.inner
             .db
             .write(move |tx| {
@@ -194,7 +202,9 @@ impl Library {
                     let new: Vec<&PathBuf> =
                         roots.iter().filter(|r| !before.roots.contains(r)).collect();
                     changed = !gone.is_empty() || !new.is_empty();
-                    if let ([from], [to]) = (gone.as_slice(), new.as_slice()) {
+                    if let ([from], [to]) = (gone.as_slice(), new.as_slice())
+                        && has_entries.contains(to)
+                    {
                         tx.execute(
                             "UPDATE library_root SET path = ?3 WHERE library_id = ?1 AND path = ?2",
                             params![id.0, from.to_string_lossy(), to.to_string_lossy()],
