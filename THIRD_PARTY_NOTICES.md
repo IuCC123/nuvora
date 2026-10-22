@@ -10,6 +10,14 @@ Nuvora includes or uses the following software. Each is © its authors and used 
 - **TanStack Router** and **TanStack Query**, MIT. https://tanstack.com
 - **Inter** and **Archivo** typefaces, SIL Open Font License 1.1, via Fontsource.
 
+## Shipped in the TV app
+
+- **AndroidX** (Jetpack Compose, Compose for TV, Media3 ExoPlayer, Navigation, Lifecycle, Activity, Core), Apache-2.0. https://developer.android.com/jetpack/androidx
+- **Kotlin** standard library, kotlinx.coroutines and kotlinx.serialization, Apache-2.0. https://kotlinlang.org
+- **OkHttp** and **Okio**, Apache-2.0. https://square.github.io/okhttp
+- **Coil**, Apache-2.0. https://coil-kt.github.io/coil
+- The ThumbHash decoder is a port of Evan Wallace's ThumbHash, MIT. https://github.com/evanw/thumbhash
+
 ## Used by the server
 
 - **FFmpeg** (ffprobe and ffmpeg), run as separate programs, never linked. The Docker image installs Debian's `ffmpeg` package, built under GPL-2.0-or-later; its source is available from Debian (https://packages.debian.org/source/trixie/ffmpeg).

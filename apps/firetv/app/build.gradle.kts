@@ -13,8 +13,8 @@ android {
         // Fire OS 6 (Fire TV Stick 2nd gen and newer) and every Android TV since 7.1.
         minSdk = 25
         targetSdk = 36
-        versionCode = (project.findProperty("nuvora.versionCode") as String?)?.toInt() ?: 1
-        versionName = (project.findProperty("nuvora.versionName") as String?) ?: "0.1.0"
+        versionCode = (project.findProperty("nuvora.versionCode") as String?)?.toInt() ?: 200
+        versionName = (project.findProperty("nuvora.versionName") as String?) ?: "0.2.0"
     }
 
     signingConfigs {
@@ -84,4 +84,5 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.coil.compose)
     implementation(libs.coil.okhttp)
+    testImplementation(libs.junit)
 }

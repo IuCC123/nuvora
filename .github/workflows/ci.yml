@@ -51,3 +51,18 @@ jobs:
           chown -R tester "$GITHUB_WORKSPACE" "$CARGO_HOME"
           runuser -u tester -- env PATH="$PATH" CARGO_HOME="$CARGO_HOME" RUSTUP_HOME="$RUSTUP_HOME" \
             NUVORA_PERF_BUDGET_MS=250 cargo test --workspace --locked
+
+  tv:
+    name: TV app
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/firetv
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v5
+      - run: ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug

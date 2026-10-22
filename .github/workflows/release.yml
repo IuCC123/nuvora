@@ -1,7 +1,8 @@
-name: Docker image
+name: Release
 
 # Every push to main publishes ghcr.io/iucc123/nuvora:edge. A version tag
-# (v0.2.0) publishes :0.2.0, :0.2 and :latest, and makes a GitHub release.
+# (v0.2.0) publishes :0.2.0, :0.2 and :latest, and makes a GitHub release
+# with the TV app attached as nuvora-tv.apk (the server's /tv points there).
 on:
   push:
     branches: [main]
@@ -97,13 +98,53 @@ jobs:
             $(printf '${{ env.IMAGE }}@sha256:%s ' *)
       - run: docker buildx imagetools inspect "${{ env.IMAGE }}:${{ steps.meta.outputs.version }}"
 
+  tv:
+    name: TV app
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/firetv
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v5
+      # Every release is signed with the same key, so a newer APK installs over an older one.
+      - name: Build the signed APK
+        env:
+          TAG: ${{ github.ref_name }}
+          KEYSTORE_BASE64: ${{ secrets.NUVORA_KEYSTORE_BASE64 }}
+          NUVORA_KEYSTORE_PASSWORD: ${{ secrets.NUVORA_KEYSTORE_PASSWORD }}
+          NUVORA_KEY_ALIAS: ${{ secrets.NUVORA_KEY_ALIAS }}
+          NUVORA_KEY_PASSWORD: ${{ secrets.NUVORA_KEY_PASSWORD }}
+        run: |
+          version="${TAG#v}"
+          IFS=. read -r major minor patch <<< "${version%%-*}"
+          code=$(( major * 10000 + minor * 100 + patch ))
+          export NUVORA_KEYSTORE="$RUNNER_TEMP/release.jks"
+          base64 -d <<< "$KEYSTORE_BASE64" > "$NUVORA_KEYSTORE"
+          ./gradlew --no-daemon :app:assembleRelease -Pnuvora.versionName="$version" -Pnuvora.versionCode="$code"
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/nuvora-tv.apk"
+          rm "$NUVORA_KEYSTORE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tv-apk
+          path: ${{ runner.temp }}/nuvora-tv.apk
+          if-no-files-found: error
+
   release:
     name: GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: publish
+    needs: [publish, tv]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: tv-apk
       - env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -113,5 +154,7 @@ jobs:
           **Install or update:** follow the [setup guide](https://github.com/${GITHUB_REPOSITORY}#set-up-your-server), or run the installer again.
 
           Docker image: \`${IMAGE}:${version}\` (also \`:latest\`), for x86-64 and ARM64.
+
+          **TV app** (Fire TV and Android TV): \`nuvora-tv.apk\` below. On the TV, open Downloader and enter \`http://<your server>:8640/tv\`. See [the TV guide](https://github.com/${GITHUB_REPOSITORY}#watch-on-your-tv).
           NOTES
-          gh release create "$TAG" --title "Nuvora $version" --notes-file notes.md --generate-notes
+          gh release create "$TAG" nuvora-tv.apk --title "Nuvora $version" --notes-file notes.md --generate-notes

@@ -10,7 +10,7 @@ A self-hosted media server for your movies, shows and anime, with a clean, fast 
 - **Watch Together.** Invite someone and play anything at the same moment on both screens; pausing, seeking and the next episode stay in sync.
 - **Yours.** Progress and Continue Watching per person, a Home screen each person arranges themselves, search across everything, and no account with anyone but your own server.
 
-Fire TV and Vega OS apps are on the way; they will appear on the [Releases](https://github.com/IuCC123/nuvora/releases) page.
+There's an app for **Fire TV and Android TV** too ([Watch on your TV](#watch-on-your-tv)); a Vega OS app is on the way.
 
 ## Set up your server
 
@@ -57,7 +57,22 @@ Open **http://your-server:8640** in a browser (the installer prints the exact ad
 
 ### 4. Add the others
 
-In **Settings › Users**, add an account for each person. They sign in from any browser on your network at the same address.
+In **Settings › Users**, add an account for each person. They sign in from any browser on your network at the same address, or from the TV app.
+
+## Watch on your TV
+
+The Nuvora TV app runs on Amazon Fire TV and on Android TV and Google TV. It has everything the web app has for watching: Home, your libraries, search, subtitles (styled anime ones too), audio tracks, Continue Watching and Watch Together. It tells the server what the TV can decode, so most files play untouched, HEVC, HDR and surround sound included.
+
+**On a Fire TV:**
+
+1. Install **Downloader** (by AFTVnews) from the Amazon Appstore.
+2. Allow it to install apps: **Settings › My Fire TV › Developer options › Install unknown apps**, then turn on Downloader. No Developer options? Go to **Settings › My Fire TV › About** and press OK on the device name seven times, then look again.
+3. Open Downloader and enter your server's address followed by **/tv**, for example `http://192.168.1.20:8640/tv`. It downloads the newest TV app; choose **Install**.
+4. Open **Nuvora**, type the server's address (`192.168.1.20` is enough when it uses port 8640) and sign in.
+
+**On Android TV or Google TV:** the same, with Downloader from the Play Store; allow it to install apps when the TV asks.
+
+To update the app, repeat step 3; you stay signed in. The app is also on the [Releases](https://github.com/IuCC123/nuvora/releases/latest) page as `nuvora-tv.apk`.
 
 ## Organizing your files
 
@@ -85,7 +100,7 @@ Run the installer again, or in the folder with `compose.yaml`:
 docker compose pull && docker compose up -d
 ```
 
-Your accounts, progress and settings carry over. To stay on one version, set `NUVORA_IMAGE=ghcr.io/iucc123/nuvora:0.1.0` in `.env` (or pass `--version 0.1.0` to the installer).
+Your accounts, progress and settings carry over. To stay on one version, set `NUVORA_IMAGE=ghcr.io/iucc123/nuvora:0.2.0` in `.env` (or pass `--version 0.2.0` to the installer).
 
 **Backing up:** everything Nuvora knows lives in the `data` folder next to `compose.yaml` (`~/nuvora/data` for the installer). Copy it while Nuvora is stopped.
 
@@ -138,9 +153,11 @@ cargo run -p nuvora-server -- --data-dir ./data # http://localhost:8640
 bun run dev                                     # web app with hot reload, proxying /api to :8640
 ```
 
-Tests: `cargo test --workspace` and `bun test`; `bun run typecheck` for TypeScript. After changing the API, `bun run gen:api` regenerates the TypeScript client's types. To try the Docker image from your checkout, run `scripts/install.sh --build`.
+The TV app is in `apps/firetv` (Kotlin, Jetpack Compose for TV); with JDK 17+ and the Android SDK, `./gradlew installDebug` there builds it and installs it on a connected TV or emulator.
 
-The layout: `crates/` is the server (`media` knows files, `library` owns the database, `server` is the HTTP API), `packages/core` is the TypeScript data layer shared with the TV apps, and `apps/web` is the web app.
+Tests: `cargo test --workspace` and `bun test`; `bun run typecheck` for TypeScript; `./gradlew testDebugUnitTest` in `apps/firetv`. After changing the API, `bun run gen:api` regenerates the TypeScript client's types. To try the Docker image from your checkout, run `scripts/install.sh --build`.
+
+The layout: `crates/` is the server (`media` knows files, `library` owns the database, `server` is the HTTP API), `packages/core` is the TypeScript data layer, `apps/web` is the web app, and `apps/firetv` is the TV app.
 
 ## Credits
 
