@@ -23,6 +23,7 @@ use crate::auth::{self, SESSION_TTL, SignedIn};
 
 /// Shown until the admin names the server.
 const DEFAULT_SERVER_NAME: &str = "Nuvora";
+const MAX_USERNAME_CHARS: usize = 32;
 
 #[derive(Serialize, ToSchema)]
 pub struct Health {
@@ -166,6 +167,10 @@ pub(super) async fn login(
     JsonBody(body): JsonBody<LoginRequest>,
 ) -> Result<Response, ApiError> {
     let username = body.username.trim();
+    // No account can have it, and the limiter must not hold it for 15 minutes.
+    if username.chars().count() > MAX_USERNAME_CHARS {
+        return Err(ApiError::bad_credentials());
+    }
     let keys = state.auth.sign_in_keys(username, &parts);
     if let Some(retry_after) = state.auth.blocked_for(&keys) {
         return Err(ApiError::rate_limited(retry_after));
@@ -310,7 +315,7 @@ pub(super) fn account_error(e: AccountError) -> ApiError {
 /// 1 to 32 letters, digits, `.`, `_` or `-`, after trimming.
 pub(super) fn valid_username(raw: &str) -> Result<String, ApiError> {
     let name = raw.trim();
-    let ok = (1..=32).contains(&name.chars().count())
+    let ok = (1..=MAX_USERNAME_CHARS).contains(&name.chars().count())
         && name
             .chars()
             .all(|c| c.is_alphanumeric() || matches!(c, '.' | '_' | '-'));
@@ -559,6 +564,39 @@ mod tests {
             "1",
             "a success started the wait over"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_over_long_username_is_refused_without_being_remembered() {
+        let app = TestApp::new().await;
+        app.setup_admin().await;
+        let long = "a".repeat(33);
+        for attempt in 0..2 {
+            let reply = app.login(&long, "wrong password").await;
+            assert_eq!(reply.status, StatusCode::UNAUTHORIZED, "attempt {attempt}");
+            assert_eq!(reply.json()["code"], "bad_credentials");
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_sign_in_body_over_16_kib_is_refused() {
+        let app = TestApp::new().await;
+        app.setup_admin().await;
+        let credentials = json!({"username": "admin", "password": ADMIN_PASSWORD}).to_string();
+        let send = |padding: usize| {
+            app.send(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/login")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(format!("{credentials}{}", " ".repeat(padding))))
+                    .unwrap(),
+            )
+        };
+        assert_eq!(send(1024).await.status, StatusCode::OK);
+        let reply = send(16 * 1024).await;
+        assert_eq!(reply.status, StatusCode::BAD_REQUEST);
+        assert_eq!(reply.json()["code"], "bad_request");
     }
 
     /// Twenty failed sign-ins, each for a different username so only the

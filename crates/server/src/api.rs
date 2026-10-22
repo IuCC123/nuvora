@@ -122,6 +122,10 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     build(None).1
 }
 
+/// Unauthenticated bodies are a few short strings; anything bigger is refused
+/// before it is buffered.
+const PUBLIC_BODY_LIMIT: usize = 16 * 1024;
+
 /// `state` is `None` only when printing the spec: the guards need it to run,
 /// not to be documented.
 fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::OpenApi) {
@@ -129,7 +133,8 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(accounts::health))
         .routes(routes!(accounts::auth_state))
         .routes(routes!(accounts::setup))
-        .routes(routes!(accounts::login));
+        .routes(routes!(accounts::login))
+        .layer(axum::extract::DefaultBodyLimit::max(PUBLIC_BODY_LIMIT));
     let mut member = OpenApiRouter::new()
         .routes(routes!(get_home))
         .routes(routes!(get_row))
