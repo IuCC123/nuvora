@@ -95,10 +95,10 @@ function CastCard({ person }: { person: CastMember }) {
   return (
     <li className="cast-card">
       <span className="cast-photo">
-        {main ? <Artwork image={main} size="small" alt="" /> : <span className="cast-initials">{initials(voice ? (person.character ?? person.name) : person.name)}</span>}
+        {main ? <Artwork image={main} size="small" alt="" fill /> : <span className="cast-initials">{initials(voice ? (person.character ?? person.name) : person.name)}</span>}
         {inset && (
           <span className="cast-inset">
-            <Artwork image={inset} size="small" alt="" />
+            <Artwork image={inset} size="small" alt="" fill />
           </span>
         )}
       </span>

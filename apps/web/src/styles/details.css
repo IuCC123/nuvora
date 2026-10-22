@@ -142,10 +142,6 @@
 }
 
 .cast-photo > .artwork {
-  position: absolute;
-  inset: 0;
-  /* Provider photos vary a little in shape; the slot keeps every card the same. */
-  aspect-ratio: auto !important;
   border-radius: inherit;
   overflow: hidden;
 }
@@ -170,10 +166,6 @@
   overflow: hidden;
   box-shadow: 0 0 0 3px var(--nv-color-canvas);
   background: var(--nv-color-surface-raised);
-}
-
-.cast-inset .artwork {
-  height: 100%;
 }
 
 .cast-name {

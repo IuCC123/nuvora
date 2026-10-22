@@ -104,7 +104,6 @@
   display: block;
   aspect-ratio: 16 / 10;
   border-radius: var(--nv-radius-md);
-  background-color: var(--nv-color-canvas);
   box-shadow: inset 0 0 0 1px var(--nv-color-hairline);
   transition: box-shadow var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
 }

@@ -21,7 +21,7 @@ export function CardArt({
   eager?: boolean;
 }) {
   if (!image) return <TitleCard title={title} year={year} large={large} />;
-  if (image.aspect_ratio <= 1) return <Artwork image={image} size={large ? "large" : "small"} alt="" eager={eager} />;
+  if (image.aspect_ratio <= 1) return <Artwork image={image} size={large ? "large" : "small"} alt="" aspect={2 / 3} eager={eager} />;
   return (
     <span className={large ? "title-card title-card-large frame-card" : "title-card frame-card"} style={titleCardVars(title)} aria-hidden>
       <Artwork image={image} size={large ? "large" : "small"} alt="" fill eager={eager} />

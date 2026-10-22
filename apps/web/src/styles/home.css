@@ -156,6 +156,7 @@
 
 .poster-frame > .artwork,
 .poster-frame > .title-card {
+  width: 100%;
   height: 100%;
   border-radius: inherit;
   overflow: hidden;
@@ -347,15 +348,21 @@
 }
 
 /* Backgrounds: a wash at the top of Home that fades into the canvas. */
-.home-bg,
-.swatch-fill {
-  --bg-a: transparent;
-  --bg-b: transparent;
-  --bg-c: transparent;
+.home-bg {
   background:
-    radial-gradient(70% 55% at 12% 0%, var(--bg-a), transparent 72%),
-    radial-gradient(60% 50% at 88% 6%, var(--bg-b), transparent 72%),
-    radial-gradient(50% 45% at 50% 40%, var(--bg-c), transparent 75%);
+    radial-gradient(70% 55% at 12% 0%, var(--bg-a, transparent), transparent 72%),
+    radial-gradient(60% 50% at 88% 6%, var(--bg-b, transparent), transparent 72%),
+    radial-gradient(50% 45% at 50% 40%, var(--bg-c, transparent), transparent 75%);
+}
+
+/* A swatch is the top of Home in miniature: the same wash, drawn larger and
+   brighter so it still reads at thumbnail size. */
+.swatch-fill {
+  background:
+    radial-gradient(95% 90% at 10% 0%, rgb(from var(--bg-a, transparent) r g b / calc(alpha * 2.2)), transparent 75%),
+    radial-gradient(85% 85% at 92% 8%, rgb(from var(--bg-b, transparent) r g b / calc(alpha * 2.2)), transparent 75%),
+    radial-gradient(70% 70% at 50% 70%, rgb(from var(--bg-c, transparent) r g b / calc(alpha * 2.2)), transparent 80%),
+    var(--nv-color-canvas);
 }
 
 .home-bg {
@@ -374,8 +381,9 @@
 [data-bg="ember"] { --bg-a: rgb(234 88 12 / 0.34); --bg-b: rgb(190 18 60 / 0.26); --bg-c: rgb(180 83 9 / 0.14); }
 [data-bg="aurora"] { --bg-a: rgb(16 185 129 / 0.3); --bg-b: rgb(139 92 246 / 0.3); --bg-c: rgb(6 182 212 / 0.18); }
 [data-bg="graphite"] { --bg-a: rgb(148 163 184 / 0.16); --bg-b: rgb(100 116 139 / 0.14); --bg-c: rgb(71 85 105 / 0.1); }
-[data-bg="none"] .swatch-fill,
-.swatch[data-bg="none"] .swatch-fill { background: var(--nv-color-canvas); }
+.swatch[data-bg="none"] .swatch-fill {
+  background: var(--nv-color-canvas);
+}
 .swatch[data-bg="ambient"] .swatch-fill {
   background:
     radial-gradient(60% 70% at 30% 30%, rgb(229 160 13 / 0.45), transparent 70%),
