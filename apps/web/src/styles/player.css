@@ -543,13 +543,6 @@
   padding: var(--nv-layout-gutter);
 }
 
-.player-notice h1 {
-  font-size: var(--nv-type-heading-size);
-  line-height: var(--nv-type-heading-line);
-  font-weight: var(--nv-font-weight-bold);
-  letter-spacing: -0.015em;
-}
-
 @media (max-width: 640px) {
   .player {
     --player-pad: 16px;

@@ -310,7 +310,6 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
 
       {notice && (
         <div className="player-notice">
-          <h1>{title}</h1>
           <Notice text={notice} />
         </div>
       )}
