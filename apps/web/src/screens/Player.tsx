@@ -206,6 +206,9 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
       actions.skip(-SKIP_SECONDS);
     } else if (key === "ArrowRight" || key === "l") {
       actions.skip(SKIP_SECONDS);
+    } else if ((key === "ArrowUp" || key === "ArrowDown") && target?.getAttribute("role") === "slider") {
+      // On the timeline, up and down move through time like any slider, not the volume.
+      actions.skip(key === "ArrowUp" ? SKIP_SECONDS : -SKIP_SECONDS);
     } else if (key === "ArrowUp" || key === "ArrowDown") {
       actions.volume((video.muted ? 0 : video.volume) + (key === "ArrowUp" ? VOLUME_STEP : -VOLUME_STEP));
       flash("volume");

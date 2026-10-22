@@ -16,7 +16,7 @@ const PAGE_SECONDS = 60;
  * The timeline. The played bar follows the video every frame (a CSS variable
  * set outside React), so it moves smoothly even on a 20 s clip. Hover shows the
  * time under the pointer; dragging seeks live and lands exactly on release.
- * Left and Right reach the player's own 10 s skip; Home, End and Page keys are handled here.
+ * The arrow keys reach the player's own 10 s skip; Home, End and Page keys are handled here.
  */
 export function Scrubber({ video, duration, buffered, onSeek, onDragChange }: ScrubberProps) {
   const root = useRef<HTMLDivElement>(null);
