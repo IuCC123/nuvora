@@ -18,7 +18,7 @@ use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, COOKIE, HOST, ORIGIN, SET_
 use axum::http::{HeaderMap, HeaderValue, Method, request::Parts};
 use axum::middleware::Next;
 use axum::response::Response;
-use nuvora_library::{Role, TokenHash, User};
+use nuvora_library::{Role, TokenHash, User, WatchRev};
 use password_hash::rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
@@ -226,6 +226,8 @@ pub fn session_cookie(token: Option<&str>, headers: &HeaderMap) -> HeaderValue {
 pub struct SignedIn {
     pub user: User,
     pub token: TokenHash,
+    /// Read with the session, so never newer than anything read after it.
+    pub watch_rev: WatchRev,
 }
 
 impl<S: Send + Sync> FromRequestParts<S> for SignedIn {
@@ -255,6 +257,7 @@ pub async fn current_session(
     Ok(session.map(|s| SignedIn {
         user: s.user,
         token,
+        watch_rev: s.watch_rev,
     }))
 }
 
@@ -307,6 +310,7 @@ async fn authenticate(
     req.extensions_mut().insert(SignedIn {
         user: session.user,
         token,
+        watch_rev: session.watch_rev,
     });
     let mut response = next.run(req).await;
     if resend_cookie && !response.headers().contains_key(SET_COOKIE) {

@@ -374,4 +374,279 @@ mod tests {
             state(None, 1, Some(NOW))
         );
     }
+
+    mod stored {
+        use std::num::NonZeroUsize;
+        use std::time::Duration;
+
+        use nuvora_media::{DeviceProfile, MediaTools};
+
+        use super::*;
+        use crate::test_support::seed_movies;
+        use crate::{Card, Item, LibraryConfig, NewUser, Role, RowKind};
+
+        async fn seeded(movies: usize) -> (tempfile::TempDir, Library, UserId, UserId) {
+            let dir = tempfile::tempdir().unwrap();
+            let lib = Library::open(LibraryConfig {
+                data_dir: dir.path().to_path_buf(),
+                libraries: vec![],
+                tools: MediaTools::locate(None, None).await.unwrap(),
+                probe_concurrency: NonZeroUsize::new(1).unwrap(),
+                settle_window: Duration::ZERO,
+            })
+            .await
+            .unwrap();
+            lib.inner
+                .db
+                .write(move |tx| seed_movies(tx, movies))
+                .await
+                .unwrap();
+            let user = |name: &str| NewUser {
+                username: name.into(),
+                display_name: name.into(),
+                password_hash: "not a hash".into(),
+                role: Role::Member,
+            };
+            let ada = lib.create_first_admin(user("ada"), 0).await.unwrap().id;
+            let bo = lib.create_user(user("bo"), 0).await.unwrap().id;
+            (dir, lib, ada, bo)
+        }
+
+        fn watching(file: i64, position_ms: u64) -> WatchEvent {
+            WatchEvent::Progress {
+                file_id: FileId(file),
+                position_ms,
+                duration_ms: 5_400_000,
+            }
+        }
+
+        fn ids(cards: &[Card]) -> Vec<i64> {
+            cards.iter().map(|c| c.id.0).collect()
+        }
+
+        async fn detail(lib: &Library, item: i64, user: UserId) -> WatchState {
+            let Item::Movie(movie) = lib
+                .item(ItemId(item), DeviceProfile::baseline(), user)
+                .await
+                .unwrap()
+                .unwrap();
+            movie.watch
+        }
+
+        async fn watch_rev(lib: &Library, user: UserId) -> u64 {
+            lib.inner
+                .db
+                .read(move |c| {
+                    c.query_row("SELECT watch_rev FROM user WHERE id = ?1", [user.0], |r| {
+                        r.get::<_, i64>(0)
+                    })
+                })
+                .await
+                .unwrap() as u64
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn two_users_never_mix() {
+            let (_dir, lib, ada, bo) = seeded(3).await;
+            lib.record_watch(ada, ItemId(2), watching(3, 10 * MIN), NOW)
+                .await
+                .unwrap();
+            lib.record_watch(bo, ItemId(3), WatchEvent::Watched, NOW)
+                .await
+                .unwrap();
+
+            let home = lib.home(ada).await.unwrap();
+            assert_eq!(home.rows[0].kind, RowKind::ContinueWatching);
+            assert_eq!((home.rows[0].total, ids(&home.rows[0].cards)), (1, vec![2]));
+            let cards: Vec<(i64, WatchState)> = home.rows[2]
+                .cards
+                .iter()
+                .map(|c| (c.id.0, c.watch))
+                .collect();
+            let resume = Some(Resume {
+                file_id: FileId(3),
+                position_ms: 10 * MIN,
+                duration_ms: 5_400_000,
+            });
+            assert_eq!(
+                cards,
+                [
+                    (1, WatchState::default()),
+                    (2, state(resume, 0, None)),
+                    (3, WatchState::default()),
+                ]
+            );
+
+            let home = lib.home(bo).await.unwrap();
+            assert_eq!(
+                home.rows.iter().map(|r| r.kind).collect::<Vec<_>>(),
+                [RowKind::RecentlyAdded, RowKind::AllMovies]
+            );
+            let cards: Vec<(i64, bool)> = home.rows[1]
+                .cards
+                .iter()
+                .map(|c| (c.id.0, c.watch.watched()))
+                .collect();
+            assert_eq!(cards, [(1, false), (2, false), (3, true)]);
+
+            assert_eq!(detail(&lib, 2, ada).await, state(resume, 0, None));
+            assert_eq!(detail(&lib, 2, bo).await, WatchState::default());
+            assert_eq!(detail(&lib, 3, bo).await, state(None, 1, Some(NOW)));
+            assert_eq!(detail(&lib, 3, ada).await, WatchState::default());
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn the_file_must_be_a_version_of_the_item() {
+            let (_dir, lib, ada, _) = seeded(3).await;
+            let wrong = lib
+                .record_watch(ada, ItemId(2), watching(1, 10 * MIN), NOW)
+                .await;
+            assert!(matches!(wrong, Err(WatchError::FileNotOnItem)), "{wrong:?}");
+            let unknown = lib
+                .record_watch(ada, ItemId(2), watching(99, 10 * MIN), NOW)
+                .await;
+            assert!(
+                matches!(unknown, Err(WatchError::FileNotOnItem)),
+                "{unknown:?}"
+            );
+            let missing = lib
+                .record_watch(ada, ItemId(99), WatchEvent::Watched, NOW)
+                .await;
+            assert!(
+                matches!(missing, Err(WatchError::ItemNotFound)),
+                "{missing:?}"
+            );
+            assert_eq!(
+                watch_rev(&lib, ada).await,
+                0,
+                "a refused report writes nothing"
+            );
+
+            lib.record_watch(ada, ItemId(1), watching(2, 10 * MIN), NOW)
+                .await
+                .expect("the second version of item 1");
+            assert_eq!(
+                detail(&lib, 1, ada).await.resume.unwrap().file_id,
+                FileId(2)
+            );
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn watch_revs_come_from_one_sequence_and_skip_no_ops() {
+            let (_dir, lib, ada, bo) = seeded(3).await;
+            lib.record_watch(ada, ItemId(1), watching(1, 10 * MIN), NOW)
+                .await
+                .unwrap();
+            assert_eq!(
+                (watch_rev(&lib, ada).await, watch_rev(&lib, bo).await),
+                (1, 0)
+            );
+            lib.record_watch(bo, ItemId(1), watching(1, 10 * MIN), NOW)
+                .await
+                .unwrap();
+            assert_eq!(
+                (watch_rev(&lib, ada).await, watch_rev(&lib, bo).await),
+                (1, 2)
+            );
+            lib.record_watch(bo, ItemId(1), watching(1, 10 * MIN), NOW + 10)
+                .await
+                .unwrap();
+            lib.record_watch(bo, ItemId(2), watching(3, 30_000), NOW)
+                .await
+                .unwrap();
+            assert_eq!(
+                watch_rev(&lib, bo).await,
+                2,
+                "nothing changed, nothing written"
+            );
+            lib.record_watch(bo, ItemId(1), WatchEvent::Unwatched, NOW)
+                .await
+                .unwrap();
+            assert_eq!(watch_rev(&lib, bo).await, 3);
+            let rows: i64 = lib
+                .inner
+                .db
+                .read(move |c| {
+                    c.query_row(
+                        "SELECT count(*) FROM watch_state WHERE user_id = ?1",
+                        [bo.0],
+                        |r| r.get(0),
+                    )
+                })
+                .await
+                .unwrap();
+            assert_eq!(rows, 0, "an unwatched, untouched item keeps no row");
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn continue_watching_is_most_recent_first_and_pages() {
+            let (_dir, lib, ada, _) = seeded(6).await;
+            for (item, file, at) in [
+                (1, 1, NOW),
+                (2, 3, NOW + 1),
+                (3, 4, NOW + 1),
+                (4, 5, NOW + 3),
+                (5, 6, NOW - 10),
+            ] {
+                lib.record_watch(ada, ItemId(item), watching(file, 10 * MIN), at)
+                    .await
+                    .unwrap();
+            }
+            let mut pages = Vec::new();
+            let mut after = None;
+            loop {
+                let page = lib
+                    .row(RowKind::ContinueWatching, after, 2, ada)
+                    .await
+                    .unwrap();
+                pages.push(ids(&page.cards));
+                let Some(next) = page.next else { break };
+                after = Some(
+                    crate::Cursor::parse(RowKind::ContinueWatching, &next.to_string()).unwrap(),
+                );
+            }
+            assert_eq!(
+                pages,
+                [vec![4, 3], vec![2, 1], vec![5]],
+                "ties go to the higher id"
+            );
+
+            lib.record_watch(ada, ItemId(3), WatchEvent::Watched, NOW + 4)
+                .await
+                .unwrap();
+            lib.record_watch(ada, ItemId(5), watching(6, 11 * MIN), NOW + 5)
+                .await
+                .unwrap();
+            let home = lib.home(ada).await.unwrap();
+            assert_eq!(home.rows[0].kind, RowKind::ContinueWatching);
+            assert_eq!(
+                (home.rows[0].total, ids(&home.rows[0].cards)),
+                (4, vec![5, 4, 2, 1])
+            );
+            assert!(home.rows[0].next.is_none());
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn deleting_a_user_deletes_their_watch_state() {
+            let (_dir, lib, ada, bo) = seeded(2).await;
+            lib.record_watch(bo, ItemId(1), watching(1, 10 * MIN), NOW)
+                .await
+                .unwrap();
+            lib.record_watch(ada, ItemId(1), WatchEvent::Watched, NOW)
+                .await
+                .unwrap();
+            lib.delete_user(ada, bo).await.unwrap();
+            let left: Vec<i64> = lib
+                .inner
+                .db
+                .read(|c| {
+                    c.prepare("SELECT user_id FROM watch_state")?
+                        .query_map([], |r| r.get(0))?
+                        .collect()
+                })
+                .await
+                .unwrap();
+            assert_eq!(left, [ada.0]);
+        }
+    }
 }

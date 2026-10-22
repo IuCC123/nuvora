@@ -8,7 +8,7 @@
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
-use crate::{Library, QueryError, UserId};
+use crate::{Library, QueryError, UserId, WatchRev};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
@@ -95,6 +95,8 @@ pub struct TokenHash(pub [u8; 32]);
 #[derive(Debug, Clone)]
 pub struct Session {
     pub user: User,
+    /// The user's watch revision when the session was read.
+    pub watch_rev: WatchRev,
     /// Unix ms.
     pub last_seen_at: i64,
     /// Unix ms.
@@ -407,20 +409,21 @@ impl Library {
             .inner
             .db
             .read(move |c| {
-                let found: Option<(i64, i64, i64)> = c
+                let found: Option<(i64, i64, i64, i64)> = c
                     .query_row(
-                        "SELECT s.user_id, s.last_seen_at, s.expires_at FROM session s \
+                        "SELECT s.user_id, s.last_seen_at, s.expires_at, u.watch_rev FROM session s \
                          JOIN user u ON u.id = s.user_id \
                          WHERE s.token_hash = ?1 AND s.expires_at > ?2 AND u.disabled_at IS NULL",
                         params![token.0.to_vec(), now_ms],
-                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
                     )
                     .optional()?;
-                let Some((user_id, last_seen_at, expires_at)) = found else {
+                let Some((user_id, last_seen_at, expires_at, watch_rev)) = found else {
                     return Ok(None);
                 };
                 Ok(load_user(c, UserId(user_id))?.map(|user| Session {
                     user,
+                    watch_rev: WatchRev(watch_rev as u64),
                     last_seen_at,
                     expires_at,
                 }))

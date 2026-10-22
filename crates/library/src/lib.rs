@@ -157,12 +157,13 @@ impl Library {
         self.inner.db.rev()
     }
 
-    /// The home screen in one read transaction: the first page (at most
+    /// `user`'s home screen in one read transaction: the first page (at most
     /// [`HOME_ROW_LIMIT`] cards) of each [`RowKind::ALL`] row, with its total and
-    /// a cursor to the rest. Items whose files are all missing are excluded. Two
-    /// indexed keyset queries, so the cost does not grow with the library.
-    pub async fn home(&self) -> Result<Home, QueryError> {
-        Ok(self.inner.db.read(views::home).await?)
+    /// a cursor to the rest. Continue Watching only when it has cards. Items
+    /// whose files are all missing are excluded. Indexed keyset queries, so the
+    /// cost does not grow with the library.
+    pub async fn home(&self, user: UserId) -> Result<Home, QueryError> {
+        Ok(self.inner.db.read(move |c| views::home(c, user)).await?)
     }
 
     /// The page of `kind` after `after` (`None` = from the start), `limit` cards
@@ -173,6 +174,7 @@ impl Library {
         kind: RowKind,
         after: Option<Cursor>,
         limit: u32,
+        user: UserId,
     ) -> Result<RowPage, QueryError> {
         debug_assert!(after.as_ref().is_none_or(|c| c.kind() == kind));
         let limit = limit.clamp(1, MAX_ROW_LIMIT);
@@ -181,24 +183,26 @@ impl Library {
             .db
             .read(move |c| {
                 let rev = views::rev(c)?;
-                let (_, cards, next) = views::row_page(c, kind, after.as_ref(), limit)?;
+                let (_, cards, next) = views::row_page(c, kind, after.as_ref(), limit, user)?;
                 Ok(RowPage { rev, cards, next })
             })
             .await?)
     }
 
     /// One item with every version (file) and every stream, plus a playback
-    /// decision per version for `device`. `None` if the id does not exist.
-    /// Missing items still resolve (the id is stable), with an empty `versions`.
+    /// decision per version for `device` and `user`'s watch state. `None` if
+    /// the id does not exist. Missing items still resolve (the id is stable),
+    /// with an empty `versions`.
     pub async fn item(
         &self,
         id: ItemId,
         device: DeviceProfile,
+        user: UserId,
     ) -> Result<Option<Item>, QueryError> {
         Ok(self
             .inner
             .db
-            .read(move |c| views::item(c, id, &device))
+            .read(move |c| views::item(c, id, &device, user))
             .await?)
     }
 
@@ -225,6 +229,9 @@ mod tests {
     use crate::test_support::{movie_library, sdr_movie, seed_movies};
     use std::path::Path;
     use std::time::{Instant, SystemTime};
+
+    /// A user with no watch state.
+    const NOBODY: UserId = UserId(0);
 
     async fn open(root: &Path, data: &Path) -> Library {
         let tools = MediaTools::locate(None, None).await.unwrap();
@@ -260,19 +267,19 @@ mod tests {
     }
 
     async fn home_titles(lib: &Library) -> Vec<String> {
-        let home = lib.home().await.unwrap();
+        let home = lib.home(NOBODY).await.unwrap();
         home.rows[1].cards.iter().map(|c| c.title.clone()).collect()
     }
 
     async fn find(lib: &Library, title: &str) -> Movie {
-        let home = lib.home().await.unwrap();
+        let home = lib.home(NOBODY).await.unwrap();
         let card = home.rows[1]
             .cards
             .iter()
             .find(|c| c.title == title)
             .unwrap_or_else(|| panic!("{title} on home"));
         let Item::Movie(movie) = lib
-            .item(card.id, DeviceProfile::baseline())
+            .item(card.id, DeviceProfile::baseline(), NOBODY)
             .await
             .unwrap()
             .unwrap();
@@ -302,7 +309,7 @@ mod tests {
         assert!(summary.issues.is_empty(), "{:?}", summary.issues);
         assert!(lib.rev().get() > 0);
 
-        let home = lib.home().await.unwrap();
+        let home = lib.home(NOBODY).await.unwrap();
         assert_eq!(
             home.rows.iter().map(|r| r.total).collect::<Vec<_>>(),
             [5, 5]
@@ -451,7 +458,7 @@ mod tests {
             ["Big Buck", "Bright", "Elephants", "The Spring"]
         );
         let Item::Movie(missing) = lib
-            .item(sintel.id, DeviceProfile::baseline())
+            .item(sintel.id, DeviceProfile::baseline(), NOBODY)
             .await
             .unwrap()
             .expect("id still resolves");
@@ -482,7 +489,7 @@ mod tests {
             summary.issues
         );
         assert_eq!(
-            lib.home().await.unwrap().rows[0].total,
+            lib.home(NOBODY).await.unwrap().rows[0].total,
             5,
             "unreadable root removes nothing"
         );
@@ -494,7 +501,7 @@ mod tests {
         let summary = scan(&lib).await;
         assert_eq!(summary.removed, 0);
         assert_eq!(
-            lib.home().await.unwrap().rows[0].total,
+            lib.home(NOBODY).await.unwrap().rows[0].total,
             5,
             "empty root with stored files removes nothing"
         );
@@ -624,12 +631,12 @@ mod tests {
             .unwrap();
 
         for _ in 0..5 {
-            lib.home().await.unwrap();
+            lib.home(NOBODY).await.unwrap();
         }
         let mut samples = Vec::new();
         for _ in 0..50 {
             let started = Instant::now();
-            let home = lib.home().await.unwrap();
+            let home = lib.home(NOBODY).await.unwrap();
             samples.push(started.elapsed());
             assert_eq!(
                 home.rows
