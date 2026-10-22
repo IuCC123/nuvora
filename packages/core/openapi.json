@@ -2479,6 +2479,35 @@
         ]
       }
     },
+    "/api/live": {
+      "get": {
+        "summary": "The live connection: JSON text frames, [`LiveEvent`] from the server\n(the first is `hello`), [`LiveCommand`] from the client.",
+        "operationId": "live",
+        "responses": {
+          "101": {
+            "description": "Switching to WebSocket"
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/me/home": {
       "get": {
         "operationId": "get_layout",
@@ -2571,6 +2600,324 @@
         "responses": {
           "204": {
             "description": ""
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/party": {
+      "get": {
+        "operationId": "status",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartyStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/party/invites": {
+      "post": {
+        "summary": "Invites someone to watch with you, starting a party if you aren't in one.",
+        "operationId": "invite",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartyView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/party/invites/{user_id}": {
+      "delete": {
+        "operationId": "cancel_invite",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartyView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/party/leave": {
+      "post": {
+        "operationId": "leave",
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/party/{id}/decline": {
+      "post": {
+        "operationId": "decline",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/party/{id}/join": {
+      "post": {
+        "summary": "Accepts an invitation, leaving any party you're in.",
+        "operationId": "join",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartyView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/people": {
+      "get": {
+        "summary": "Everyone else with an account who can sign in, by name.",
+        "operationId": "people",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PartyPerson"
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "No valid session",
@@ -3986,6 +4333,18 @@
           }
         }
       },
+      "InviteRequest": {
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ItemDetail": {
         "oneOf": [
           {
@@ -4181,6 +4540,235 @@
           }
         }
       },
+      "LiveCommand": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "client_time_ms",
+              "type"
+            ],
+            "properties": {
+              "client_time_ms": {
+                "type": "number",
+                "format": "double"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "ping"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Play this for the whole party, from `position_ms`.",
+            "required": [
+              "item_id",
+              "file_id",
+              "position_ms",
+              "type"
+            ],
+            "properties": {
+              "file_id": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "item_id": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "position_ms": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "start"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "position_ms",
+              "type"
+            ],
+            "properties": {
+              "position_ms": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "play"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "position_ms",
+              "type"
+            ],
+            "properties": {
+              "position_ms": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "pause"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "position_ms",
+              "type"
+            ],
+            "properties": {
+              "position_ms": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "seek"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "What a client sends on `/api/live`, as JSON text frames."
+      },
+      "LiveEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "First frame of every connection.",
+            "required": [
+              "server_time_ms",
+              "status",
+              "type"
+            ],
+            "properties": {
+              "server_time_ms": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "status": {
+                "$ref": "#/components/schemas/PartyStatus"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "hello"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The answer to a `ping`, for measuring clock offset.",
+            "required": [
+              "client_time_ms",
+              "server_time_ms",
+              "type"
+            ],
+            "properties": {
+              "client_time_ms": {
+                "type": "number",
+                "format": "double"
+              },
+              "server_time_ms": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "pong"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The party you are in changed (members, invitations or playback).",
+            "required": [
+              "party",
+              "type"
+            ],
+            "properties": {
+              "party": {
+                "$ref": "#/components/schemas/PartyView"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "party"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "You are no longer in `party_id`.",
+            "required": [
+              "party_id",
+              "type"
+            ],
+            "properties": {
+              "party_id": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "party_left"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Your pending invitations changed; the whole list.",
+            "required": [
+              "invites",
+              "type"
+            ],
+            "properties": {
+              "invites": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PartyInvite"
+                }
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "invites"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "What the server sends on `/api/live`, as JSON text frames."
+      },
       "LoginRequest": {
         "type": "object",
         "required": [
@@ -4328,6 +4916,227 @@
             ],
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "PartyAction": {
+        "type": "string",
+        "enum": [
+          "start",
+          "play",
+          "pause",
+          "seek"
+        ]
+      },
+      "PartyInvite": {
+        "type": "object",
+        "required": [
+          "party_id",
+          "from",
+          "members",
+          "sent_at_ms"
+        ],
+        "properties": {
+          "from": {
+            "$ref": "#/components/schemas/PartyPerson"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PartyPerson"
+            },
+            "description": "Everyone already in the party, inviter included."
+          },
+          "party_id": {
+            "type": "string"
+          },
+          "sent_at_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix ms."
+          }
+        }
+      },
+      "PartyMediaKind": {
+        "type": "string",
+        "enum": [
+          "movie",
+          "episode"
+        ]
+      },
+      "PartyMember": {
+        "type": "object",
+        "required": [
+          "id",
+          "display_name",
+          "online"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "online": {
+            "type": "boolean",
+            "description": "Has the app open right now."
+          }
+        }
+      },
+      "PartyPerson": {
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PartyPlayback": {
+        "type": "object",
+        "description": "The party's shared clock: at server time `at_ms` the position is\n`position_ms`; while `playing` it advances in real time from there.\n`at_ms` can be a moment ahead, when everyone starts together.",
+        "required": [
+          "item_id",
+          "file_id",
+          "kind",
+          "title",
+          "playing",
+          "position_ms",
+          "at_ms",
+          "seq",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/PartyAction"
+          },
+          "at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "by": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PartyPerson",
+                "description": "Who made the change; `None` when the server did."
+              }
+            ]
+          },
+          "file_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "item_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PartyMediaKind"
+          },
+          "playing": {
+            "type": "boolean"
+          },
+          "position_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "seq": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Goes up with every change, so a client applies each one once.",
+            "minimum": 0
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For an episode: `\"S2 · E3\"`."
+          },
+          "title": {
+            "type": "string",
+            "description": "The movie's or the show's title."
+          }
+        }
+      },
+      "PartyStatus": {
+        "type": "object",
+        "description": "What a signed-in user sees: their party, if any, and invitations to others.",
+        "required": [
+          "invites"
+        ],
+        "properties": {
+          "invites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PartyInvite"
+            }
+          },
+          "party": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PartyView"
+              }
+            ]
+          }
+        }
+      },
+      "PartyView": {
+        "type": "object",
+        "required": [
+          "id",
+          "host_id",
+          "members",
+          "invited"
+        ],
+        "properties": {
+          "host_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "invited": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PartyPerson"
+            },
+            "description": "Invited and not answered yet."
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PartyMember"
+            },
+            "description": "In joining order."
+          },
+          "playback": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PartyPlayback",
+                "description": "`None` until someone starts something."
+              }
+            ]
           }
         }
       },

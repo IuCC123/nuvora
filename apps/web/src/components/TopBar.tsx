@@ -8,6 +8,7 @@ import { useUser } from "../lib/session";
 import { AccountMenu } from "./AccountMenu";
 import { MarkIcon, RefreshIcon, SpinIcon } from "./Icon";
 import { SearchBox } from "./SearchBox";
+import { WatchTogether } from "./party/WatchTogether";
 
 const PHASE_LABEL: Record<Extract<ScanStatus, { state: "running" }>["phase"], string> = {
   discovering: "Finding files",
@@ -55,6 +56,7 @@ export function TopBar() {
           <RefreshIcon />
         </button>
       )}
+      <WatchTogether />
       <AccountMenu />
     </header>
   );

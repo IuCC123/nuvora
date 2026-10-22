@@ -17,6 +17,7 @@ import { Home } from "./screens/Home";
 import { LibraryScreen } from "./screens/Library";
 import { MovieScreen } from "./screens/Movie";
 import { Search } from "./screens/Search";
+import { PartyLayer } from "./components/party/PartyLayer";
 import { EpisodePlayer, Player } from "./screens/Player";
 import { ShowScreen } from "./screens/Show";
 import { ErrorState, MissingEpisode, MissingLibrary, MissingMovie, MissingShow } from "./screens/ErrorState";
@@ -44,7 +45,15 @@ import { SettingsUsers } from "./screens/settings/Users";
  *   /episode/$id/play?file=&t=  Player for an episode; without `file` it resumes where the viewer stopped
  *   /settings/<section>         general, libraries, users (admins), account
  */
-const root = createRootRoute({ component: Outlet });
+/** Every screen, with Watch Together's invitations and follow-along under them. */
+const root = createRootRoute({
+  component: () => (
+    <>
+      <Outlet />
+      <PartyLayer />
+    </>
+  ),
+});
 
 const authState = () => queryClient.ensureQueryData(queries.authState());
 

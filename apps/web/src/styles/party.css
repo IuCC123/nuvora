@@ -1,0 +1,448 @@
+/* Watch Together: the top bar button and panel, invitation cards, and the player's overlays. */
+
+.together {
+  position: relative;
+}
+
+.together-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--nv-radius-pill);
+  background: none;
+  color: var(--nv-color-text-secondary);
+  font: inherit;
+  font-size: var(--nv-type-small-size);
+  font-weight: var(--nv-font-weight-medium);
+  cursor: pointer;
+  transition:
+    background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.together-button:hover,
+.together-button[aria-expanded="true"] {
+  background: var(--nv-color-surface);
+  color: var(--nv-color-text-primary);
+}
+
+.together-button-on {
+  padding: 0 14px 0 4px;
+  background: color-mix(in srgb, var(--nv-color-accent) 14%, transparent);
+  color: var(--nv-color-text-primary);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nv-color-accent) 38%, transparent);
+}
+
+.together-button-on:hover,
+.together-button-on[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--nv-color-accent) 22%, transparent);
+}
+
+.together-button-on > svg {
+  margin-left: 6px;
+  color: var(--nv-color-accent);
+}
+
+.together-faces,
+.party-with-faces {
+  display: flex;
+}
+
+.together-face {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--nv-color-surface-raised);
+  box-shadow: 0 0 0 2px var(--nv-color-canvas);
+  color: var(--nv-color-text-primary);
+  font-size: 11px;
+  font-weight: var(--nv-font-weight-semibold);
+  letter-spacing: 0.02em;
+}
+
+.together-face + .together-face {
+  margin-left: -8px;
+}
+
+.together-face[data-away="true"] {
+  color: var(--nv-color-text-muted);
+}
+
+.together-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  display: grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-color-accent);
+  color: var(--nv-color-accent-text);
+  font-size: 10px;
+  font-weight: var(--nv-font-weight-bold);
+  box-shadow: 0 0 0 2px var(--nv-color-canvas);
+}
+
+/* Panel and cards sit on the raised surface, so their avatars and quiet
+   buttons step up a shade to stay visible. */
+.together-panel .avatar,
+.together-card .avatar {
+  background: var(--nv-color-hairline);
+}
+
+.together-panel .btn-secondary,
+.together-card .btn-secondary {
+  background: var(--nv-color-hairline);
+}
+
+.together-panel .btn-secondary:hover,
+.together-card .btn-secondary:hover {
+  background: color-mix(in srgb, var(--nv-color-text-muted) 35%, var(--nv-color-hairline));
+}
+
+/* Panel */
+
+.together-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 6;
+  width: 340px;
+  max-height: min(640px, calc(100dvh - 90px));
+  overflow-y: auto;
+  padding: 16px;
+  border-radius: var(--nv-radius-lg);
+  background: var(--nv-color-surface-raised);
+  border: 1px solid var(--nv-color-hairline);
+  box-shadow: var(--nv-shadow-lift);
+  transform-origin: top right;
+  animation: menu-in var(--nv-motion-duration-fast) var(--nv-motion-easing-enter);
+}
+
+.together-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.together-head h2 {
+  margin: 0;
+  font-size: var(--nv-type-body-large-size);
+  line-height: var(--nv-type-body-large-line);
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.together-offline {
+  color: var(--nv-color-text-muted);
+  font-size: 12px;
+}
+
+.together-intro,
+.together-hint {
+  margin: 0 0 4px;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: 1.5;
+}
+
+.together-hint {
+  color: var(--nv-color-text-muted);
+}
+
+.together-section {
+  margin-top: 16px;
+}
+
+.together-section h3 {
+  margin: 0 0 6px;
+  color: var(--nv-color-text-muted);
+  font-size: 12px;
+  font-weight: var(--nv-font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.together-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.together-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 4px 4px 4px 0;
+}
+
+.together-person .avatar[data-away="true"] {
+  color: var(--nv-color-text-muted);
+}
+
+.together-person-invited .avatar {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--nv-color-hairline);
+  color: var(--nv-color-text-muted);
+}
+
+.together-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--nv-font-weight-medium);
+}
+
+.together-note {
+  color: var(--nv-color-text-muted);
+  font-weight: var(--nv-font-weight-regular);
+}
+
+.together-status {
+  color: var(--nv-color-text-muted);
+  font-size: 12px;
+}
+
+.together-x {
+  width: 28px;
+  height: 28px;
+}
+
+.together-invite {
+  height: 32px;
+  padding: 0 14px;
+  font-size: var(--nv-type-small-size);
+}
+
+.together-now {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  padding: 12px;
+  border-radius: var(--nv-radius-md);
+  background: color-mix(in srgb, var(--nv-color-accent) 10%, var(--nv-color-surface));
+}
+
+.together-now-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.together-now-label {
+  color: var(--nv-color-accent);
+  font-size: 12px;
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.together-now-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.together-join-now {
+  height: 34px;
+  padding: 0 14px;
+  gap: 6px;
+}
+
+.together-foot {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--nv-color-hairline);
+}
+
+.together-leave {
+  width: 100%;
+}
+
+.together-error {
+  margin: 6px 0 0;
+  color: var(--nv-color-danger);
+  font-size: var(--nv-type-small-size);
+}
+
+/* An invitation, in the panel and in the corner cards. */
+
+.together-invitation {
+  display: flex;
+  gap: 12px;
+}
+
+.together-invitation-text {
+  min-width: 0;
+}
+
+.together-invitation-text p {
+  margin: 4px 0 10px;
+  line-height: 1.4;
+}
+
+.together-invitation-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.together-invitation-actions .btn {
+  height: 34px;
+  padding: 0 16px;
+}
+
+.together-cards {
+  position: fixed;
+  top: calc(var(--nv-layout-top-bar) + 12px);
+  right: 20px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(360px, calc(100vw - 40px));
+}
+
+.together-card {
+  position: relative;
+  padding: 16px 40px 16px 16px;
+  border-radius: var(--nv-radius-lg);
+  background: var(--nv-color-surface-raised);
+  border: 1px solid color-mix(in srgb, var(--nv-color-accent) 35%, var(--nv-color-hairline));
+  box-shadow: var(--nv-shadow-lift);
+  animation: together-card-in var(--nv-motion-duration-base) var(--nv-motion-easing-enter);
+}
+
+.together-card-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+}
+
+@keyframes together-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+/* In the player */
+
+.party-with {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  padding: 4px 14px 4px 4px;
+  border-radius: var(--nv-radius-pill);
+  background: rgb(0 0 0 / 0.35);
+  color: var(--nv-color-text-primary);
+  font-size: var(--nv-type-small-size);
+  font-weight: var(--nv-font-weight-medium);
+}
+
+.party-with .together-face {
+  box-shadow: 0 0 0 2px rgb(0 0 0 / 0.6);
+}
+
+.party-note {
+  position: absolute;
+  top: 84px;
+  left: 50%;
+  z-index: 4;
+  padding: 8px 16px;
+  border-radius: var(--nv-radius-pill);
+  background: rgb(0 0 0 / 0.65);
+  color: var(--nv-color-text-primary);
+  font-size: var(--nv-type-small-size);
+  font-weight: var(--nv-font-weight-medium);
+  transform: translateX(-50%);
+  animation: party-note 3s var(--nv-motion-easing-standard) forwards;
+  pointer-events: none;
+}
+
+@keyframes party-note {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+  8%,
+  85% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.party-countdown {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  /* A soft dark pool behind the number, so it reads over any picture. */
+  background: radial-gradient(circle at center, rgb(0 0 0 / 0.5), rgb(0 0 0 / 0) 34%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.party-countdown-label {
+  color: var(--nv-color-text-primary);
+  font-size: var(--nv-type-small-size);
+  font-weight: var(--nv-font-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 8px rgb(0 0 0 / 0.6);
+}
+
+.party-countdown-number {
+  color: var(--nv-color-text-primary);
+  font-family: var(--nv-font-family-display);
+  font-size: 88px;
+  line-height: 1;
+  font-weight: var(--nv-font-weight-bold);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 24px rgb(0 0 0 / 0.5);
+  animation: party-tick 1s var(--nv-motion-easing-enter);
+}
+
+@keyframes party-tick {
+  from {
+    opacity: 0.2;
+    transform: scale(1.25);
+  }
+}
+
+.party-tap {
+  gap: 8px;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .together-card,
+  .party-countdown-number,
+  .party-note {
+    animation: none;
+  }
+}

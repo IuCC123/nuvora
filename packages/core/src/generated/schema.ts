@@ -592,6 +592,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The live connection: JSON text frames, [`LiveEvent`] from the server
+         *     (the first is `hello`), [`LiveCommand`] from the client.
+         */
+        get: operations["live"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/me/home": {
         parameters: {
             query?: never;
@@ -603,6 +623,121 @@ export interface paths {
         put: operations["put_layout"];
         post?: never;
         delete: operations["reset_layout"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/party": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/party/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Invites someone to watch with you, starting a party if you aren't in one. */
+        post: operations["invite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/party/invites/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["cancel_invite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/party/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["leave"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/party/{id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["decline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/party/{id}/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accepts an invitation, leaving any party you're in. */
+        post: operations["join"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Everyone else with an account who can sign in, by name. */
+        get: operations["people"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1058,6 +1193,10 @@ export interface components {
             /** @description For the header: `"A"`, `"1990s"`, `"October 2026"`, `"Unknown year"`. */
             label: string;
         };
+        InviteRequest: {
+            /** Format: int64 */
+            user_id: number;
+        };
         ItemDetail: (components["schemas"]["MovieDetail"] & {
             /** @enum {string} */
             kind: "movie";
@@ -1116,6 +1255,64 @@ export interface components {
             kind: components["schemas"]["LibraryKind"];
             name: string;
         };
+        /** @description What a client sends on `/api/live`, as JSON text frames. */
+        LiveCommand: {
+            /** Format: double */
+            client_time_ms: number;
+            /** @enum {string} */
+            type: "ping";
+        } | {
+            /** Format: int64 */
+            file_id: number;
+            /** Format: int64 */
+            item_id: number;
+            /** Format: int64 */
+            position_ms: number;
+            /** @enum {string} */
+            type: "start";
+        } | {
+            /** Format: int64 */
+            position_ms: number;
+            /** @enum {string} */
+            type: "play";
+        } | {
+            /** Format: int64 */
+            position_ms: number;
+            /** @enum {string} */
+            type: "pause";
+        } | {
+            /** Format: int64 */
+            position_ms: number;
+            /** @enum {string} */
+            type: "seek";
+        };
+        /** @description What the server sends on `/api/live`, as JSON text frames. */
+        LiveEvent: {
+            /** Format: int64 */
+            server_time_ms: number;
+            status: components["schemas"]["PartyStatus"];
+            /** @enum {string} */
+            type: "hello";
+        } | {
+            /** Format: double */
+            client_time_ms: number;
+            /** Format: int64 */
+            server_time_ms: number;
+            /** @enum {string} */
+            type: "pong";
+        } | {
+            party: components["schemas"]["PartyView"];
+            /** @enum {string} */
+            type: "party";
+        } | {
+            party_id: string;
+            /** @enum {string} */
+            type: "party_left";
+        } | {
+            invites: components["schemas"]["PartyInvite"][];
+            /** @enum {string} */
+            type: "invites";
+        };
         LoginRequest: {
             password: string;
             username: string;
@@ -1149,6 +1346,76 @@ export interface components {
             watch: components["schemas"]["WatchState"];
             /** Format: int32 */
             year?: number | null;
+        };
+        /** @enum {string} */
+        PartyAction: "start" | "play" | "pause" | "seek";
+        PartyInvite: {
+            from: components["schemas"]["PartyPerson"];
+            /** @description Everyone already in the party, inviter included. */
+            members: components["schemas"]["PartyPerson"][];
+            party_id: string;
+            /**
+             * Format: int64
+             * @description Unix ms.
+             */
+            sent_at_ms: number;
+        };
+        /** @enum {string} */
+        PartyMediaKind: "movie" | "episode";
+        PartyMember: {
+            display_name: string;
+            /** Format: int64 */
+            id: number;
+            /** @description Has the app open right now. */
+            online: boolean;
+        };
+        PartyPerson: {
+            display_name: string;
+            /** Format: int64 */
+            id: number;
+        };
+        /**
+         * @description The party's shared clock: at server time `at_ms` the position is
+         *     `position_ms`; while `playing` it advances in real time from there.
+         *     `at_ms` can be a moment ahead, when everyone starts together.
+         */
+        PartyPlayback: {
+            action: components["schemas"]["PartyAction"];
+            /** Format: int64 */
+            at_ms: number;
+            by?: null | components["schemas"]["PartyPerson"];
+            /** Format: int64 */
+            file_id: number;
+            /** Format: int64 */
+            item_id: number;
+            kind: components["schemas"]["PartyMediaKind"];
+            playing: boolean;
+            /** Format: int64 */
+            position_ms: number;
+            /**
+             * Format: int64
+             * @description Goes up with every change, so a client applies each one once.
+             */
+            seq: number;
+            /** @description For an episode: `"S2 · E3"`. */
+            subtitle?: string | null;
+            /** @description The movie's or the show's title. */
+            title: string;
+        };
+        /** @description What a signed-in user sees: their party, if any, and invitations to others. */
+        PartyStatus: {
+            invites: components["schemas"]["PartyInvite"][];
+            party?: null | components["schemas"]["PartyView"];
+        };
+        PartyView: {
+            /** Format: int64 */
+            host_id: number;
+            id: string;
+            /** @description Invited and not answered yet. */
+            invited: components["schemas"]["PartyPerson"][];
+            /** @description In joining order. */
+            members: components["schemas"]["PartyMember"][];
+            playback?: null | components["schemas"]["PartyPlayback"];
         };
         /**
          * @description What pressing Play does on the requesting device. Clients must treat an
@@ -3295,6 +3562,33 @@ export interface operations {
             };
         };
     };
+    live: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching to WebSocket */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_layout: {
         parameters: {
             query?: never;
@@ -3377,6 +3671,240 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyStatus"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    cancel_invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    leave: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    decline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    join: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyView"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    people: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyPerson"][];
+                };
             };
             /** @description No valid session */
             401: {

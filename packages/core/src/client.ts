@@ -26,6 +26,14 @@ export type LibraryKind = Schemas["LibraryKind"];
 export type LibraryPage = Schemas["LibraryPage"];
 export type LibraryIndex = Schemas["LibraryIndex"];
 export type SearchResponse = Schemas["SearchResponse"];
+export type PartyStatus = Schemas["PartyStatus"];
+export type PartyView = Schemas["PartyView"];
+export type PartyMember = Schemas["PartyMember"];
+export type PartyPerson = Schemas["PartyPerson"];
+export type PartyInvite = Schemas["PartyInvite"];
+export type PartyPlayback = Schemas["PartyPlayback"];
+export type LiveEvent = Schemas["LiveEvent"];
+export type LiveCommand = Schemas["LiveCommand"];
 export type SearchEpisode = Schemas["SearchEpisode"];
 export type SearchPerson = Schemas["SearchPerson"];
 export type IndexGroup = Schemas["IndexGroup"];
@@ -125,6 +133,8 @@ export interface NuvoraClient {
   fonts(fileId: number, signal?: AbortSignalLike): Promise<FontAttachment[]>;
   /** Admin role only; anyone else gets 403. */
   admin: AdminClient;
+  /** Watch Together. Live updates arrive on the `/api/live` WebSocket. */
+  party: PartyClient;
   /** Absolute URL of an artwork size. Immutable: safe to cache forever. */
   imageUrl(image: Image, size: ImageSize): string;
   /**
@@ -134,6 +144,20 @@ export interface NuvoraClient {
   subtitleUrl(fileId: number, streamIndex: number, format: "vtt" | "ass"): string;
   /** Absolute URL for a server-relative URL the API returned (e.g. `playback.url`). */
   resolve(url: string): string;
+}
+
+/** Watch Together: invitations and membership. Playback goes over `/api/live`. */
+export interface PartyClient {
+  /** Everyone else who can sign in: who you can invite. */
+  people(signal?: AbortSignalLike): Promise<PartyPerson[]>;
+  status(signal?: AbortSignalLike): Promise<PartyStatus>;
+  /** Starts a party for you first if you aren't in one. */
+  invite(userId: number): Promise<PartyView>;
+  cancelInvite(userId: number): Promise<PartyView>;
+  /** Accepts an invitation, leaving any party you're in. */
+  join(partyId: string): Promise<PartyView>;
+  decline(partyId: string): Promise<void>;
+  leave(): Promise<void>;
 }
 
 export interface AdminClient {
@@ -236,6 +260,15 @@ export function createClient(options: ClientOptions): NuvoraClient {
     markWatched: (id) => put("/api/items/{id}/watched", { id }),
     markUnwatched: (id) => remove("/api/items/{id}/watched", { id }),
     fonts: (fileId, signal) => get<FontAttachment[]>("/api/files/{id}/fonts", { id: fileId }, signal),
+    party: {
+      people: (signal) => get<PartyPerson[]>("/api/people", {}, signal),
+      status: (signal) => get<PartyStatus>("/api/party", {}, signal),
+      invite: (userId) => post<PartyView>("/api/party/invites", {}, { user_id: userId }),
+      cancelInvite: (userId) => call<PartyView>("DELETE", "/api/party/invites/{user_id}", { user_id: userId }),
+      join: (id) => post<PartyView>("/api/party/{id}/join", { id }),
+      decline: (id) => post<void>("/api/party/{id}/decline", { id }),
+      leave: () => post<void>("/api/party/leave"),
+    },
     admin: {
       libraries: (signal) => get<AdminLibrary[]>("/api/admin/libraries", {}, signal),
       createLibrary: (body) => post<AdminLibrary>("/api/admin/libraries", {}, body),

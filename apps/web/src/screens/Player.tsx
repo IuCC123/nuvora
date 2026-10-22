@@ -12,6 +12,8 @@ import { Scrubber } from "../components/player/Scrubber";
 import { StyledSubtitles } from "../components/player/StyledSubtitles";
 import { SubtitleMenu } from "../components/player/SubtitleMenu";
 import { UpNext } from "../components/player/UpNext";
+import { initials } from "@nuvora/core";
+import { usePartyPlayer } from "../components/party/usePartyPlayer";
 import { useHls } from "../components/player/useHls";
 import { useSubtitles } from "../components/player/useSubtitles";
 import { Volume } from "../components/player/Volume";
@@ -168,6 +170,7 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, source, star
   const lastPointer = useRef("mouse");
   useProgressReporting(src ? video : null, itemId, fileId, onPosition);
   useHls(video, source?.kind === "hls" ? source.url : undefined, startAt, onFailed);
+  const party = usePartyPlayer(src ? video : null, itemId, fileId, startAt);
   useReleaseStream(video);
   const subtitles = useSubtitles(fileId, subtitleTracks, audioLanguage, subtitleScope);
   const [subtitleStyle, setSubtitleStyle] = useState(loadSubtitleStyle);
@@ -207,6 +210,22 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, source, star
   const actions = {
     toggle() {
       if (!video) return;
+      if (party.blocked) {
+        // The press itself lets the browser play; the party's clock then puts it in place.
+        void video.play().catch(() => {});
+        return;
+      }
+      if (party.active) {
+        if (video.paused) {
+          party.play(video.currentTime);
+          flash("play");
+        } else {
+          video.pause();
+          party.pause(video.currentTime);
+          flash("pause");
+        }
+        return;
+      }
       if (video.paused) {
         video.play().catch(() => {});
         flash("play");
@@ -216,7 +235,10 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, source, star
       }
     },
     seek(seconds: number) {
-      if (video && known) video.currentTime = Math.min(media.duration, Math.max(0, seconds));
+      if (!video || !known) return;
+      const to = Math.min(media.duration, Math.max(0, seconds));
+      video.currentTime = to;
+      if (party.active) party.seek(to);
     },
     skip(delta: number) {
       if (!video || !known) return;
@@ -331,7 +353,8 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, source, star
           className="player-video"
           data-ready={ready}
           src={source?.kind === "direct" ? (startAt ? `${src}#t=${startAt}` : src) : undefined}
-          autoPlay
+          // In a party the party's clock starts it, everyone at once.
+          autoPlay={!party.inParty}
           playsInline
           preload="auto"
           aria-label={title}
@@ -379,8 +402,30 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, source, star
         />
       )}
 
+      {party.note && (
+        <div key={party.note} className="party-note" role="status">
+          {party.note}
+        </div>
+      )}
+      {party.countdown !== null && !notice && (
+        <div className="party-countdown" role="status" aria-live="polite">
+          <span className="party-countdown-label">Starting together</span>
+          <span key={party.countdown} className="party-countdown-number">
+            {party.countdown}
+          </span>
+        </div>
+      )}
+      {party.blocked && !notice && (
+        <div className="party-countdown">
+          <button type="button" className="btn btn-primary party-tap" onClick={actions.toggle}>
+            <PlayIcon size={18} />
+            Join the playback
+          </button>
+        </div>
+      )}
+
       <div className="player-center" aria-hidden>
-        {buffering && !notice && (
+        {buffering && !notice && party.countdown === null && (
           <span className="player-spinner">
             <SpinIcon size={44} strokeWidth={2} />
           </span>
@@ -425,6 +470,21 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, source, star
             <ArrowLeftIcon />
           </button>
           <PlayerTitle title={title} year={year} episode={episode} />
+          {party.active && party.others.length > 0 && (
+            <div className="party-with" title={`Watching with ${party.others.map((m) => m.display_name).join(", ")}`}>
+              <span className="party-with-faces" aria-hidden>
+                {party.others.slice(0, 3).map((m) => (
+                  <span key={m.id} className="together-face" data-away={!m.online}>
+                    {initials(m.display_name)}
+                  </span>
+                ))}
+              </span>
+              <span>
+                With {party.others[0]!.display_name}
+                {party.others.length > 1 && ` +${party.others.length - 1}`}
+              </span>
+            </div>
+          )}
         </header>
 
         {src && !notice && (

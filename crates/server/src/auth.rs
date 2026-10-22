@@ -397,15 +397,22 @@ pub async fn csrf(
     req: Request,
     next: Next,
 ) -> Result<Response, ApiError> {
-    if matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS) {
+    // A WebSocket upgrade is a GET, but the socket it opens acts with the
+    // session's cookie: hold it to the same-origin rule.
+    let upgrade = req
+        .headers()
+        .get(axum::http::header::UPGRADE)
+        .is_some_and(|v| v.as_bytes().eq_ignore_ascii_case(b"websocket"));
+    if matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS) && !upgrade {
         return Ok(next.run(req).await);
     }
-    let json = req
-        .headers()
-        .get(CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(';').next())
-        .is_some_and(|v| v.trim().eq_ignore_ascii_case("application/json"));
+    let json = upgrade
+        || req
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(';').next())
+            .is_some_and(|v| v.trim().eq_ignore_ascii_case("application/json"));
     if !json {
         return Err(ApiError::forbidden(
             "Requests that change something must send Content-Type: application/json",

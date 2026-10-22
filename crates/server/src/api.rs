@@ -11,6 +11,7 @@
 //! | GET    | /api/rows/{row}             | Later pages of one home row              |
 //! | GET    | /api/items/{id}             | Movie, show, season or episode detail    |
 //! | GET    | /api/search?q=              | Titles, episodes and people ([`search`]) |
+//! | GET    | /api/live                   | Watch Together, live ([`party`])         |
 //! | PUT    | /api/items/{id}/progress    | Report where playback is                 |
 //! | PUT    | /api/items/{id}/watched     | Mark watched                             |
 //! | DELETE | /api/items/{id}/watched     | Mark unwatched                           |
@@ -36,6 +37,7 @@ mod browse;
 mod hls;
 mod home;
 mod metadata;
+mod party;
 mod search;
 mod subtitles;
 #[cfg(test)]
@@ -81,6 +83,8 @@ use crate::auth::SignedIn;
         browse::SortOrder,
         browse::WatchFilter,
         browse::Resolution,
+        crate::party::LiveEvent,
+        crate::party::LiveCommand,
     ))
 )]
 struct ApiDoc;
@@ -101,6 +105,7 @@ pub struct AppState {
     pub library: Library,
     pub auth: Arc<crate::auth::Auth>,
     pub transcoder: Arc<crate::transcode::Transcoder>,
+    pub parties: Arc<crate::party::Parties>,
     pub server: Arc<ServerSetup>,
 }
 
@@ -157,6 +162,14 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(get_row))
         .routes(routes!(get_item))
         .routes(routes!(search::search))
+        .routes(routes!(party::live))
+        .routes(routes!(party::people))
+        .routes(routes!(party::status))
+        .routes(routes!(party::invite))
+        .routes(routes!(party::cancel_invite))
+        .routes(routes!(party::join))
+        .routes(routes!(party::decline))
+        .routes(routes!(party::leave))
         .routes(routes!(browse::get_episodes))
         .routes(routes!(browse::get_libraries))
         .routes(routes!(browse::get_library_items))

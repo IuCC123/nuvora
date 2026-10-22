@@ -5,6 +5,7 @@ mod api;
 mod auth;
 mod config;
 mod net;
+mod party;
 mod transcode;
 mod web;
 
@@ -85,6 +86,7 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
             config.trusted_proxies,
         ))),
         transcoder: transcode::Transcoder::new(tools.clone(), &config.data_dir),
+        parties: Arc::new(party::Parties::default()),
         server: Arc::new(api::ServerSetup {
             data_dir: config.data_dir,
             bind,
@@ -92,6 +94,14 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
             started: Instant::now(),
         }),
     };
+    let parties = state.parties.clone();
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(15));
+        loop {
+            tick.tick().await;
+            parties.tidy();
+        }
+    });
     let app = api::router(state)
         .fallback(web::serve_app)
         .layer(api::compression());

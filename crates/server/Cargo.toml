@@ -15,7 +15,7 @@ path = "src/main.rs"
 [dependencies]
 nuvora-library = { path = "../library" }
 nuvora-media = { path = "../media" }
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "fs", "sync", "process", "time"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["fs", "compression-gzip"] }
