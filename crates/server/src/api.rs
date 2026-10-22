@@ -16,7 +16,7 @@
 //! | GET    | /api/images/{id}/{size}     | Artwork, immutable                       |
 //! | GET    | /api/files/{id}/stream      | Direct play, HTTP Range                  |
 //! | GET    | /api/scan                   | Scan status                              |
-//! | POST   | /api/scan                   | Request a scan (idempotent, coalescing)  |
+//! | POST   | /api/scan                   | Request a scan (admin; coalescing)       |
 //! | GET    | /api/openapi.json           | The spec                                 |
 //!
 //! Accounts, admin and watch routes live in [`accounts`], [`admin`] and
@@ -135,13 +135,14 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(watch::put_watched, watch::delete_watched))
         .routes(routes!(get_image))
         .routes(routes!(stream_file))
-        .routes(routes!(get_scan, post_scan))
+        .routes(routes!(get_scan))
         .routes(routes!(accounts::logout))
         .routes(routes!(accounts::update_me));
     let mut admin = OpenApiRouter::new()
         .routes(routes!(admin::list_libraries, admin::create_library))
         .routes(routes!(admin::update_library, admin::delete_library))
         .routes(routes!(admin::scan_library))
+        .routes(routes!(post_scan))
         .routes(routes!(admin::list_dirs))
         .routes(routes!(admin::list_users, admin::create_user))
         .routes(routes!(admin::update_user, admin::delete_user))
@@ -471,6 +472,7 @@ pub struct ScanSummaryWire {
     pub removed: u32,
     pub unchanged: u32,
     pub failed: u32,
+    /// Files the scan could not read. Empty unless the signed-in user is an admin.
     pub issues: Vec<ScanIssueWire>,
 }
 
@@ -697,9 +699,18 @@ async fn stream_file(
     Ok(response.into_response())
 }
 
+/// `issues` name server paths, so only admins see them.
 #[utoipa::path(get, path = "/api/scan", responses((status = 200, body = ScanStatusResponse)))]
-async fn get_scan(State(lib): State<Library>) -> Json<ScanStatusResponse> {
-    Json(scan_status_wire(lib.scan_status()))
+async fn get_scan(State(lib): State<Library>, me: SignedIn) -> Json<ScanStatusResponse> {
+    let mut status = scan_status_wire(lib.scan_status());
+    if me.user.role != nuvora_library::Role::Admin {
+        let (ScanStatusResponse::Idle { last } | ScanStatusResponse::Running { last, .. }) =
+            &mut status;
+        if let Some(last) = last {
+            last.issues.clear();
+        }
+    }
+    Json(status)
 }
 
 /// Idempotent: while a scan runs, repeated calls queue at most one more.
@@ -1517,5 +1528,39 @@ mod tests {
         assert_eq!(status["state"], "idle");
         assert_eq!(status["last"]["added"], 0);
         assert!(status["last"]["finished_at"].as_i64().unwrap() > 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn only_admins_scan_or_see_scan_issues() {
+        let app = TestApp::new().await;
+        let admin = app.setup_admin().await;
+        let created = app
+            .call(
+                "POST",
+                "/api/admin/users",
+                Some(&admin),
+                Some(serde_json::json!({"username": "bo", "display_name": "Bo", "password": "password bo", "role": "member"})),
+            )
+            .await;
+        assert_eq!(created.status, StatusCode::CREATED);
+        let member = app.login("bo", "password bo").await.cookie();
+        let junk = app.path("movies/Junk (2001)/Junk (2001).mp4");
+        std::fs::create_dir_all(junk.parent().unwrap()).unwrap();
+        std::fs::write(&junk, b"not a movie").unwrap();
+
+        let refused = app.call("POST", "/api/scan", Some(&member), None).await;
+        assert_eq!(refused.status, StatusCode::FORBIDDEN);
+        assert_eq!(refused.json()["code"], "forbidden");
+        app.add_movies(&["Big Buck (2008)"]).await;
+
+        let seen = app.get("/api/scan", &admin).await.json();
+        assert_eq!(seen["last"]["failed"], 1);
+        assert_eq!(
+            seen["last"]["issues"][0]["path"],
+            "Junk (2001)/Junk (2001).mp4"
+        );
+        let hidden = app.get("/api/scan", &member).await.json();
+        assert_eq!(hidden["last"]["failed"], 1);
+        assert_eq!(hidden["last"]["issues"], serde_json::json!([]));
     }
 }
