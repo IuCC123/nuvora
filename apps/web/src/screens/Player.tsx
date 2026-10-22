@@ -21,6 +21,8 @@ const SPINNER_DELAY_MS = 500;
 const PULSE_MS = 650;
 const SKIP_SECONDS = 10;
 const VOLUME_STEP = 0.1;
+/** Held down, these would flip back and forth; arrows keep repeating as steps. */
+const TOGGLE_KEYS = new Set([" ", "k", "m", "f", "Escape"]);
 
 /**
  * The Nuvora player: the whole window is the picture, with a top bar (back,
@@ -192,6 +194,7 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
     if ((e.key === " " || e.key === "Enter") && target?.closest("button")) return;
     if (target instanceof HTMLInputElement && e.key.startsWith("Arrow")) return;
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (e.repeat && TOGGLE_KEYS.has(key)) return e.preventDefault();
     if (key === "Escape") {
       if (document.fullscreenElement) void document.exitFullscreen();
       else onBack();
