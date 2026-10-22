@@ -23,7 +23,9 @@ pub enum PathClass {
 /// Classify one path relative to its library root.
 pub fn classify_path(rel: &Path) -> PathClass {
     let _ = rel;
-    todo!("extension table + extras folder/suffix rules; hidden files (`.`-prefixed, `@eaDir`, `#recycle`) => Other")
+    todo!(
+        "extension table + extras folder/suffix rules; hidden files (`.`-prefixed, `@eaDir`, `#recycle`) => Other"
+    )
 }
 
 /// Title and year parsed from a movie's path.
@@ -75,11 +77,27 @@ mod tests {
     /// (relative path, expected title, expected year). The table is the spec;
     /// every bug report about a misparsed name becomes a row here.
     const CASES: &[(&str, &str, Option<u16>)] = &[
-        ("The Matrix (1999)/The Matrix (1999).mkv", "The Matrix", Some(1999)),
-        ("The.Matrix.1999.1080p.BluRay.x264-GRP.mkv", "The Matrix", Some(1999)),
-        ("Blade Runner 2049 (2017)/Blade.Runner.2049.2160p.UHD.mkv", "Blade Runner 2049", Some(2017)),
+        (
+            "The Matrix (1999)/The Matrix (1999).mkv",
+            "The Matrix",
+            Some(1999),
+        ),
+        (
+            "The.Matrix.1999.1080p.BluRay.x264-GRP.mkv",
+            "The Matrix",
+            Some(1999),
+        ),
+        (
+            "Blade Runner 2049 (2017)/Blade.Runner.2049.2160p.UHD.mkv",
+            "Blade Runner 2049",
+            Some(2017),
+        ),
         ("1917 (2019)/1917.mkv", "1917", Some(2019)),
-        ("2001.A.Space.Odyssey.1968.mkv", "2001 A Space Odyssey", Some(1968)),
+        (
+            "2001.A.Space.Odyssey.1968.mkv",
+            "2001 A Space Odyssey",
+            Some(1968),
+        ),
         ("Movies/Amélie [2001] [1080p].mp4", "Amélie", Some(2001)),
         ("Heat.mkv", "Heat", None),
         ("Alien (1979)/Alien (1979) - 4K.mkv", "Alien", Some(1979)),

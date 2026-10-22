@@ -11,7 +11,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use nuvora_media::{ArtworkRole, ArtworkSource, ImageSize, RenderedArtwork, PIPELINE_VERSION};
+use nuvora_media::{ArtworkRole, ArtworkSource, ImageSize, PIPELINE_VERSION, RenderedArtwork};
 
 use crate::ArtworkId;
 

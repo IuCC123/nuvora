@@ -5,7 +5,9 @@
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use nuvora_media::{ArtworkRole, Container, DeviceProfile, MediaInfo, Placeholder, PlaybackDecision};
+use nuvora_media::{
+    ArtworkRole, Container, DeviceProfile, MediaInfo, Placeholder, PlaybackDecision,
+};
 use rusqlite::Connection;
 
 use crate::{ArtworkId, FileId, ItemId};
@@ -112,11 +114,17 @@ impl Cursor {
         let key = match (kind, raw.split_at_checked(1)) {
             (RowKind::RecentlyAdded, Some(("r", rest))) => {
                 let (at, id) = rest.split_once('.').ok_or(InvalidCursor)?;
-                CursorKey::RecentlyAdded { added_at_ms: at.parse().map_err(|_| InvalidCursor)?, id: parse_id(id)? }
+                CursorKey::RecentlyAdded {
+                    added_at_ms: at.parse().map_err(|_| InvalidCursor)?,
+                    id: parse_id(id)?,
+                }
             }
             (RowKind::AllMovies, Some(("t", rest))) => {
                 let (id, title) = rest.split_once('.').ok_or(InvalidCursor)?;
-                CursorKey::AllMovies { sort_title: hex_decode_utf8(title)?, id: parse_id(id)? }
+                CursorKey::AllMovies {
+                    sort_title: hex_decode_utf8(title)?,
+                    id: parse_id(id)?,
+                }
             }
             _ => return Err(InvalidCursor),
         };
@@ -223,8 +231,13 @@ pub struct Version {
 /// The type makes "decision without probe data" unrepresentable.
 #[derive(Debug, Clone)]
 pub enum VersionMedia {
-    Probed { info: MediaInfo, playback: PlaybackDecision },
-    Unreadable { reason: String },
+    Probed {
+        info: MediaInfo,
+        playback: PlaybackDecision,
+    },
+    Unreadable {
+        reason: String,
+    },
 }
 
 /// Everything the HTTP layer needs to serve a direct-play stream.
@@ -264,13 +277,20 @@ pub(crate) fn row_page(
 /// (`WHERE file_id IN (...)` ordered by file, index). Rows are parsed into
 /// `MediaInfo` here (codec strings via `from_name`), then `device.decide()`
 /// runs per version. The row -> domain mapping exists only in this file.
-pub(crate) fn item(conn: &Connection, id: ItemId, device: &DeviceProfile) -> rusqlite::Result<Option<Item>> {
+pub(crate) fn item(
+    conn: &Connection,
+    id: ItemId,
+    device: &DeviceProfile,
+) -> rusqlite::Result<Option<Item>> {
     let _ = (conn, id, device);
     todo!()
 }
 
 /// `media_file JOIN library_root`: root.path joined with rel_path.
-pub(crate) fn stream_source(conn: &Connection, id: FileId) -> rusqlite::Result<Option<StreamSource>> {
+pub(crate) fn stream_source(
+    conn: &Connection,
+    id: FileId,
+) -> rusqlite::Result<Option<StreamSource>> {
     let _ = (conn, id);
     todo!()
 }
@@ -281,12 +301,24 @@ mod tests {
 
     #[test]
     fn cursors_round_trip_through_their_text_form() {
-        let recent = Cursor(CursorKey::RecentlyAdded { added_at_ms: 1_760_000_000_000, id: ItemId(812) });
-        let title = Cursor(CursorKey::AllMovies { sort_title: "Amélie".into(), id: ItemId(7) });
+        let recent = Cursor(CursorKey::RecentlyAdded {
+            added_at_ms: 1_760_000_000_000,
+            id: ItemId(812),
+        });
+        let title = Cursor(CursorKey::AllMovies {
+            sort_title: "Amélie".into(),
+            id: ItemId(7),
+        });
         assert_eq!(recent.to_string(), "r1760000000000.812");
         assert_eq!(title.to_string(), "t7.416dc3a96c6965");
-        assert_eq!(Cursor::parse(RowKind::RecentlyAdded, "r1760000000000.812").unwrap(), recent);
-        assert_eq!(Cursor::parse(RowKind::AllMovies, "t7.416dc3a96c6965").unwrap(), title);
+        assert_eq!(
+            Cursor::parse(RowKind::RecentlyAdded, "r1760000000000.812").unwrap(),
+            recent
+        );
+        assert_eq!(
+            Cursor::parse(RowKind::AllMovies, "t7.416dc3a96c6965").unwrap(),
+            title
+        );
     }
 
     #[test]

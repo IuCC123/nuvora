@@ -52,7 +52,10 @@ pub enum PlaybackDecision {
 pub enum Incompatibility {
     Container(Container),
     VideoCodec(VideoCodec),
-    Resolution { width: u32, height: u32 },
+    Resolution {
+        width: u32,
+        height: u32,
+    },
     BitDepth(u8),
     Hdr(HdrFormat),
     /// Judged on the *default* audio track: that is what `<video>` plays, and a

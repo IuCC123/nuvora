@@ -111,7 +111,11 @@ pub(crate) enum WantedSource {
     Local(LocalImage),
     /// No local backdrop: a frame at 10% of the runtime of the item's best SDR
     /// version. An item whose versions are all HDR gets no backdrop.
-    Frame { file: FileId, fingerprint: [u8; 16], at_ms: u64 },
+    Frame {
+        file: FileId,
+        fingerprint: [u8; 16],
+        at_ms: u64,
+    },
 }
 
 impl WantedSource {
@@ -147,6 +151,8 @@ mod tests {
     #[test]
     #[ignore = "sketch: enable with the implementation"]
     fn complete_walks_allow_missing_marks() {
-        todo!("one stored file deleted from a non-empty complete root => gone == [it], may_mark_missing")
+        todo!(
+            "one stored file deleted from a non-empty complete root => gone == [it], may_mark_missing"
+        )
     }
 }

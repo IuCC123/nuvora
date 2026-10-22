@@ -15,16 +15,28 @@ pub struct MediaTools {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ToolsError {
-    #[error("{tool} not found (looked for {looked_for}); install FFmpeg or set its path in nuvora.toml")]
-    NotFound { tool: &'static str, looked_for: PathBuf },
+    #[error(
+        "{tool} not found (looked for {looked_for}); install FFmpeg or set its path in nuvora.toml"
+    )]
+    NotFound {
+        tool: &'static str,
+        looked_for: PathBuf,
+    },
     #[error("{tool} at {path} did not run: {source}")]
-    Broken { tool: &'static str, path: PathBuf, source: std::io::Error },
+    Broken {
+        tool: &'static str,
+        path: PathBuf,
+        source: std::io::Error,
+    },
 }
 
 impl MediaTools {
     /// Find the binaries (explicit path, else `PATH`) and run `-version` on each.
     /// Fails fast at startup with a message a user can act on.
-    pub async fn locate(ffprobe: Option<PathBuf>, ffmpeg: Option<PathBuf>) -> Result<Self, ToolsError> {
+    pub async fn locate(
+        ffprobe: Option<PathBuf>,
+        ffmpeg: Option<PathBuf>,
+    ) -> Result<Self, ToolsError> {
         let _ = (ffprobe, ffmpeg);
         todo!("resolve each binary, run `-version`, keep probe_timeout = 30s")
     }

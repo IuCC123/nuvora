@@ -13,12 +13,13 @@ mod probe;
 mod tools;
 
 pub use artwork::{
-    ArtworkError, ArtworkRole, ArtworkSource, Frame, ImageSize, Placeholder, RenderedArtwork, PIPELINE_VERSION,
+    ArtworkError, ArtworkRole, ArtworkSource, Frame, ImageSize, PIPELINE_VERSION, Placeholder,
+    RenderedArtwork,
 };
-pub use name::{classify_path, IdentityKey, MovieName, PathClass};
+pub use name::{IdentityKey, MovieName, PathClass, classify_path};
 pub use playback::{AudioSupport, DeviceProfile, Incompatibility, PlaybackDecision, VideoSupport};
 pub use probe::{
-    AudioCodec, AudioStream, ColorInfo, Container, HdrFormat, MediaInfo, ProbeError, SubtitleCodec,
-    SubtitleStream, VideoCodec, VideoStream, PROBE_VERSION,
+    AudioCodec, AudioStream, ColorInfo, Container, HdrFormat, MediaInfo, PROBE_VERSION, ProbeError,
+    SubtitleCodec, SubtitleStream, VideoCodec, VideoStream,
 };
 pub use tools::{MediaTools, ToolsError};

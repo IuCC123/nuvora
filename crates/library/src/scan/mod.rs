@@ -57,7 +57,10 @@ pub struct ScanStatus {
 pub enum ScanState {
     Idle,
     /// Running, with another scan already queued behind it when `queued`.
-    Running { progress: ScanProgress, queued: bool },
+    Running {
+        progress: ScanProgress,
+        queued: bool,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -140,7 +143,11 @@ impl ScanHandle {
 /// Loop: wait for a request, run one scan, publish the summary. A scan that
 /// fails outright (database gone) is logged and reported as a summary with one
 /// issue; the worker keeps running.
-async fn worker(ctx: ScanContext, mut requests: mpsc::Receiver<()>, status: watch::Sender<ScanStatus>) {
+async fn worker(
+    ctx: ScanContext,
+    mut requests: mpsc::Receiver<()>,
+    status: watch::Sender<ScanStatus>,
+) {
     while requests.recv().await.is_some() {
         let _ = (&ctx, &status);
         todo!("run(&ctx, &progress).await; status.send_modify(|s| s.last = Some(summary))")

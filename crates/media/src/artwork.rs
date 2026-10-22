@@ -121,7 +121,10 @@ pub struct Frame {
 impl RenderedArtwork {
     /// CPU-bound; call from `spawn_blocking`. Decode, clamp aspect by centre crop, resize to each size (never upscale), encode WebP
     /// q=82 method 4, ThumbHash from a 100 px-max downscale.
-    pub fn render(role: ArtworkRole, source: ArtworkSource<'_>) -> Result<RenderedArtwork, ArtworkError> {
+    pub fn render(
+        role: ArtworkRole,
+        source: ArtworkSource<'_>,
+    ) -> Result<RenderedArtwork, ArtworkError> {
         let _ = (role, source);
         todo!()
     }

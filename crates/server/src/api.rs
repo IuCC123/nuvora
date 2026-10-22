@@ -15,10 +15,10 @@
 //! | POST   | /api/scan                   | Request a scan (idempotent, coalescing)  |
 //! | GET    | /api/openapi.json           | The spec                                 |
 
+use axum::Json;
 use axum::extract::{FromRequestParts, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, request::Parts};
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use nuvora_library::{CatalogRev, Library, ScanStatus};
 use nuvora_media::DeviceProfile;
 use serde::{Deserialize, Serialize};
@@ -26,7 +26,10 @@ use utoipa::{IntoParams, OpenApi, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[derive(OpenApi)]
-#[openapi(info(title = "Nuvora", version = "1"), components(schemas(DeviceProfileWire, ImageSize)))]
+#[openapi(
+    info(title = "Nuvora", version = "1"),
+    components(schemas(DeviceProfileWire, ImageSize))
+)]
 struct ApiDoc;
 
 /// All API routes plus the spec built from the same `routes!` calls, so a
@@ -41,20 +44,29 @@ pub fn router() -> (axum::Router<Library>, utoipa::openapi::OpenApi) {
         .routes(routes!(get_scan, post_scan))
         .split_for_parts();
     let spec_json = spec.clone();
-    (router.route("/api/openapi.json", axum::routing::get(move || async move { Json(spec_json) })), spec)
+    (
+        router.route(
+            "/api/openapi.json",
+            axum::routing::get(move || async move { Json(spec_json) }),
+        ),
+        spec,
+    )
 }
 
 /// Gzip at the fastest level: brotli at its default level costs more time than
 /// the 50 ms home budget allows. Never `video/*` (it would break Range requests)
 /// or `image/*` (WebP is already compressed).
-pub fn compression() -> tower_http::compression::CompressionLayer<impl tower_http::compression::Predicate + Clone> {
+pub fn compression()
+-> tower_http::compression::CompressionLayer<impl tower_http::compression::Predicate + Clone> {
     use tower_http::CompressionLevel;
     use tower_http::compression::predicate::{NotForContentType, Predicate, SizeAbove};
-    tower_http::compression::CompressionLayer::new().quality(CompressionLevel::Fastest).compress_when(
-        SizeAbove::new(1024)
-            .and(NotForContentType::const_new("video/"))
-            .and(NotForContentType::const_new("image/")),
-    )
+    tower_http::compression::CompressionLayer::new()
+        .quality(CompressionLevel::Fastest)
+        .compress_when(
+            SizeAbove::new(1024)
+                .and(NotForContentType::const_new("video/"))
+                .and(NotForContentType::const_new("image/")),
+        )
 }
 
 // ---------------------------------------------------------------- wire types
@@ -245,7 +257,9 @@ pub enum Playback {
         reasons: Vec<String>,
     },
     /// The file could not be read (ffprobe failed); nothing will play it.
-    Unavailable { reason: String },
+    Unavailable {
+        reason: String,
+    },
 }
 
 #[derive(Serialize, ToSchema)]
@@ -341,7 +355,9 @@ impl<S: Send + Sync> FromRequestParts<S> for Device {
     type Rejection = ApiError;
     async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
         let _ = parts;
-        todo!("serde_json::from_slice::<DeviceProfileWire> -> DeviceProfile (codec from_name); hash")
+        todo!(
+            "serde_json::from_slice::<DeviceProfileWire> -> DeviceProfile (codec from_name); hash"
+        )
     }
 }
 
@@ -370,7 +386,9 @@ async fn get_row(
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     let _ = (lib, row, query, headers);
-    todo!("304 on rev; Cursor::parse(row.into(), after) -> 400; lib.row(..); json_with_etag(&rev_etag(page.rev), ..)")
+    todo!(
+        "304 on rev; Cursor::parse(row.into(), after) -> 400; lib.row(..); json_with_etag(&rev_etag(page.rev), ..)"
+    )
 }
 
 #[utoipa::path(
@@ -389,7 +407,9 @@ async fn get_item(
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     let _ = (lib, id, device, headers);
-    todo!("304 on item_etag; lib.item(ItemId::from_raw(id), device.profile) -> 404 | json_with_etag + `Vary: Nuvora-Device`")
+    todo!(
+        "304 on item_etag; lib.item(ItemId::from_raw(id), device.profile) -> 404 | json_with_etag + `Vary: Nuvora-Device`"
+    )
 }
 
 /// Reads the WebP from the store (tens of KB) and answers with
@@ -401,7 +421,10 @@ async fn get_item(
     params(("id" = String, Path), ("size" = ImageSize, Path)),
     responses((status = 200, content_type = "image/webp", body = Vec<u8>), (status = 404)),
 )]
-async fn get_image(State(lib): State<Library>, Path((id, size)): Path<(String, ImageSize)>) -> Result<Response, ApiError> {
+async fn get_image(
+    State(lib): State<Library>,
+    Path((id, size)): Path<(String, ImageSize)>,
+) -> Result<Response, ApiError> {
     let _ = (lib, id, size);
     todo!()
 }
@@ -416,7 +439,11 @@ async fn get_image(State(lib): State<Library>, Path((id, size)): Path<(String, I
     params(("id" = i64, Path), ("Range" = Option<String>, Header)),
     responses((status = 200, body = Vec<u8>), (status = 206, body = Vec<u8>), (status = 404), (status = 416)),
 )]
-async fn stream_file(State(lib): State<Library>, Path(id): Path<i64>, req: axum::extract::Request) -> Result<Response, ApiError> {
+async fn stream_file(
+    State(lib): State<Library>,
+    Path(id): Path<i64>,
+    req: axum::extract::Request,
+) -> Result<Response, ApiError> {
     let _ = (lib, id, req);
     todo!()
 }
@@ -429,7 +456,10 @@ async fn get_scan(State(lib): State<Library>) -> Json<ScanStatusResponse> {
 /// Idempotent: while a scan runs, repeated calls queue at most one more.
 #[utoipa::path(post, path = "/api/scan", responses((status = 202, body = ScanStatusResponse)))]
 async fn post_scan(State(lib): State<Library>) -> (StatusCode, Json<ScanStatusResponse>) {
-    (StatusCode::ACCEPTED, Json(scan_status_wire(lib.request_scan())))
+    (
+        StatusCode::ACCEPTED,
+        Json(scan_status_wire(lib.request_scan())),
+    )
 }
 
 // ----------------------------------------------------------------- mapping

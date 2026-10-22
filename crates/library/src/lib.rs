@@ -21,8 +21,8 @@ use tokio::sync::watch;
 pub use ids::{ArtworkId, FileId, ItemId, ParseIdError};
 pub use scan::{ScanIssue, ScanPhase, ScanProgress, ScanState, ScanStatus, ScanSummary};
 pub use views::{
-    Artwork, Card, CatalogRev, Cursor, Home, InvalidCursor, Item, ItemKind, Movie, Row, RowKind, RowPage,
-    StreamSource, Version, VersionMedia, HOME_ROW_LIMIT, MAX_ROW_LIMIT,
+    Artwork, Card, CatalogRev, Cursor, HOME_ROW_LIMIT, Home, InvalidCursor, Item, ItemKind,
+    MAX_ROW_LIMIT, Movie, Row, RowKind, RowPage, StreamSource, Version, VersionMedia,
 };
 
 /// Everything the catalog needs, already validated by the caller (the server's
@@ -55,7 +55,10 @@ pub enum LibraryKind {
 #[derive(Debug, thiserror::Error)]
 pub enum OpenError {
     #[error("cannot use data directory {path}: {source}")]
-    DataDir { path: PathBuf, source: std::io::Error },
+    DataDir {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("database: {0}")]
     Db(#[from] db::DbError),
 }
@@ -84,7 +87,9 @@ impl Library {
     /// the HTTP server is up immediately, serving whatever is already cataloged.
     pub async fn open(config: LibraryConfig) -> Result<Library, OpenError> {
         let _ = config;
-        todo!("create dirs; db::Db::open; db.write(sync_libraries); store::ArtworkStore::new; scan::ScanHandle::spawn")
+        todo!(
+            "create dirs; db::Db::open; db.write(sync_libraries); store::ArtworkStore::new; scan::ScanHandle::spawn"
+        )
     }
 
     /// Ask for a scan of every library. Idempotent and coalescing: while a scan
@@ -121,7 +126,12 @@ impl Library {
     /// The page of `kind` after `after` (`None` = from the start), `limit` cards
     /// clamped to `1..=MAX_ROW_LIMIT`. `after` comes from [`Cursor::parse`] with
     /// the same `kind`, or from a previous page of this row.
-    pub async fn row(&self, kind: RowKind, after: Option<Cursor>, limit: u32) -> Result<RowPage, QueryError> {
+    pub async fn row(
+        &self,
+        kind: RowKind,
+        after: Option<Cursor>,
+        limit: u32,
+    ) -> Result<RowPage, QueryError> {
         debug_assert!(after.as_ref().is_none_or(|c| c.kind() == kind));
         let limit = limit.clamp(1, MAX_ROW_LIMIT);
         Ok(self
@@ -138,14 +148,26 @@ impl Library {
     /// One item with every version (file) and every stream, plus a playback
     /// decision per version for `device`. `None` if the id does not exist.
     /// Missing items still resolve (the id is stable), with an empty `versions`.
-    pub async fn item(&self, id: ItemId, device: DeviceProfile) -> Result<Option<Item>, QueryError> {
-        Ok(self.inner.db.read(move |c| views::item(c, id, &device)).await?)
+    pub async fn item(
+        &self,
+        id: ItemId,
+        device: DeviceProfile,
+    ) -> Result<Option<Item>, QueryError> {
+        Ok(self
+            .inner
+            .db
+            .read(move |c| views::item(c, id, &device))
+            .await?)
     }
 
     /// Where to read a file for direct play. The absolute path is built here from
     /// root + relative path and is never sent to clients.
     pub async fn stream_source(&self, id: FileId) -> Result<Option<StreamSource>, QueryError> {
-        Ok(self.inner.db.read(move |c| views::stream_source(c, id)).await?)
+        Ok(self
+            .inner
+            .db
+            .read(move |c| views::stream_source(c, id))
+            .await?)
     }
 
     /// Path of one stored artwork size, if it exists. No database access: the

@@ -28,7 +28,10 @@ impl MediaInfo {
     /// The audio track a `<video>` element (or ExoPlayer) plays without being
     /// told otherwise: the `default` disposition, else the first.
     pub fn default_audio(&self) -> Option<&AudioStream> {
-        self.audio.iter().find(|a| a.is_default).or(self.audio.first())
+        self.audio
+            .iter()
+            .find(|a| a.is_default)
+            .or(self.audio.first())
     }
 }
 
@@ -94,7 +97,10 @@ pub enum HdrFormat {
     Hlg,
     /// Dolby Vision. `profile` from the DOVI configuration record; profile 8.1
     /// has an HDR10 base layer, which Step 3 can exploit.
-    DolbyVision { profile: u8, compatible_with_hdr10: bool },
+    DolbyVision {
+        profile: u8,
+        compatible_with_hdr10: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -168,7 +174,8 @@ pub async fn probe(tools: &MediaTools, path: &Path) -> Result<MediaInfo, ProbeEr
 
 /// Pure parse step, separate so tests can feed captured ffprobe JSON.
 pub(crate) fn parse(json: &[u8]) -> Result<MediaInfo, ProbeError> {
-    let raw: raw::Output = serde_json::from_slice(json).map_err(|e| ProbeError::Unparseable(e.to_string()))?;
+    let raw: raw::Output =
+        serde_json::from_slice(json).map_err(|e| ProbeError::Unparseable(e.to_string()))?;
     let _ = raw;
     // TODO: drop attached_pic streams; map codec_name -> enums; bits_per_raw_sample or
     // pix_fmt -> bit_depth; color_transfer smpte2084 -> Hdr10, arib-std-b67 -> Hlg;

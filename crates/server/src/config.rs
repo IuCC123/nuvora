@@ -49,9 +49,15 @@ pub struct Config {
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     #[error("cannot read {path}: {source}")]
-    Read { path: PathBuf, source: std::io::Error },
+    Read {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("{path}: {source}")]
-    Parse { path: PathBuf, source: toml::de::Error },
+    Parse {
+        path: PathBuf,
+        source: toml::de::Error,
+    },
     #[error("library {key:?}: folder {path} does not exist")]
     MissingFolder { key: String, path: PathBuf },
     #[error("two libraries share the key {0:?}")]

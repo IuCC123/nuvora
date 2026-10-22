@@ -21,7 +21,10 @@ pub(crate) fn load_roots(conn: &Connection) -> rusqlite::Result<Vec<RootRow>> {
 }
 
 /// One SELECT over `media_file` for the given roots.
-pub(crate) fn load_known_files(conn: &Connection, roots: &[RootId]) -> rusqlite::Result<Vec<KnownFile>> {
+pub(crate) fn load_known_files(
+    conn: &Connection,
+    roots: &[RootId],
+) -> rusqlite::Result<Vec<KnownFile>> {
     let _ = (conn, roots);
     todo!()
 }
@@ -56,13 +59,20 @@ pub(crate) fn upsert_file(
 /// - new key unowned and the file is its item's only file => re-key the item in
 ///   place and rewrite its filename layer (the user fixed a typo; the id survives);
 /// - otherwise => create the new item and re-parent.
-pub(crate) fn move_file(tx: &Transaction<'_>, mv: &Move, name: &MovieName, now_ms: i64) -> rusqlite::Result<()> {
+pub(crate) fn move_file(
+    tx: &Transaction<'_>,
+    mv: &Move,
+    name: &MovieName,
+    now_ms: i64,
+) -> rusqlite::Result<()> {
     let _ = (tx, mv, name, now_ms);
     todo!()
 }
 
 /// Stored artwork state for planning: `(item, role, source) -> source_sig`.
-pub(crate) fn load_artwork_sigs(conn: &Connection) -> rusqlite::Result<Vec<(ItemId, ArtworkRole, String)>> {
+pub(crate) fn load_artwork_sigs(
+    conn: &Connection,
+) -> rusqlite::Result<Vec<(ItemId, ArtworkRole, String)>> {
     let _ = conn;
     todo!()
 }
@@ -94,7 +104,9 @@ pub(crate) fn remove_gone(
     todo!()
 }
 
-pub(crate) fn live_artwork_ids(conn: &Connection) -> rusqlite::Result<std::collections::HashSet<ArtworkId>> {
+pub(crate) fn live_artwork_ids(
+    conn: &Connection,
+) -> rusqlite::Result<std::collections::HashSet<ArtworkId>> {
     let _ = conn;
     todo!()
 }
