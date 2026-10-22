@@ -5,7 +5,8 @@ import "../styles/dialog.css";
 /**
  * Asks before something that can't be undone. A modal `<dialog>`: focus moves
  * into it and stays there, Escape cancels, and focus returns to the button that
- * opened it. Cancel takes focus first, so Enter never destroys by accident.
+ * opened it, or to the page's heading when confirming removed that button.
+ * Cancel takes focus first, so Enter never destroys by accident.
  */
 export function ConfirmDialog({
   title,
@@ -31,7 +32,7 @@ export function ConfirmDialog({
     el?.showModal();
     return () => {
       el?.close();
-      opener?.focus();
+      (opener?.isConnected ? opener : document.querySelector<HTMLElement>("main h1"))?.focus();
     };
   }, []);
 

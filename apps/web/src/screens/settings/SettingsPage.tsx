@@ -11,7 +11,7 @@ export function SettingsPage({ title, lede, action, children }: { title: string;
     <div className="settings-page">
       <header className="settings-head">
         <div>
-          <h1>{title}</h1>
+          <h1 tabIndex={-1}>{title}</h1>
           <p>{lede}</p>
         </div>
         {action}
