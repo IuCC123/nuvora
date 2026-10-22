@@ -171,7 +171,8 @@ export function LibraryGrid({
 
   const activeKey = (() => {
     if (!layout || !groups?.length) return null;
-    const { from } = offsetsInView(layout, viewport.top + 8, viewport.bottom);
+    // The first card below the sticky toolbar, not the first under the window's edge.
+    const { from } = offsetsInView(layout, viewport.top + stickyTop + 1, viewport.bottom);
     const offsets = groupOffsets(groups);
     let i = 0;
     while (i + 1 < offsets.length && offsets[i + 1]! <= from) i++;
@@ -253,7 +254,8 @@ function Sections({
               </h2>
             )}
             <div role="list" className="grid-rows">
-              {[...rows].map((r) => {
+              {/* One flat list keyed by offset, so a row joining or leaving at the top never remounts the others. */}
+              {[...rows].flatMap((r) => {
                 const start = s.start + r * columns;
                 const end = Math.min(s.start + s.count, start + columns);
                 return Array.from({ length: end - start }, (_, c) => {
@@ -331,8 +333,12 @@ function JumpBar({ groups, descending, active, onJump }: { groups: GridGroup[]; 
       aria-label="Jump to letter"
       onPointerDown={(e) => {
         if (e.pointerType === "touch" || e.button !== 0) return;
+        // The press itself jumps; holding and moving keeps jumping. Capture sends the click to the bar,
+        // so the letters' own click handlers serve the keyboard.
+        e.preventDefault();
         dragging.current = true;
         last.current = null;
+        jumpAt(e.clientX, e.clientY);
         e.currentTarget.setPointerCapture(e.pointerId);
       }}
       onPointerMove={(e) => dragging.current && jumpAt(e.clientX, e.clientY)}

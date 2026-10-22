@@ -11,10 +11,7 @@ export function PlayerTitle({ title, year, episode }: { title: string | undefine
           {show}
           {rest.map((part) => (
             <Fragment key={part}>
-              <span className="player-heading-sep" aria-hidden>
-                {" · "}
-              </span>
-              <span className="sr-only">, </span>
+              <span className="player-heading-sep"> · </span>
               <span className="player-heading-part">{part}</span>
             </Fragment>
           ))}

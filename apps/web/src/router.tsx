@@ -9,7 +9,7 @@ import {
   type ErrorComponentProps,
   type ParsedLocation,
 } from "@tanstack/react-router";
-import { ApiError, safeRedirect, type LibrarySearch, type User } from "@nuvora/core";
+import { ApiError, librarySearch, parseLibraryView, safeRedirect, type User } from "@nuvora/core";
 import { onUnauthorized, queries, queryClient } from "./nuvora";
 import { forgetResponses, setSessionUser } from "./lib/session";
 import { Shell } from "./components/Shell";
@@ -78,14 +78,6 @@ const movieParams = {
   stringify: (p: { id: number }) => ({ id: String(p.id) }),
 };
 
-/** Search values arrive parsed (`?hdr=1` is a number); the view model reads strings. */
-const VIEW_KEYS = ["sort", "order", "filter", "res", "hdr", "group"] as const;
-function viewSearch(s: Record<string, unknown>): LibrarySearch {
-  const search: LibrarySearch = {};
-  for (const key of VIEW_KEYS) if (s[key] !== undefined && s[key] !== null) search[key] = String(s[key]);
-  return search;
-}
-
 function playSearch(s: Record<string, unknown>): { t?: number | undefined } {
   const t = Math.floor(Number(s.t));
   return { t: Number.isFinite(t) && t > 0 ? t : undefined };
@@ -120,7 +112,14 @@ const signin = createRoute({
   component: SignIn,
 });
 
-const shell = createRoute({ getParentRoute: () => root, id: "shell", beforeLoad: requireUser, component: Shell });
+// The nav rail lists the libraries; its request starts with the screen's, so the rail paints with the page.
+const shell = createRoute({
+  getParentRoute: () => root,
+  id: "shell",
+  beforeLoad: requireUser,
+  loader: () => void queryClient.prefetchQuery(queries.libraries()),
+  component: Shell,
+});
 
 const home = createRoute({
   getParentRoute: () => shell,
@@ -158,7 +157,8 @@ const library = createRoute({
   getParentRoute: () => shell,
   path: "/library/$id",
   params: movieParams,
-  validateSearch: viewSearch,
+  // Parsed and written back, so a hand-edited URL settles on valid values and defaults drop out.
+  validateSearch: (s: Record<string, unknown>) => librarySearch(parseLibraryView(s)),
   notFoundComponent: MissingLibrary,
   // The library's type decides which filters exist, so the list (small, shared with the rail) comes first.
   loader: async ({ params }) => {

@@ -10,9 +10,14 @@ test("a plain URL is the default view, and the default view writes no params", (
 test("a view round-trips through search params", () => {
   const view = { sort: "year", order: "asc", filter: "unwatched", res: "4k", hdr: true, group: false } as const;
   const search = librarySearch(view);
-  expect(search).toEqual({ sort: "year", order: "asc", filter: "unwatched", res: "4k", hdr: "1", group: "0" });
+  expect(search).toEqual({ sort: "year", order: "asc", filter: "unwatched", res: "4k", hdr: true, group: false });
   expect(parseLibraryView(search)).toEqual(view);
   expect(hasViewParams(search)).toBe(true);
+});
+
+test("hand-typed flags read as well as typed ones", () => {
+  expect(parseLibraryView({ hdr: "1", group: "0" })).toEqual({ ...DEFAULT_VIEW, hdr: true, group: false });
+  expect(parseLibraryView({ hdr: "true", group: "false" })).toEqual({ ...DEFAULT_VIEW, hdr: true, group: false });
 });
 
 test("bad values fall back one by one, and a missing order takes the sort's own", () => {

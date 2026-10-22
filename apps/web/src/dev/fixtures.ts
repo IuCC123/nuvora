@@ -9,6 +9,9 @@ import type { FetchLike, HomeResponse, HttpMethod, ItemDetail, PosterCard, RowPa
  * the typecheck. Images and the stream are served by the fixture plugin in
  * `vite.config.ts`. Watch state follows the server's rules (`fixtureWatch.ts`).
  *
+ * A scripted check can count requests by setting `window.nuvoraFixtureRequests = []`
+ * before the app loads; every path and query is pushed onto it.
+ *
  * A scripted check can make requests fail: `sessionStorage["nuvora-fixtures-fail"]`
  * holds a pattern, optionally after a status (`"401 ^/api/auth/logout$"`), and every
  * matching path and query answers that status, 503 by default, until it is removed.
@@ -163,6 +166,7 @@ function scanStatus(): ScanStatus {
 
 export const fixtureFetch: FetchLike = async (url, init) => {
   const { pathname, searchParams } = new URL(url, location.origin);
+  (window as { nuvoraFixtureRequests?: string[] }).nuvoraFixtureRequests?.push(`${init.method} ${pathname}${searchParams.size ? `?${searchParams}` : ""}`);
   await new Promise((r) => setTimeout(r, 60));
   const body: unknown = init.body ? JSON.parse(init.body) : undefined;
   const [, status = "503", pattern] = /^(?:(\d{3}) )?(.+)$/.exec(sessionStorage.getItem("nuvora-fixtures-fail") ?? "") ?? [];

@@ -68,7 +68,7 @@
 .seasons-bar {
   position: sticky;
   top: var(--nv-layout-top-bar);
-  z-index: 2;
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -197,8 +197,10 @@
   outline-offset: 6px;
 }
 
+/* Its own stacking context: the hover badge and progress bar stay under the sticky season bar and its menu. */
 .episode-thumb {
   position: relative;
+  isolation: isolate;
   flex: none;
   display: block;
   width: 216px;

@@ -170,8 +170,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* `z-index: 0` contains each poster's hover layers, so they pass under the sticky group headers. */
 .grid-cell {
   position: absolute;
+  z-index: 0;
   width: var(--card-width);
 }
 
@@ -211,15 +213,15 @@
 
 /* A to Z */
 
+/* Pinned to the window's bottom edge, so it never moves under the pointer while a jump scrolls the page. */
 .jump-bar {
   position: sticky;
-  top: calc(var(--library-sticky) + 12px);
-  align-self: start;
+  bottom: 16px;
+  align-self: end;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   width: 26px;
-  height: min(620px, calc(100dvh - var(--library-sticky) - 28px));
+  height: min(560px, calc(100dvh - var(--library-sticky) - 32px));
   margin-right: -12px;
   user-select: none;
   touch-action: none;
@@ -228,7 +230,8 @@
 .jump-letter {
   display: grid;
   place-items: center;
-  height: 20px;
+  flex: 1 1 0;
+  min-height: 12px;
   border-radius: var(--nv-radius-sm);
   color: var(--nv-color-text-secondary);
   font-size: var(--nv-type-chip-size);
@@ -248,7 +251,8 @@
   color: color-mix(in srgb, var(--nv-color-text-muted) 38%, var(--nv-color-canvas));
 }
 
-.jump-letter[aria-current="true"] {
+.jump-letter[aria-current="true"],
+.jump-letter[aria-current="true"]:hover {
   color: var(--nv-color-accent);
 }
 

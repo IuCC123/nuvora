@@ -89,8 +89,20 @@ export function withSort(view: LibraryView, sort: LibrarySort): LibraryView {
   return { ...view, sort, order: DEFAULT_ORDER[sort] };
 }
 
-/** The search-param form: only what differs from the default, so a plain `/library/3` stays plain. */
-export type LibrarySearch = Partial<Record<"sort" | "order" | "filter" | "res" | "hdr" | "group", string>>;
+/**
+ * The search-param form: only what differs from the default, so a plain
+ * `/library/3` stays plain. The flags are booleans because a router that
+ * types its search keeps `true` as `true`, where the string `"1"` would come
+ * back quoted.
+ */
+export type LibrarySearch = {
+  sort?: LibrarySort;
+  order?: SortOrder;
+  filter?: WatchFilter;
+  res?: Resolution;
+  hdr?: true;
+  group?: false;
+};
 
 const pick = <T extends string>(options: readonly T[], value: unknown): T | undefined =>
   options.find((o) => o === value);
@@ -117,8 +129,8 @@ export function librarySearch(view: LibraryView): LibrarySearch {
   if (view.order !== DEFAULT_ORDER[view.sort]) search.order = view.order;
   if (view.filter !== DEFAULT_VIEW.filter) search.filter = view.filter;
   if (view.res) search.res = view.res;
-  if (view.hdr) search.hdr = "1";
-  if (!view.group) search.group = "0";
+  if (view.hdr) search.hdr = true;
+  if (!view.group) search.group = false;
   return search;
 }
 

@@ -14,8 +14,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Above the control bar and its scrim, so the scrim never dims it and the bar never takes its clicks. */
 .up-next {
   position: absolute;
+  z-index: 3;
   right: var(--player-pad);
   bottom: 32px;
   display: flex;
