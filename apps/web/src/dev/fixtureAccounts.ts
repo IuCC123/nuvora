@@ -45,7 +45,7 @@ export interface Reply {
   body?: unknown;
 }
 
-type StoredUser = AdminUser & { password: string };
+type StoredUser = AdminUser & { password: string } & Partial<Pick<User, "subtitle_mode" | "subtitle_language">>;
 
 interface State {
   users: StoredUser[];
@@ -139,8 +139,15 @@ function fail(status: number, code: ErrorBody["code"], message: string, field?: 
   return { status, body: { code, message, field: field ?? null } satisfies ErrorBody };
 }
 
-const publicUser = ({ id, username, display_name, role }: StoredUser): User => ({ id, username, display_name, role });
-const adminUser = ({ password: _, ...user }: StoredUser): AdminUser => user;
+const publicUser = ({ id, username, display_name, role, subtitle_mode, subtitle_language }: StoredUser): User => ({
+  id,
+  username,
+  display_name,
+  role,
+  subtitle_mode: subtitle_mode ?? "auto",
+  subtitle_language: subtitle_language ?? null,
+});
+const adminUser = ({ password: _, subtitle_mode: _m, subtitle_language: _l, ...user }: StoredUser): AdminUser => user;
 const me = () => state.users.find((u) => u.id === state.session && !u.disabled);
 const enabledAdmins = () => state.users.filter((u) => u.role === "admin" && !u.disabled);
 
@@ -226,6 +233,13 @@ function updateMe(user: StoredUser, req: UpdateMeRequest): Reply {
     const badName = invalidDisplayName(req.display_name);
     if (badName) return badName;
     user.display_name = req.display_name.trim();
+  }
+  if (req.subtitle_mode != null) user.subtitle_mode = req.subtitle_mode;
+  if (req.subtitle_language !== undefined) {
+    if (req.subtitle_language !== null && !/^[a-z]{3}$/.test(req.subtitle_language)) {
+      return fail(400, "validation", "Use a three-letter ISO 639-2 code.", "subtitle_language");
+    }
+    user.subtitle_language = req.subtitle_language;
   }
   return ok(publicUser(user));
 }
