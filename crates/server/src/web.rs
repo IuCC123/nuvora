@@ -6,7 +6,6 @@
 //! rust-embed reads from disk, so `cargo run` picks up `bun run build` output
 //! without recompiling. Day-to-day UI work uses the Vite dev server instead.
 
-use axum::Json;
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
 use axum::http::{StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
@@ -24,16 +23,12 @@ const NO_CACHE: &str = "no-cache";
 ///   `Cache-Control: public, max-age=31536000, immutable`, everything else
 ///   `no-cache`;
 /// - any other path => `index.html` (client-side routing), `no-cache`;
-/// - `/api/*` that reached the fallback => 404 JSON, never index.html;
+/// - `/api/*` that reached the fallback => 404 `ErrorBody`, never index.html;
 /// - no `index.html` in the embedded (or, in debug, on-disk) dist => [`not_built`].
 pub async fn serve_app(uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
     if path == "api" || path.starts_with("api/") {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "not found" })),
-        )
-            .into_response();
+        return crate::api::ApiError::not_found().into_response();
     }
     let Some(index) = WebAssets::get("index.html") else {
         return not_built();
