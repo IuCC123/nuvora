@@ -91,8 +91,6 @@ pub enum ConfigError {
         path: PathBuf,
         source: toml::de::Error,
     },
-    #[error("library {key:?}: folder {path} does not exist")]
-    MissingFolder { key: String, path: PathBuf },
     #[error("two libraries share the key {0:?}")]
     DuplicateKey(String),
     #[error("library {key:?}: kind {kind:?} is not supported (only \"movies\")")]
@@ -126,6 +124,8 @@ struct FileLibrary {
 }
 
 /// File, then flags on top. Canonicalizes library paths, rejects duplicates.
+/// A folder that does not exist is skipped with a warning, so an unmounted
+/// share never stops the server from starting.
 pub fn load(args: &ServeArgs) -> Result<Config, ConfigError> {
     let dirs = directories::ProjectDirs::from("", "", "Nuvora");
     let path = args.config.clone().or_else(|| {
@@ -173,14 +173,14 @@ pub fn load(args: &ServeArgs) -> Result<Config, ConfigError> {
     for lib in &mut libraries {
         let mut roots = Vec::with_capacity(lib.roots.len());
         for root in &lib.roots {
-            let canonical = root
-                .canonicalize()
-                .ok()
-                .filter(|p| p.is_dir())
-                .ok_or_else(|| ConfigError::MissingFolder {
-                    key: lib.key.clone(),
-                    path: root.clone(),
-                })?;
+            let Some(canonical) = root.canonicalize().ok().filter(|p| p.is_dir()) else {
+                tracing::warn!(
+                    library = lib.key,
+                    path = %root.display(),
+                    "folder does not exist; skipped (a share that is not mounted yet?)"
+                );
+                continue;
+            };
             if !roots.contains(&canonical) {
                 roots.push(canonical);
             }
@@ -348,14 +348,36 @@ mod tests {
     }
 
     #[test]
-    fn rejects_missing_folders_duplicate_keys_unknown_kinds_and_typos() {
+    fn a_missing_folder_is_skipped_not_fatal() {
         let dir = tempfile::tempdir().unwrap();
-        let missing = load(&args(None, vec![dir.path().join("nope")]));
-        assert!(
-            matches!(missing, Err(ConfigError::MissingFolder { .. })),
-            "{missing:?}"
+        let toml = dir.path().join("nuvora.toml");
+        std::fs::write(
+            &toml,
+            "[[library]]\nkey = \"films\"\npaths = [\"/nonexistent/nas\"]\n",
+        )
+        .unwrap();
+        let config = load(&args(
+            Some(toml),
+            vec![dir.path().join("unmounted"), dir.path().to_path_buf()],
+        ))
+        .unwrap();
+        let roots: Vec<(&str, &[PathBuf])> = config
+            .libraries
+            .iter()
+            .map(|l| (l.key.as_str(), l.roots.as_slice()))
+            .collect();
+        assert_eq!(
+            roots,
+            [
+                ("films", &[][..]),
+                ("movies", &[dir.path().canonicalize().unwrap()][..])
+            ]
         );
+    }
 
+    #[test]
+    fn rejects_duplicate_keys_unknown_kinds_and_typos() {
+        let dir = tempfile::tempdir().unwrap();
         let toml = dir.path().join("dup.toml");
         std::fs::write(
             &toml,
