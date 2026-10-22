@@ -109,7 +109,10 @@ pub fn router(state: AppState) -> axum::Router {
             "/api/openapi.json",
             axum::routing::get(move || async move { Json(spec) }),
         )
-        .layer(axum::middleware::from_fn(crate::auth::csrf))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::csrf,
+        ))
         .with_state(state)
 }
 
@@ -1276,10 +1279,15 @@ impl ApiError {
     }
 
     fn rate_limited(retry_after_s: u64) -> ApiError {
+        let wait = match retry_after_s {
+            0..=1 => "a second".to_owned(),
+            2..=90 => format!("{retry_after_s} seconds"),
+            s => format!("{} minutes", s.div_ceil(60)),
+        };
         let mut error = ApiError::new(
             StatusCode::TOO_MANY_REQUESTS,
             ErrorCode::RateLimited,
-            "Too many failed sign-ins. Try again in 15 minutes.",
+            format!("Too many failed sign-ins. Try again in {wait}."),
         );
         error.retry_after_s = Some(retry_after_s);
         error

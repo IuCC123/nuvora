@@ -146,8 +146,10 @@ pub(super) async fn setup(
 }
 
 /// Sets the session cookie. Wrong username, wrong password and disabled
-/// account all answer 401 `bad_credentials`. After 5 failures for one username
-/// or address within 15 minutes, answers 429 `rate_limited` for 15 minutes.
+/// account all answer 401 `bad_credentials`. Each failure for a username makes
+/// the next attempt wait (1 s, doubling, at most 10 s) and 20 failures from one
+/// address within 15 minutes lock it for 15 minutes; until then the answer is
+/// 429 `rate_limited` with `Retry-After`.
 #[utoipa::path(
     post,
     path = "/api/auth/login",
@@ -164,7 +166,7 @@ pub(super) async fn login(
     JsonBody(body): JsonBody<LoginRequest>,
 ) -> Result<Response, ApiError> {
     let username = body.username.trim();
-    let keys = auth::limiter_keys(username, &parts);
+    let keys = state.auth.sign_in_keys(username, &parts);
     if let Some(retry_after) = state.auth.blocked_for(&keys) {
         return Err(ApiError::rate_limited(retry_after));
     }
@@ -180,7 +182,7 @@ pub(super) async fn login(
     let password_ok = auth::verify_password(body.password, hash).await;
     match user {
         Some(user) if password_ok && !user.disabled => {
-            state.auth.record_success(&keys[..1]);
+            state.auth.record_success(&keys);
             sign_in(&state, user, &parts.headers).await
         }
         _ => {
@@ -477,6 +479,7 @@ mod tests {
             assert!(reply.headers.get(SET_COOKIE).is_none());
         }
 
+        app.state.auth.advance(Duration::from_secs(1));
         let reply = app.login(" ADMIN ", ADMIN_PASSWORD).await;
         assert_eq!(reply.status, StatusCode::OK);
         assert_eq!(reply.json()["username"], "admin");
@@ -516,25 +519,134 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn five_failures_lock_the_username_for_fifteen_minutes() {
+    async fn a_wrong_password_makes_the_username_wait() {
         let app = TestApp::new().await;
         app.setup_admin().await;
-        for _ in 0..5 {
-            assert_eq!(
-                app.login("admin", "wrong password").await.status,
-                StatusCode::UNAUTHORIZED
-            );
-        }
-        let locked = app.login("admin", ADMIN_PASSWORD).await;
-        assert_eq!(locked.status, StatusCode::TOO_MANY_REQUESTS);
-        assert_eq!(locked.json()["code"], "rate_limited");
-        assert_eq!(locked.headers.get(RETRY_AFTER).unwrap(), "900");
+        assert_eq!(
+            app.login("admin", "wrong password").await.status,
+            StatusCode::UNAUTHORIZED
+        );
+        let waiting = app.login("Admin", ADMIN_PASSWORD).await;
+        assert_eq!(waiting.status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            waiting.json(),
+            json!({"code": "rate_limited", "message": "Too many failed sign-ins. Try again in a second.", "field": null})
+        );
+        assert_eq!(waiting.headers.get(RETRY_AFTER).unwrap(), "1");
 
-        app.state.auth.advance(Duration::from_secs(15 * 60));
+        app.state.auth.advance(Duration::from_secs(1));
+        assert_eq!(
+            app.login("admin", "wrong again").await.status,
+            StatusCode::UNAUTHORIZED
+        );
+        let longer = app.login("admin", ADMIN_PASSWORD).await;
+        assert_eq!(longer.headers.get(RETRY_AFTER).unwrap(), "2");
+        app.state.auth.advance(Duration::from_secs(2));
         assert_eq!(
             app.login("admin", ADMIN_PASSWORD).await.status,
             StatusCode::OK
         );
+        assert_eq!(
+            app.login("admin", "wrong password").await.status,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            app.login("admin", ADMIN_PASSWORD)
+                .await
+                .headers
+                .get(RETRY_AFTER)
+                .unwrap(),
+            "1",
+            "a success started the wait over"
+        );
+    }
+
+    /// Twenty failed sign-ins, each for a different username so only the
+    /// address limit can trigger.
+    async fn guess_twenty(app: &TestApp, peer: &str, forwarded_for: Option<&str>) {
+        for i in 0..20 {
+            let reply = app
+                .login_from(
+                    peer,
+                    forwarded_for,
+                    &format!("{peer} guess {i}"),
+                    "wrong password",
+                )
+                .await;
+            assert_eq!(reply.status, StatusCode::UNAUTHORIZED, "attempt {i}");
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn twenty_failures_lock_a_public_address() {
+        let app = TestApp::new().await;
+        app.setup_admin().await;
+        guess_twenty(&app, "203.0.113.9", None).await;
+        let locked = app
+            .login_from("203.0.113.9", None, "admin", ADMIN_PASSWORD)
+            .await;
+        assert_eq!(locked.status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(locked.headers.get(RETRY_AFTER).unwrap(), "900");
+        assert_eq!(
+            locked.json()["message"],
+            "Too many failed sign-ins. Try again in 15 minutes."
+        );
+        let elsewhere = app
+            .login_from("198.51.100.7", None, "admin", ADMIN_PASSWORD)
+            .await;
+        assert_eq!(elsewhere.status, StatusCode::OK);
+        app.state.auth.advance(Duration::from_secs(15 * 60));
+        let later = app
+            .login_from("203.0.113.9", None, "admin", ADMIN_PASSWORD)
+            .await;
+        assert_eq!(later.status, StatusCode::OK);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn local_peers_have_no_address_limit_without_a_trusted_proxy() {
+        let app = TestApp::new().await;
+        app.setup_admin().await;
+        for peer in ["127.0.0.1", "192.168.1.20", "10.0.0.3", "::1", "fd00::5"] {
+            guess_twenty(&app, peer, Some("203.0.113.9")).await;
+            let reply = app.login_from(peer, None, "admin", ADMIN_PASSWORD).await;
+            assert_eq!(reply.status, StatusCode::OK, "{peer}");
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn behind_a_trusted_proxy_the_forwarded_client_is_limited() {
+        let app = TestApp::behind(&["127.0.0.1", "10.0.0.0/8"]).await;
+        app.setup_admin().await;
+        guess_twenty(&app, "127.0.0.1", Some("6.6.6.6, 203.0.113.9, 10.1.1.1")).await;
+        for spoofed in ["203.0.113.9", "1.1.1.1, 203.0.113.9"] {
+            let reply = app
+                .login_from("127.0.0.1", Some(spoofed), "admin", ADMIN_PASSWORD)
+                .await;
+            assert_eq!(reply.status, StatusCode::TOO_MANY_REQUESTS, "{spoofed}");
+        }
+        let neighbour = app
+            .login_from("127.0.0.1", Some("198.51.100.7"), "admin", ADMIN_PASSWORD)
+            .await;
+        assert_eq!(neighbour.status, StatusCode::OK);
+
+        guess_twenty(&app, "192.168.1.20", None).await;
+        let lan = app
+            .login_from("192.168.1.20", None, "admin", ADMIN_PASSWORD)
+            .await;
+        assert_eq!(
+            lan.status,
+            StatusCode::TOO_MANY_REQUESTS,
+            "with a proxy configured, local addresses are limited too"
+        );
+        let untrusted = app
+            .login_from(
+                "198.51.100.8",
+                Some("203.0.113.50"),
+                "admin",
+                ADMIN_PASSWORD,
+            )
+            .await;
+        assert_eq!(untrusted.status, StatusCode::OK, "keyed by the peer itself");
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -709,6 +821,72 @@ mod tests {
 
         let same = app.send(cross_site("http://nuvora.local:8640")).await;
         assert_eq!(same.status, StatusCode::NO_CONTENT);
+    }
+
+    /// A sign out relayed by a proxy on 127.0.0.1 that keeps `Host` as its own address.
+    async fn proxied(
+        app: &TestApp,
+        cookie: &str,
+        origin: &str,
+        forwarded_host: Option<&str>,
+    ) -> super::super::test_app::Reply {
+        let mut request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/logout")
+            .header("host", "127.0.0.1:8640")
+            .header(ORIGIN, origin)
+            .header(COOKIE, cookie)
+            .header(CONTENT_TYPE, "application/json");
+        if let Some(host) = forwarded_host {
+            request = request.header("x-forwarded-host", host);
+        }
+        app.send_from("127.0.0.1", request.body(Body::empty()).unwrap())
+            .await
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn behind_a_trusted_proxy_origin_matches_the_forwarded_host() {
+        let app = TestApp::behind(&["127.0.0.1"]).await;
+        let cookie = app.setup_admin().await;
+        let evil = proxied(
+            &app,
+            &cookie,
+            "https://evil.example",
+            Some("nuvora.example.com"),
+        )
+        .await;
+        assert_eq!(evil.status, StatusCode::FORBIDDEN);
+        let host_only = proxied(&app, &cookie, "https://nuvora.example.com", None).await;
+        assert_eq!(
+            host_only.status,
+            StatusCode::FORBIDDEN,
+            "falls back to Host"
+        );
+        let ok = proxied(
+            &app,
+            &cookie,
+            "https://nuvora.example.com",
+            Some("nuvora.example.com"),
+        )
+        .await;
+        assert_eq!(ok.status, StatusCode::NO_CONTENT);
+
+        let app = TestApp::new().await;
+        let cookie = app.setup_admin().await;
+        let untrusted = proxied(
+            &app,
+            &cookie,
+            "https://nuvora.example.com",
+            Some("nuvora.example.com"),
+        )
+        .await;
+        assert_eq!(
+            untrusted.status,
+            StatusCode::FORBIDDEN,
+            "an untrusted peer's X-Forwarded-Host is ignored"
+        );
+        let direct = proxied(&app, &cookie, "http://127.0.0.1:8640", Some("evil.example")).await;
+        assert_eq!(direct.status, StatusCode::NO_CONTENT);
     }
 
     #[tokio::test(flavor = "multi_thread")]

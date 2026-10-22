@@ -6,14 +6,14 @@
 //! keeps only its SHA-256.
 
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::IpAddr;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, SystemTime};
 
 use argon2::Argon2;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
-use axum::extract::{ConnectInfo, FromRequestParts, Request, State};
+use axum::extract::{FromRequestParts, Request, State};
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, COOKIE, HOST, ORIGIN, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue, Method, request::Parts};
 use axum::middleware::Next;
@@ -23,27 +23,51 @@ use password_hash::rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
 use crate::api::{ApiError, AppState, SESSION_COOKIE};
+use crate::net::{self, TrustedProxies};
 
 pub const SESSION_TTL: Duration = Duration::from_secs(30 * 24 * 3600);
 /// A session's expiry (and cookie) moves forward once it is this old.
 const REFRESH_AFTER: Duration = Duration::from_secs(24 * 3600);
 /// `last_seen_at` is written at most this often per session, not per request.
 const LAST_SEEN_EVERY: Duration = Duration::from_secs(5 * 60);
-const MAX_FAILURES: usize = 5;
+/// A username's wait after its first failed sign-in; it doubles with each
+/// further failure up to [`MAX_USER_DELAY`].
+const FIRST_USER_DELAY: Duration = Duration::from_secs(1);
+const MAX_USER_DELAY: Duration = Duration::from_secs(10);
+/// Failures from one address within [`FAILURE_WINDOW`] that lock it out.
+const MAX_ADDRESS_FAILURES: usize = 20;
+/// Also how long a username's failures are remembered.
 const FAILURE_WINDOW: Duration = Duration::from_secs(15 * 60);
-const LOCKOUT: Duration = Duration::from_secs(15 * 60);
+const ADDRESS_LOCKOUT: Duration = Duration::from_secs(15 * 60);
 
 fn ms(d: Duration) -> i64 {
     d.as_millis() as i64
 }
 
-/// Shared auth state: the clock and the sign-in failure counts (in memory, so
-/// a restart forgets them).
+/// Shared auth state: the clock, the trusted proxies and the sign-in failure
+/// counts (in memory, so a restart forgets them).
 #[derive(Default)]
 pub struct Auth {
     /// Added to the system time; tests move it forward to expire sessions.
     offset_ms: AtomicI64,
-    limiter: Mutex<HashMap<String, Failures>>,
+    proxies: TrustedProxies,
+    users: Mutex<HashMap<String, Backoff>>,
+    addresses: Mutex<HashMap<IpAddr, Failures>>,
+}
+
+/// Consecutive failed sign-ins of one username. Guessing slows down without
+/// locking the real user out.
+struct Backoff {
+    failures: u32,
+    last_at: i64,
+}
+
+impl Backoff {
+    fn until(&self) -> i64 {
+        let delay =
+            ms(FIRST_USER_DELAY).saturating_mul(1 << self.failures.saturating_sub(1).min(16));
+        self.last_at + delay.min(ms(MAX_USER_DELAY))
+    }
 }
 
 #[derive(Default)]
@@ -52,7 +76,26 @@ struct Failures {
     blocked_until: i64,
 }
 
+/// What one sign-in attempt is counted against.
+pub struct SignInKeys {
+    /// Lowercased.
+    username: String,
+    /// `None` when unknown or exempt (see [`Auth::sign_in_keys`]).
+    address: Option<IpAddr>,
+}
+
 impl Auth {
+    pub fn new(proxies: TrustedProxies) -> Auth {
+        Auth {
+            proxies,
+            ..Auth::default()
+        }
+    }
+
+    pub fn proxies(&self) -> &TrustedProxies {
+        &self.proxies
+    }
+
     pub fn now_ms(&self) -> i64 {
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -65,53 +108,72 @@ impl Auth {
         self.offset_ms.fetch_add(ms(by), Ordering::Relaxed);
     }
 
-    /// Seconds until sign in is allowed again for any of `keys`, if blocked.
-    pub fn blocked_for(&self, keys: &[String]) -> Option<u64> {
-        let now = self.now_ms();
-        let limiter = self.limiter.lock().unwrap_or_else(|p| p.into_inner());
-        keys.iter()
-            .filter_map(|k| limiter.get(k))
-            .map(|f| f.blocked_until - now)
-            .filter(|left| *left > 0)
-            .max()
-            .map(|left| (left as u64).div_ceil(1000))
+    /// The username (ignoring case) and the client address. Without a trusted
+    /// proxy a local peer (loopback, RFC 1918, ULA) has no address key: it is
+    /// probably an unconfigured reverse proxy that every client shares, and
+    /// one guesser must not lock the household out.
+    pub fn sign_in_keys(&self, username: &str, parts: &Parts) -> SignInKeys {
+        let address = net::peer(&parts.extensions)
+            .map(|peer| self.proxies.client(peer, &parts.headers))
+            .filter(|ip| self.proxies.any() || !net::is_local(*ip));
+        SignInKeys {
+            username: username.to_lowercase(),
+            address,
+        }
     }
 
-    /// Counts a failed sign in against each key; the fifth within the window
-    /// blocks that key for [`LOCKOUT`].
-    pub fn record_failure(&self, keys: &[String]) {
+    /// Seconds until a sign in under `keys` is allowed again, if it is not now.
+    pub fn blocked_for(&self, keys: &SignInKeys) -> Option<u64> {
         let now = self.now_ms();
-        let mut limiter = self.limiter.lock().unwrap_or_else(|p| p.into_inner());
-        limiter.retain(|_, f| {
+        let user_until = lock(&self.users)
+            .get(&keys.username)
+            .map_or(0, Backoff::until);
+        let address_until = keys
+            .address
+            .and_then(|ip| lock(&self.addresses).get(&ip).map(|f| f.blocked_until))
+            .unwrap_or(0);
+        let left = user_until.max(address_until) - now;
+        (left > 0).then(|| (left as u64).div_ceil(1000))
+    }
+
+    /// Doubles the username's wait, and counts against the address: the
+    /// [`MAX_ADDRESS_FAILURES`]th within [`FAILURE_WINDOW`] locks it for
+    /// [`ADDRESS_LOCKOUT`].
+    pub fn record_failure(&self, keys: &SignInKeys) {
+        let now = self.now_ms();
+        let mut users = lock(&self.users);
+        users.retain(|_, b| now - b.last_at < ms(FAILURE_WINDOW));
+        let backoff = users.entry(keys.username.clone()).or_insert(Backoff {
+            failures: 0,
+            last_at: now,
+        });
+        backoff.failures += 1;
+        backoff.last_at = now;
+        drop(users);
+
+        let Some(ip) = keys.address else { return };
+        let mut addresses = lock(&self.addresses);
+        addresses.retain(|_, f| {
             f.blocked_until > now || f.at.last().is_some_and(|t| now - t < ms(FAILURE_WINDOW))
         });
-        for key in keys {
-            let failures = limiter.entry(key.clone()).or_default();
-            failures.at.retain(|t| now - t < ms(FAILURE_WINDOW));
-            failures.at.push(now);
-            if failures.at.len() >= MAX_FAILURES {
-                failures.at.clear();
-                failures.blocked_until = now + ms(LOCKOUT);
-            }
+        let failures = addresses.entry(ip).or_default();
+        failures.at.retain(|t| now - t < ms(FAILURE_WINDOW));
+        failures.at.push(now);
+        if failures.at.len() >= MAX_ADDRESS_FAILURES {
+            failures.at.clear();
+            failures.blocked_until = now + ms(ADDRESS_LOCKOUT);
         }
     }
 
-    pub fn record_success(&self, keys: &[String]) {
-        let mut limiter = self.limiter.lock().unwrap_or_else(|p| p.into_inner());
-        for key in keys {
-            limiter.remove(key);
-        }
+    /// Resets the username only: one account's password must not clear an
+    /// address that is guessing at others.
+    pub fn record_success(&self, keys: &SignInKeys) {
+        lock(&self.users).remove(&keys.username);
     }
 }
 
-/// Rate-limit keys for a sign in: the username (ignoring case) and, when known,
-/// the peer address. Behind a reverse proxy the address is the proxy's.
-pub fn limiter_keys(username: &str, parts: &Parts) -> Vec<String> {
-    let mut keys = vec![format!("user:{}", username.to_lowercase())];
-    if let Some(ConnectInfo(addr)) = parts.extensions.get::<ConnectInfo<SocketAddr>>() {
-        keys.push(format!("ip:{}", addr.ip()));
-    }
-    keys
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|p| p.into_inner())
 }
 
 /// argon2id with the crate's default parameters. Runs on the blocking pool.
@@ -328,8 +390,13 @@ async fn authenticate(
 
 /// State-changing requests must be JSON, and when the browser says where it
 /// came from (`Origin`), it must be this server. JSON forces a CORS preflight
-/// on cross-site requests, which this server never approves.
-pub async fn csrf(req: Request, next: Next) -> Result<Response, ApiError> {
+/// on cross-site requests, which this server never approves. Behind a trusted
+/// proxy "this server" is `X-Forwarded-Host` when the proxy sets it.
+pub async fn csrf(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next,
+) -> Result<Response, ApiError> {
     if matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS) {
         return Ok(next.run(req).await);
     }
@@ -350,10 +417,15 @@ pub async fn csrf(req: Request, next: Next) -> Result<Response, ApiError> {
             .ok()
             .and_then(|o| o.split_once("://"))
             .map(|(_, host)| host.trim_end_matches('/'));
-        let host = req
-            .headers()
-            .get(HOST)
+        let proxied = net::peer(req.extensions()).is_some_and(|p| state.auth.proxies().trusts(p));
+        let forwarded_host = proxied
+            .then(|| req.headers().get("x-forwarded-host"))
+            .flatten()
             .and_then(|h| h.to_str().ok())
+            .and_then(|h| h.split(',').next())
+            .map(str::trim);
+        let host = forwarded_host
+            .or_else(|| req.headers().get(HOST).and_then(|h| h.to_str().ok()))
             .or_else(|| req.uri().authority().map(|a| a.as_str()));
         let same = matches!((origin_host, host), (Some(o), Some(h)) if o.eq_ignore_ascii_case(h));
         if !same {
@@ -377,18 +449,65 @@ mod tests {
         assert_ne!(new_token().1, hash);
     }
 
-    #[test]
-    fn five_failures_block_for_fifteen_minutes() {
-        let auth = Auth::default();
-        let keys = vec!["user:a".to_owned()];
-        for _ in 0..4 {
-            auth.record_failure(&keys);
+    fn keys(username: &str, address: Option<&str>) -> SignInKeys {
+        SignInKeys {
+            username: username.into(),
+            address: address.map(|a| a.parse().unwrap()),
         }
-        assert_eq!(auth.blocked_for(&keys), None);
-        auth.record_failure(&keys);
-        assert_eq!(auth.blocked_for(&keys), Some(LOCKOUT.as_secs()));
-        assert_eq!(auth.blocked_for(&["user:b".to_owned()]), None);
-        auth.advance(LOCKOUT);
-        assert_eq!(auth.blocked_for(&keys), None);
+    }
+
+    #[test]
+    fn a_username_waits_one_second_doubling_to_ten() {
+        let auth = Auth::default();
+        let ada = keys("ada", None);
+        let mut waits = Vec::new();
+        for _ in 0..6 {
+            auth.record_failure(&ada);
+            let wait = auth.blocked_for(&ada).unwrap();
+            waits.push(wait);
+            auth.advance(Duration::from_secs(wait));
+            assert_eq!(auth.blocked_for(&ada), None, "after {wait} s");
+        }
+        assert_eq!(waits, [1, 2, 4, 8, 10, 10]);
+        assert_eq!(auth.blocked_for(&keys("bo", None)), None);
+
+        auth.record_failure(&ada);
+        auth.record_success(&ada);
+        assert_eq!(auth.blocked_for(&ada), None, "success resets");
+        auth.record_failure(&ada);
+        assert_eq!(auth.blocked_for(&ada), Some(1), "and starts again at 1 s");
+
+        auth.advance(FAILURE_WINDOW);
+        auth.record_failure(&keys("bo", None));
+        auth.record_failure(&ada);
+        assert_eq!(
+            auth.blocked_for(&ada),
+            Some(1),
+            "forgotten after 15 quiet minutes"
+        );
+    }
+
+    #[test]
+    fn twenty_failures_lock_an_address_for_fifteen_minutes() {
+        let auth = Auth::default();
+        for i in 0..19 {
+            auth.record_failure(&keys(&format!("user{i}"), Some("203.0.113.9")));
+        }
+        let fresh = keys("someone", Some("203.0.113.9"));
+        assert_eq!(auth.blocked_for(&fresh), None);
+        auth.record_failure(&keys("user19", Some("203.0.113.9")));
+        assert_eq!(auth.blocked_for(&fresh), Some(ADDRESS_LOCKOUT.as_secs()));
+        assert_eq!(
+            auth.blocked_for(&keys("someone", Some("203.0.113.10"))),
+            None
+        );
+        auth.record_success(&keys("user0", Some("203.0.113.9")));
+        assert_eq!(
+            auth.blocked_for(&fresh),
+            Some(ADDRESS_LOCKOUT.as_secs()),
+            "a success does not unlock the address"
+        );
+        auth.advance(ADDRESS_LOCKOUT);
+        assert_eq!(auth.blocked_for(&fresh), None);
     }
 }

@@ -805,7 +805,7 @@
     },
     "/api/auth/login": {
       "post": {
-        "summary": "Sets the session cookie. Wrong username, wrong password and disabled\naccount all answer 401 `bad_credentials`. After 5 failures for one username\nor address within 15 minutes, answers 429 `rate_limited` for 15 minutes.",
+        "summary": "Sets the session cookie. Wrong username, wrong password and disabled\naccount all answer 401 `bad_credentials`. Each failure for a username makes\nthe next attempt wait (1 s, doubling, at most 10 s) and 20 failures from one\naddress within 15 minutes lock it for 15 minutes; until then the answer is\n429 `rate_limited` with `Retry-After`.",
         "operationId": "login",
         "requestBody": {
           "content": {

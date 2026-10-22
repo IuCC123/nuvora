@@ -135,8 +135,10 @@ export interface paths {
         put?: never;
         /**
          * Sets the session cookie. Wrong username, wrong password and disabled
-         *     account all answer 401 `bad_credentials`. After 5 failures for one username
-         *     or address within 15 minutes, answers 429 `rate_limited` for 15 minutes.
+         *     account all answer 401 `bad_credentials`. Each failure for a username makes
+         *     the next attempt wait (1 s, doubling, at most 10 s) and 20 failures from one
+         *     address within 15 minutes lock it for 15 minutes; until then the answer is
+         *     429 `rate_limited` with `Retry-After`.
          */
         post: operations["login"];
         delete?: never;

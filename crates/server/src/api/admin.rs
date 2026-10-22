@@ -782,6 +782,7 @@ mod tests {
             Some(json!({"disabled": false, "password": "reset password"})),
         )
         .await;
+        app.state.auth.advance(Duration::from_secs(1));
         assert_eq!(
             app.login("friend", "reset password").await.status,
             StatusCode::OK

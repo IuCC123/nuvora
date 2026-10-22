@@ -50,6 +50,11 @@ pub const ADMIN_PASSWORD: &str = "correct horse";
 
 impl TestApp {
     pub async fn new() -> TestApp {
+        TestApp::behind(&[]).await
+    }
+
+    /// A server started with `--trusted-proxy` for each of `proxies`.
+    pub async fn behind(proxies: &[&str]) -> TestApp {
         let dir = tempfile::tempdir().unwrap();
         let movies = dir.path().join("movies");
         std::fs::create_dir_all(&movies).unwrap();
@@ -70,7 +75,9 @@ impl TestApp {
         .unwrap();
         let state = AppState {
             library,
-            auth: Default::default(),
+            auth: Arc::new(crate::auth::Auth::new(crate::net::TrustedProxies::new(
+                proxies.iter().map(|p| p.parse().unwrap()).collect(),
+            ))),
             server: Arc::new(ServerSetup {
                 data_dir: dir.path().join("data"),
                 bind: "127.0.0.1:8640".parse().unwrap(),
@@ -177,6 +184,34 @@ impl TestApp {
             })
             .await
             .unwrap();
+    }
+
+    /// A sign in arriving over TCP from `peer`, with `X-Forwarded-For` when given.
+    pub async fn login_from(
+        &self,
+        peer: &str,
+        forwarded_for: Option<&str>,
+        username: &str,
+        password: &str,
+    ) -> Reply {
+        let mut request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/login")
+            .header(CONTENT_TYPE, "application/json");
+        if let Some(hops) = forwarded_for {
+            request = request.header("x-forwarded-for", hops);
+        }
+        let body = json!({"username": username, "password": password}).to_string();
+        self.send_from(peer, request.body(Body::from(body)).unwrap())
+            .await
+    }
+
+    pub async fn send_from(&self, peer: &str, mut request: Request<Body>) -> Reply {
+        let addr = std::net::SocketAddr::new(peer.parse().unwrap(), 50000);
+        request
+            .extensions_mut()
+            .insert(axum::extract::ConnectInfo(addr));
+        self.send(request).await
     }
 
     pub async fn login(&self, username: &str, password: &str) -> Reply {

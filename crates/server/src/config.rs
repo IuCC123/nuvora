@@ -1,8 +1,8 @@
 //! Configuration: `nuvora.toml` plus CLI overrides, validated into the types
 //! the catalog takes. The only place that reads files, flags or env for config.
 //! Every flag also reads an environment variable: `NUVORA_CONFIG`,
-//! `NUVORA_BIND`, `NUVORA_DATA_DIR`, and `NUVORA_MOVIES` (a path list,
-//! `:`-separated, `;` on Windows).
+//! `NUVORA_BIND`, `NUVORA_DATA_DIR`, `NUVORA_MOVIES` (a path list,
+//! `:`-separated, `;` on Windows) and `NUVORA_TRUSTED_PROXY` (comma-separated).
 //!
 //! The config file and `--movies` only add libraries and folders that do not
 //! exist yet; after that the admin panel owns them.
@@ -28,6 +28,8 @@ use std::path::{Path, PathBuf};
 use nuvora_library::{LibraryKind, LibrarySpec};
 use serde::Deserialize;
 
+use crate::net::IpNet;
+
 pub const DEFAULT_BIND: SocketAddr =
     SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::UNSPECIFIED), 8640);
 const PATH_LIST_SEPARATOR: char = if cfg!(windows) { ';' } else { ':' };
@@ -52,6 +54,17 @@ pub struct ServeArgs {
         value_delimiter = PATH_LIST_SEPARATOR
     )]
     pub movies: Vec<PathBuf>,
+    /// A reverse proxy in front of Nuvora (an address or CIDR block; repeat
+    /// for more). Its `X-Forwarded-For` and `X-Forwarded-Host` are believed:
+    /// sign-in limits apply to the client behind it, and the CSRF check
+    /// compares against the host the browser used.
+    #[arg(
+        long = "trusted-proxy",
+        value_name = "IP or CIDR",
+        env = "NUVORA_TRUSTED_PROXY",
+        value_delimiter = ','
+    )]
+    pub trusted_proxy: Vec<IpNet>,
 }
 
 /// Validated configuration.
@@ -62,6 +75,7 @@ pub struct Config {
     pub libraries: Vec<LibrarySpec>,
     pub ffmpeg: Option<PathBuf>,
     pub ffprobe: Option<PathBuf>,
+    pub trusted_proxies: Vec<IpNet>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -189,6 +203,7 @@ pub fn load(args: &ServeArgs) -> Result<Config, ConfigError> {
         libraries,
         ffmpeg: file.ffmpeg,
         ffprobe: file.ffprobe,
+        trusted_proxies: args.trusted_proxy.clone(),
     })
 }
 
@@ -213,6 +228,7 @@ mod tests {
             bind: None,
             data_dir: Some("/tmp/nuvora-test-data".into()),
             movies,
+            trusted_proxy: vec![],
         }
     }
 
@@ -275,7 +291,8 @@ mod tests {
                 "NUVORA_CONFIG",
                 "NUVORA_BIND",
                 "NUVORA_DATA_DIR",
-                "NUVORA_MOVIES"
+                "NUVORA_MOVIES",
+                "NUVORA_TRUSTED_PROXY"
             ]
         );
         if cfg!(unix) {
@@ -287,6 +304,23 @@ mod tests {
                 "a path list splits like NUVORA_MOVIES does"
             );
         }
+        let cli = crate::Cli::try_parse_from([
+            "nuvora",
+            "--trusted-proxy",
+            "10.0.0.0/8,::1",
+            "--trusted-proxy",
+            "192.168.1.2",
+        ])
+        .unwrap();
+        assert_eq!(
+            cli.serve
+                .trusted_proxy
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            ["10.0.0.0/8", "::1/128", "192.168.1.2/32"]
+        );
+        assert!(crate::Cli::try_parse_from(["nuvora", "--trusted-proxy", "proxy.lan"]).is_err());
     }
 
     #[test]
