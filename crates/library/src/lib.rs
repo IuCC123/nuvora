@@ -5,8 +5,10 @@
 //! SQL, row types, the connection pool and the scanner's internals are private;
 //! the server crate cannot name them, so it cannot bypass the catalog's rules.
 
+mod accounts;
 mod db;
 mod ids;
+mod libraries;
 mod scan;
 mod store;
 #[cfg(test)]
@@ -21,7 +23,11 @@ use std::time::Duration;
 use nuvora_media::{DeviceProfile, ImageSize, MediaTools};
 use tokio::sync::watch;
 
-pub use ids::{ArtworkId, FileId, ItemId, ParseIdError};
+pub use accounts::{
+    AccountError, Credentials, NewUser, Role, Session, TokenHash, User, UserChanges,
+};
+pub use ids::{ArtworkId, FileId, ItemId, LibraryId, ParseIdError, UserId};
+pub use libraries::{LibraryError, LibraryInfo};
 pub use scan::{ScanIssue, ScanPhase, ScanProgress, ScanState, ScanStatus, ScanSummary};
 pub use views::{
     Artwork, Card, CatalogRev, Cursor, HOME_ROW_LIMIT, Home, InvalidCursor, Item, ItemKind,
@@ -43,8 +49,10 @@ pub struct LibraryConfig {
     pub settle_window: Duration,
 }
 
-/// One configured library. `key` is the stable identity (a slug); renaming
-/// `name` keeps the library's id and everything hanging off it.
+/// One library from the config file or `--movies`. `key` is the stable identity
+/// (a slug). [`Library::open`] only adds a library or root that does not exist
+/// yet; after that the admin panel owns it, and changing or removing it in the
+/// config changes nothing.
 #[derive(Debug, Clone)]
 pub struct LibrarySpec {
     pub key: String,
@@ -91,8 +99,9 @@ struct Inner {
 }
 
 impl Library {
-    /// Open (creating if needed) the database, apply migrations, upsert the
-    /// configured libraries and roots by `key`, and start the scan worker.
+    /// Open (creating if needed) the database, apply migrations, add the
+    /// configured libraries and roots that do not exist yet (by `key`), and
+    /// start the scan worker.
     /// Does not scan; the caller calls [`Library::request_scan`] at startup so
     /// the HTTP server is up immediately, serving whatever is already cataloged.
     pub async fn open(config: LibraryConfig) -> Result<Library, OpenError> {
@@ -107,8 +116,7 @@ impl Library {
             .await
             .map_err(|_| OpenError::Db(db::DbError::Panicked))??;
         let specs = config.libraries;
-        let now_ms = scan::unix_ms(std::time::SystemTime::now());
-        db.write(move |tx| scan::write::sync_libraries(tx, &specs, now_ms))
+        db.write(move |tx| scan::write::add_libraries(tx, &specs))
             .await?;
         let store =
             Arc::new(store::ArtworkStore::new(config.data_dir.join("artwork")).map_err(io)?);
@@ -494,6 +502,44 @@ mod tests {
         std::fs::rename(&parked, &root).unwrap();
         let summary = scan(&lib).await;
         assert_eq!((summary.unchanged, summary.removed), (5, 0));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn config_only_adds_what_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b, data) = (
+            dir.path().join("a"),
+            dir.path().join("b"),
+            dir.path().join("data"),
+        );
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        let lib = open(&a, &data).await;
+        let movies = lib.libraries().await.unwrap().remove(0);
+        let (renamed, _) = lib
+            .update_library(movies.id, Some("Films".into()), Some(vec![b.clone()]), 0)
+            .await
+            .unwrap();
+        assert_eq!(renamed.roots, std::slice::from_ref(&b));
+        drop(lib);
+
+        let lib = open(&a, &data).await;
+        let libraries = lib.libraries().await.unwrap();
+        assert_eq!(libraries.len(), 1);
+        assert_eq!(
+            libraries[0].name, "Films",
+            "the panel's name survives a restart"
+        );
+        assert_eq!(
+            libraries[0].roots,
+            [b.clone(), a.clone()],
+            "the config folder is added back, the panel's folder kept"
+        );
+
+        let other = lib
+            .create_library("Other".into(), LibraryKind::Movies, vec![a.clone()])
+            .await;
+        assert!(matches!(other, Err(LibraryError::PathInUse(p)) if p == a));
     }
 
     #[tokio::test(flavor = "multi_thread")]
