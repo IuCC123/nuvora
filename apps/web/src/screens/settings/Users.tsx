@@ -2,8 +2,8 @@ import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  checkDisplayName,
   checkPassword,
-  checkRequired,
   checkUsername,
   describeError,
   formatLastSeen,
@@ -136,7 +136,7 @@ function AddUser({ onDone }: { onDone: () => void }) {
   });
   const form = useForm(
     { display_name: "", username: "", password: "", role: "member" },
-    (v) => ({ display_name: checkRequired(v.display_name, "their name"), username: checkUsername(v.username), password: checkPassword(v.password) }),
+    (v) => ({ display_name: checkDisplayName(v.display_name, "their name"), username: checkUsername(v.username), password: checkPassword(v.password) }),
     add.reset,
   );
   const failed = serverError(add.error, ["display_name", "username", "password"]);
@@ -208,7 +208,7 @@ function EditUser({ user, self, onDone, onDelete }: { user: AdminUser; self: boo
   });
   const form = useForm(
     { display_name: user.display_name, role: user.role as string, password: "" },
-    (v) => ({ display_name: checkRequired(v.display_name, "their name"), password: v.password ? checkPassword(v.password) : null }),
+    (v) => ({ display_name: checkDisplayName(v.display_name, "their name"), password: v.password ? checkPassword(v.password) : null }),
     save.reset,
   );
   const failed = serverError(save.error, ["display_name", "password"]);

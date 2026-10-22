@@ -7,6 +7,15 @@
 
 export const PASSWORD_MIN_LENGTH = 8;
 
+/** The server's rule for a display name: 1 to 64 characters once trimmed. `what` completes "Enter …". */
+export function checkDisplayName(value: string, what: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return `Enter ${what}.`;
+  return [...trimmed].length > DISPLAY_NAME_MAX_LENGTH ? `Use ${DISPLAY_NAME_MAX_LENGTH} characters or fewer.` : null;
+}
+
+export const DISPLAY_NAME_MAX_LENGTH = 64;
+
 export function checkRequired(value: string, what: string): string | null {
   return value.trim() ? null : `Enter ${what}.`;
 }

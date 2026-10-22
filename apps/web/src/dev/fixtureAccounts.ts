@@ -16,7 +16,13 @@ import type {
   UpdateUserRequest,
   User,
 } from "@nuvora/core";
-import { checkPassword, checkUsername } from "@nuvora/core";
+import { checkDisplayName, checkPassword, checkUsername } from "@nuvora/core";
+
+/** The server's display name rule, which also refuses control characters the form doesn't check for. */
+function invalidDisplayName(name: string): Reply | null {
+  const invalid = checkDisplayName(name, "a name") ?? (/\p{Cc}/u.test(name) ? "Use 1 to 64 characters" : null);
+  return invalid ? fail(400, "validation", invalid, "display_name") : null;
+}
 
 /**
  * The accounts half of the fixture server: users, the session, libraries, the
@@ -172,6 +178,8 @@ function route(method: HttpMethod, path: string, query: URLSearchParams, body: u
 
 function setup(req: SetupRequest): Reply {
   if (state.users.length > 0) return fail(409, "setup_done", "This server is already set up.");
+  const badName = invalidDisplayName(req.display_name);
+  if (badName) return badName;
   const invalid = checkUsername(req.username) ?? checkPassword(req.password);
   if (invalid) return fail(400, "validation", invalid, checkUsername(req.username) ? "username" : "password");
   const user: StoredUser = { id: state.nextId++, ...req, role: "admin", disabled: false, created_at: Date.now(), last_seen_at: Date.now() };
@@ -200,7 +208,11 @@ function updateMe(user: StoredUser, req: UpdateMeRequest): Reply {
     if (weak) return fail(400, "validation", weak, "new_password");
     user.password = req.new_password;
   }
-  if (req.display_name != null) user.display_name = req.display_name.trim();
+  if (req.display_name != null) {
+    const badName = invalidDisplayName(req.display_name);
+    if (badName) return badName;
+    user.display_name = req.display_name.trim();
+  }
   return ok(publicUser(user));
 }
 

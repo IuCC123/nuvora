@@ -65,7 +65,7 @@ export { ApiError } from "./transport";
 export type { AbortSignalLike, FetchLike, HttpMethod, RequestInitLike, ResponseLike } from "./transport";
 export { describeError, errorCode } from "./errors";
 export type { ErrorCode } from "./errors";
-export { checkPassword, checkPasswordsMatch, checkRequired, checkUsername, PASSWORD_MIN_LENGTH } from "./validation";
+export { checkDisplayName, checkPassword, checkPasswordsMatch, checkRequired, checkUsername, DISPLAY_NAME_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "./validation";
 export { safeRedirect } from "./redirect";
 export { folderCrumbs } from "./folders";
 export type { FolderCrumb } from "./folders";

@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { checkPassword, checkPasswordsMatch, checkRequired, PASSWORD_MIN_LENGTH, type User } from "@nuvora/core";
+import { checkDisplayName, checkPassword, checkPasswordsMatch, PASSWORD_MIN_LENGTH, type User } from "@nuvora/core";
 import { client } from "../../nuvora";
 import { FormError, TextField } from "../../components/Field";
 import { setSessionUser, useUser } from "../../lib/session";
@@ -21,7 +21,7 @@ export function SettingsAccount() {
 
 function Profile({ user }: { user: User }) {
   const save = useMutation({ mutationFn: client.updateMe, onSuccess: setSessionUser });
-  const form = useForm({ display_name: user.display_name }, (v) => ({ display_name: checkRequired(v.display_name, "your name") }), save.reset);
+  const form = useForm({ display_name: user.display_name }, (v) => ({ display_name: checkDisplayName(v.display_name, "your name") }), save.reset);
   const failed = serverError(save.error, ["display_name"]);
   return (
     <section className="settings-section" aria-labelledby="profile">

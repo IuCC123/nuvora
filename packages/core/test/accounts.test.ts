@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   ApiError,
+  checkDisplayName,
   checkPassword,
   checkPasswordsMatch,
   checkUsername,
@@ -109,6 +110,13 @@ test("form checks", () => {
   expect(checkPasswordsMatch("long enough", "")).toBe("Enter the password again.");
   expect(checkPasswordsMatch("long enough", "long enougj")).toBe("The passwords don't match.");
   expect(checkPasswordsMatch("long enough", "long enough")).toBeNull();
+});
+
+test("display names follow the server's 1 to 64 character rule", () => {
+  expect(checkDisplayName("   ", "your name")).toBe("Enter your name.");
+  expect(checkDisplayName("Jamie Rivera", "your name")).toBeNull();
+  expect(checkDisplayName(`  ${"é".repeat(64)}  `, "your name")).toBeNull();
+  expect(checkDisplayName("é".repeat(65), "your name")).toBe("Use 64 characters or fewer.");
 });
 
 test("safeRedirect keeps in-app paths only", () => {

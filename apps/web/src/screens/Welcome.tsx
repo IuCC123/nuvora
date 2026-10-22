@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { checkPassword, checkPasswordsMatch, checkRequired, checkUsername, PASSWORD_MIN_LENGTH, queryKeys } from "@nuvora/core";
+import { checkDisplayName, checkPassword, checkPasswordsMatch, checkRequired, checkUsername, PASSWORD_MIN_LENGTH, queryKeys } from "@nuvora/core";
 import { client, queries } from "../nuvora";
 import { AuthScreen } from "../components/AuthScreen";
 import { FormError, TextField } from "../components/Field";
@@ -34,7 +34,7 @@ export function WelcomeAccount() {
   const form = useForm(
     { display_name: "", username: "", password: "", confirm: "" },
     (v) => ({
-      display_name: checkRequired(v.display_name, "your name"),
+      display_name: checkDisplayName(v.display_name, "your name"),
       username: checkUsername(v.username),
       password: checkPassword(v.password),
       confirm: checkPasswordsMatch(v.password, v.confirm),
@@ -54,7 +54,13 @@ export function WelcomeAccount() {
           noValidate
           onSubmit={form.submit((v) => setup.mutate({ display_name: v.display_name.trim(), username: v.username, password: v.password }))}
         >
-          <TextField label="Your name" autoComplete="name" autoFocus {...form.field("display_name")} />
+          <TextField
+            label="Your name"
+            autoComplete="name"
+            autoFocus
+            {...form.field("display_name")}
+            error={form.error("display_name") ?? failed.field.display_name}
+          />
           <TextField
             label="Username"
             autoComplete="username"
