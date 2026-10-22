@@ -361,9 +361,9 @@ pub(crate) fn home(conn: &Connection, user: UserId) -> rusqlite::Result<Home> {
 /// Present movies, as `d`, with their poster as `p` and user `?1`'s watch
 /// state as `w`.
 const CARDS: &str = "SELECT d.id, d.kind, d.title, d.year, d.added_at, d.sort_title, \
-    p.hash, p.width, p.height, p.placeholder, \
+    COALESCE(p.hash, cb.hash), COALESCE(p.width, cb.width), COALESCE(p.height, cb.height), COALESCE(p.placeholder, cb.placeholder), \
     w.file_id, w.position_ms, w.duration_ms, w.play_count, w.last_watched_at, w.updated_at \
-    FROM item_display d LEFT JOIN item_artwork p ON p.item_id = d.id AND p.role = 'poster' \
+    FROM item_display d LEFT JOIN item_artwork p ON p.item_id = d.id AND p.role = 'poster' LEFT JOIN item_artwork cb ON cb.item_id = d.id AND cb.role = 'backdrop' \
     LEFT JOIN watch_state w ON w.user_id = ?1 AND w.item_id = d.id \
     WHERE d.library_id IN (SELECT id FROM library WHERE kind = 'movies') AND d.missing_since IS NULL";
 
@@ -521,10 +521,10 @@ fn recently_added(
     let fetch = i64::from(limit) + 1;
     let select = format!(
         "{RECENT}SELECT d.id, d.kind, d.title, d.year, r.at, d.sort_title, \
-         p.hash, p.width, p.height, p.placeholder, \
+         COALESCE(p.hash, cb.hash), COALESCE(p.width, cb.width), COALESCE(p.height, cb.height), COALESCE(p.placeholder, cb.placeholder), \
          w.file_id, w.position_ms, w.duration_ms, w.play_count, w.last_watched_at, w.updated_at \
          FROM recent r JOIN item_display d ON d.id = r.id \
-         LEFT JOIN item_artwork p ON p.item_id = d.id AND p.role = 'poster' \
+         LEFT JOIN item_artwork p ON p.item_id = d.id AND p.role = 'poster' LEFT JOIN item_artwork cb ON cb.item_id = d.id AND cb.role = 'backdrop' \
          LEFT JOIN watch_state w ON w.user_id = ?1 AND w.item_id = d.id"
     );
     let order = "ORDER BY r.at DESC, d.id DESC";
@@ -585,9 +585,9 @@ pub(crate) fn card_by_id(
     use rusqlite::OptionalExtension;
     conn.prepare_cached(
         "SELECT d.id, d.kind, d.title, d.year, d.added_at, d.sort_title, \
-         p.hash, p.width, p.height, p.placeholder, \
+         COALESCE(p.hash, cb.hash), COALESCE(p.width, cb.width), COALESCE(p.height, cb.height), COALESCE(p.placeholder, cb.placeholder), \
          w.file_id, w.position_ms, w.duration_ms, w.play_count, w.last_watched_at, w.updated_at \
-         FROM item_display d LEFT JOIN item_artwork p ON p.item_id = d.id AND p.role = 'poster' \
+         FROM item_display d LEFT JOIN item_artwork p ON p.item_id = d.id AND p.role = 'poster' LEFT JOIN item_artwork cb ON cb.item_id = d.id AND cb.role = 'backdrop' \
          LEFT JOIN watch_state w ON w.user_id = ?1 AND w.item_id = d.id WHERE d.id = ?2",
     )?
     .query_row([user.0, id.0], card)

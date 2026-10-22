@@ -1,8 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { PosterCard } from "@nuvora/core";
-import { Artwork } from "./Artwork";
 import { CheckIcon, PlayIcon } from "./Icon";
-import { TitleCard } from "./TitleCard";
+import { CardArt } from "./CardArt";
 
 /**
  * A poster that links to what it shows: a movie's or a show's page. An episode
@@ -14,7 +13,7 @@ export function PosterCardView({ card }: { card: PosterCard }) {
   const second = card.subtitle ?? (card.year != null ? String(card.year) : " ");
   const frame = (
     <span className="poster-frame">
-      {card.poster ? <Artwork image={card.poster} size="small" alt="" /> : <TitleCard title={card.title} year={card.year} />}
+      <CardArt image={card.poster} title={card.title} year={card.kind === "episode" ? null : card.year} />
       <PosterMarks progress={card.progress ?? null} watched={card.watched} />
       {card.kind === "show" && !card.watched && card.unwatched_count != null && card.unwatched_count > 0 && (
         <span className="poster-count" aria-hidden>

@@ -19,7 +19,8 @@ import { Artwork } from "../components/Artwork";
 import { CheckIcon, ChevronDownIcon, PlayIcon } from "../components/Icon";
 import { Menu, MenuRadio } from "../components/Menu";
 import { PosterMarks } from "../components/PosterCard";
-import { TitleCard, titleCardVars } from "../components/TitleCard";
+import { CardArt } from "../components/CardArt";
+import { titleCardVars } from "../components/TitleCard";
 import { cachedCard } from "../lib/cachedCard";
 import { hasInteracted } from "../lib/interacted";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
@@ -70,7 +71,7 @@ export function ShowScreen() {
       {head && (
         <div className="detail-content show-head">
           <div className="detail-poster">
-            {head.poster ? <Artwork image={head.poster} size="large" alt="" eager /> : <TitleCard title={head.title} year={show ? null : card?.year} large />}
+            <CardArt image={head.poster ?? show?.backdrop} title={head.title} year={show ? null : card?.year} large eager />
             {show && <PosterMarks progress={null} watched={show.watched_count === show.episode_count && show.episode_count > 0} />}
           </div>
           <div className="detail-info">

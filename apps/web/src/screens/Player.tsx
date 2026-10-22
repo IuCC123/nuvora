@@ -109,7 +109,7 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
       startAt={startAt}
       subtitleTracks={version?.media?.subtitles ?? NO_TRACKS}
       audioLanguage={version?.media ? audioLanguage(version.media.audio) : null}
-      subtitleScope={`movie:${id}`}
+      subtitleScope={episode ? `show:${episode.show_id}` : `movie:${id}`}
       notice={notice}
       onBack={back}
       onFailed={() => setFailed(true)}

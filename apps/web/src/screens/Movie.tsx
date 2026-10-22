@@ -16,7 +16,8 @@ import { cachedCard } from "../lib/cachedCard";
 import { Artwork } from "../components/Artwork";
 import { CheckIcon, PlayIcon, RestartIcon } from "../components/Icon";
 import { Notice } from "../components/Notice";
-import { TitleCard, titleCardVars } from "../components/TitleCard";
+import { CardArt } from "../components/CardArt";
+import { titleCardVars } from "../components/TitleCard";
 import { hasInteracted } from "../lib/interacted";
 import { languageName } from "../lib/languageName";
 import { playState } from "../lib/playState";
@@ -67,7 +68,7 @@ export function MovieScreen() {
       {head && (
         <div className="detail-content">
           <div className="detail-poster">
-            {head.poster ? <Artwork image={head.poster} size="large" alt="" eager /> : <TitleCard title={head.title} year={head.year} large />}
+            <CardArt image={head.poster ?? head.backdrop} title={head.title} year={head.year} large eager />
             {movie && <PosterMarks progress={progressOf(movie)} watched={movie.watch.watched} />}
           </div>
           <div className="detail-info">

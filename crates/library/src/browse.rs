@@ -357,10 +357,10 @@ fn entries(
     let rows: Vec<(Card, Option<String>, i64, Option<i64>)> = conn
         .prepare_cached(
             "SELECT d.id, d.kind, d.title, d.year, d.added_at, d.sort_title, \
-             p.hash, p.width, p.height, p.placeholder, \
+             COALESCE(p.hash, cb.hash), COALESCE(p.width, cb.width), COALESCE(p.height, cb.height), COALESCE(p.placeholder, cb.placeholder), \
              w.file_id, w.position_ms, w.duration_ms, w.play_count, w.last_watched_at, w.updated_at, \
              (SELECT max(f.duration_ms) FROM media_file f WHERE f.item_id = d.id) \
-             FROM item_display d LEFT JOIN item_artwork p ON p.item_id = d.id AND p.role = 'poster' \
+             FROM item_display d LEFT JOIN item_artwork p ON p.item_id = d.id AND p.role = 'poster' LEFT JOIN item_artwork cb ON cb.item_id = d.id AND cb.role = 'backdrop' \
              LEFT JOIN watch_state w ON w.user_id = ?1 AND w.item_id = d.id \
              WHERE d.library_id = ?2 AND d.kind = ?3 AND d.missing_since IS NULL",
         )?

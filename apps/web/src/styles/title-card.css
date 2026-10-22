@@ -81,3 +81,32 @@
   margin-top: 10px;
   font-size: var(--nv-title-card-type-year-large);
 }
+
+/*
+ * Frame card: a frame from the video stands in for a missing poster. The
+ * landscape frame is cropped to fill; a scrim from the bottom keeps the
+ * lettering readable over any picture.
+ */
+.frame-card {
+  background: var(--nv-color-surface);
+}
+
+.frame-card > .artwork-fill {
+  z-index: 0;
+}
+
+.frame-card::before {
+  z-index: 1;
+  opacity: 0.12;
+}
+
+.frame-card::after {
+  z-index: 1;
+  background:
+    linear-gradient(to top, rgb(0 0 0 / 0.88) 0%, rgb(0 0 0 / 0.55) 30%, rgb(0 0 0 / 0) 58%),
+    radial-gradient(130% 95% at 50% 30%, transparent 60%, var(--nv-title-card-vignette));
+}
+
+.frame-card > .title-card-text {
+  z-index: 2;
+}
