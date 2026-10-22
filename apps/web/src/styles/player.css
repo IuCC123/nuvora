@@ -97,7 +97,8 @@
   margin-left: 46%;
 }
 
-.player-pulse[data-kind="volume"] {
+.player-pulse[data-kind="volume"],
+.player-pulse[data-kind^="subtitles"] {
   height: 56px;
   padding: 0 22px 0 18px;
 }
@@ -143,28 +144,34 @@
 .player-top,
 .player-bottom {
   position: relative;
-  isolation: isolate;
   pointer-events: auto;
   transition: transform var(--nv-motion-duration-base) var(--nv-motion-easing-enter);
 }
 
-.player-top::before,
-.player-bottom::before {
-  content: "";
+/* The scrims are their own layer under the subtitles, so cues stay pure white while the controls show. */
+.player-scrim {
   position: absolute;
-  z-index: -1;
-  inset: 0;
+  left: 0;
+  right: 0;
   pointer-events: none;
+  transition: opacity var(--nv-motion-duration-fast) var(--nv-motion-easing-enter);
 }
 
-.player-top::before {
-  bottom: -64px;
+.player-scrim[data-edge="top"] {
+  top: 0;
+  height: 128px;
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.62), transparent);
 }
 
-.player-bottom::before {
-  top: -120px;
+.player-scrim[data-edge="bottom"] {
+  bottom: 0;
+  height: calc(var(--player-bar, 118px) + 120px);
   background: linear-gradient(0deg, var(--player-scrim) 0%, rgba(0, 0, 0, 0.62) 50%, transparent);
+}
+
+.player[data-controls="hidden"] .player-scrim {
+  opacity: 0;
+  transition: opacity var(--nv-motion-duration-slow) var(--nv-motion-easing-exit);
 }
 
 .player[data-controls="hidden"] .player-chrome {

@@ -1,19 +1,30 @@
 import { useMutation } from "@tanstack/react-query";
-import { checkDisplayName, checkPassword, checkPasswordsMatch, PASSWORD_MIN_LENGTH, type User } from "@nuvora/core";
+import {
+  checkDisplayName,
+  checkPassword,
+  checkPasswordsMatch,
+  LANGUAGES,
+  PASSWORD_MIN_LENGTH,
+  preferredLanguage,
+  type SubtitleMode,
+  type User,
+} from "@nuvora/core";
 import { client } from "../../nuvora";
-import { FormError, TextField } from "../../components/Field";
+import { FormError, SelectField, TextField } from "../../components/Field";
+import { languageName } from "../../lib/languageName";
 import { setSessionUser, useUser } from "../../lib/session";
 import { serverError } from "../../lib/serverError";
 import { useForm } from "../../lib/useForm";
 import { Saved, SettingsPage } from "./SettingsPage";
 
-/** Every user's own name and password. */
+/** Every user's own name, password and subtitle preferences. */
 export function SettingsAccount() {
   const user = useUser();
   if (!user) return null;
   return (
     <SettingsPage title="Account" lede={`You're signed in as ${user.username}.`}>
       <Profile user={user} />
+      <Subtitles user={user} />
       <Password />
     </SettingsPage>
   );
@@ -40,6 +51,63 @@ function Profile({ user }: { user: User }) {
           {...form.field("display_name")}
           error={form.error("display_name") ?? failed.field.display_name}
         />
+        <FormError message={failed.form} />
+        <div className="form-actions">
+          <button type="submit" className="btn btn-primary" disabled={!form.dirty || save.isPending} aria-busy={save.isPending}>
+            Save
+          </button>
+          <Saved show={save.isSuccess && !form.dirty} />
+        </div>
+      </form>
+    </section>
+  );
+}
+
+const MODES: Record<SubtitleMode, { label: string; hint: string }> = {
+  auto: { label: "Auto", hint: "On when the audio isn't in your language, or when the file marks a track to show." },
+  always: { label: "Always", hint: "On whenever there's a track in your language, or one the file marks to show." },
+  off: { label: "Off", hint: "Off until you turn them on in the player." },
+};
+
+/** When subtitles come on, and in which language. A choice made in the player still wins for that show or movie. */
+function Subtitles({ user }: { user: User }) {
+  const save = useMutation({ mutationFn: client.updateMe, onSuccess: setSessionUser });
+  const initial = { subtitle_mode: user.subtitle_mode as string, subtitle_language: user.subtitle_language ?? "" };
+  const form = useForm(initial, () => ({}), save.reset);
+  const failed = serverError(save.error, ["subtitle_language"]);
+  const device = preferredLanguage(null, navigator.language);
+  const mode = form.values.subtitle_mode as SubtitleMode;
+  const languages = LANGUAGES.map((l) => ({ code: l.code, name: languageName(l.code) })).sort((a, b) => a.name.localeCompare(b.name));
+  return (
+    <section className="settings-section" aria-labelledby="subtitles">
+      <h2 id="subtitles">Subtitles</h2>
+      <form
+        className="form settings-form"
+        noValidate
+        onSubmit={form.submit((v) =>
+          save.mutate(
+            { subtitle_mode: v.subtitle_mode as SubtitleMode, subtitle_language: v.subtitle_language || null },
+            { onSuccess: (saved) => form.reset({ subtitle_mode: saved.subtitle_mode, subtitle_language: saved.subtitle_language ?? "" }) },
+          ),
+        )}
+      >
+        <div className="form-row">
+          <SelectField label="Subtitles" hint={MODES[mode].hint} {...form.field("subtitle_mode")}>
+            {(Object.keys(MODES) as SubtitleMode[]).map((m) => (
+              <option key={m} value={m}>
+                {MODES[m].label}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField label="Preferred language" {...form.field("subtitle_language")} error={failed.field.subtitle_language}>
+            <option value="">{device ? `Device language (${languageName(device)})` : "Device language"}</option>
+            {languages.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.name}
+              </option>
+            ))}
+          </SelectField>
+        </div>
         <FormError message={failed.form} />
         <div className="form-actions">
           <button type="submit" className="btn btn-primary" disabled={!form.dirty || save.isPending} aria-busy={save.isPending}>

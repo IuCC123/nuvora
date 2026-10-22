@@ -1,18 +1,25 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useCanGoBack, useNavigate, useParams, useRouter, useRouterState, useSearch } from "@tanstack/react-router";
-import { formatClock } from "@nuvora/core";
+import { audioLanguage, formatClock, subtitleLabel, type SubtitleTrack } from "@nuvora/core";
 import { client, queries } from "../nuvora";
-import { ArrowLeftIcon, Back10Icon, Forward10Icon, FullscreenIcon, PauseIcon, PipIcon, PlayIcon, SpinIcon, VolumeIcon } from "../components/Icon";
+import { ArrowLeftIcon, Back10Icon, Forward10Icon, FullscreenIcon, PauseIcon, PipIcon, PlayIcon, SpinIcon, SubtitlesIcon, VolumeIcon } from "../components/Icon";
 import { Notice, type NoticeText } from "../components/Notice";
+import { PlainSubtitles } from "../components/player/PlainSubtitles";
 import { Scrubber } from "../components/player/Scrubber";
+import { StyledSubtitles } from "../components/player/StyledSubtitles";
+import { SubtitleMenu } from "../components/player/SubtitleMenu";
+import { useSubtitles } from "../components/player/useSubtitles";
 import { Volume } from "../components/player/Volume";
+import { languageName } from "../lib/languageName";
 import { fileGone, playerFailed, playState } from "../lib/playState";
+import { loadSubtitleStyle, saveSubtitleStyle, type SubtitleScope, type SubtitleStyle } from "../lib/subtitleMemory";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useMediaState } from "../lib/useMediaState";
 import { useProgressReporting } from "../lib/useProgressReporting";
 import { loadVolume, saveVolume } from "../lib/volumeMemory";
 import "../styles/player.css";
+import "../styles/subtitles.css";
 
 /** Controls fade after this long of playback without input. */
 const AUTO_HIDE_MS = 3_000;
@@ -22,7 +29,7 @@ const PULSE_MS = 650;
 const SKIP_SECONDS = 10;
 const VOLUME_STEP = 0.1;
 /** Held down, these would flip back and forth; arrows keep repeating as steps. */
-const TOGGLE_KEYS = new Set([" ", "k", "m", "f", "Escape"]);
+const TOGGLE_KEYS = new Set([" ", "k", "m", "f", "c", "Escape"]);
 
 /**
  * The Nuvora player: the whole window is the picture, with a top bar (back,
@@ -76,6 +83,9 @@ export function Player() {
       year={movie?.year}
       src={src}
       startAt={startAt}
+      subtitleTracks={version?.media?.subtitles ?? NO_TRACKS}
+      audioLanguage={version?.media ? audioLanguage(version.media.audio) : null}
+      subtitleScope={`movie:${id}`}
       notice={notice}
       onBack={back}
       onFailed={() => setFailed(true)}
@@ -83,6 +93,8 @@ export function Player() {
     />
   );
 }
+
+const NO_TRACKS: SubtitleTrack[] = [];
 
 interface PlayerViewProps {
   itemId: number;
@@ -92,15 +104,19 @@ interface PlayerViewProps {
   src: string | undefined;
   /** Seconds. Read once: the URL keeps moving with playback after that. */
   startAt: number | undefined;
+  subtitleTracks: readonly SubtitleTrack[];
+  audioLanguage: string | null;
+  /** What a subtitle choice is remembered for: the show for an episode, else the movie. */
+  subtitleScope: SubtitleScope;
   notice: NoticeText | undefined;
   onBack: () => void;
   onFailed: () => void;
   onPosition: (positionMs: number) => void;
 }
 
-type PulseKind = "play" | "pause" | "back" | "forward" | "volume";
+type PulseKind = "play" | "pause" | "back" | "forward" | "volume" | "subtitles-on" | "subtitles-off";
 
-function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, notice, onBack, onFailed, onPosition }: PlayerViewProps) {
+function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, subtitleTracks, audioLanguage, subtitleScope, notice, onBack, onFailed, onPosition }: PlayerViewProps) {
   const [startAt] = useState(initialStart);
   const root = useRef<HTMLDivElement>(null);
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
@@ -108,18 +124,26 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
   const [ready, setReady] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [showDuration, setShowDuration] = useState(false);
-  const [pulse, setPulse] = useState<{ kind: PulseKind; n: number } | null>(null);
-  const [held, setHeld] = useState({ focus: false, hover: false, drag: false });
+  const [pulse, setPulse] = useState<{ kind: PulseKind; n: number; label?: string } | null>(null);
+  const [held, setHeld] = useState({ focus: false, hover: false, drag: false, menu: false });
   const { awake, wake, sleep } = useAwake(AUTO_HIDE_MS);
   const buffering = useHeldFor(media.starved && !!src, SPINNER_DELAY_MS);
   const lastPointer = useRef("mouse");
   useProgressReporting(src ? video : null, itemId, fileId, onPosition);
   useReleaseStream(video);
+  const subtitles = useSubtitles(fileId, subtitleTracks, audioLanguage, subtitleScope);
+  const [subtitleStyle, setSubtitleStyle] = useState(loadSubtitleStyle);
+  const changeSubtitleStyle = (style: SubtitleStyle) => {
+    setSubtitleStyle(style);
+    saveSubtitleStyle(style);
+  };
+  const holdForMenu = useCallback((open: boolean) => setHeld((h) => (h.menu === open ? h : { ...h, menu: open })), []);
+  const bar = useBarHeight(root, !!src && !notice);
 
   const known = Number.isFinite(media.duration) && media.duration > 0;
   // iPhone Safari has no element full screen, only the video's own player.
   const videoFullscreen = (video as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null)?.webkitEnterFullscreen;
-  const visible = !!notice || awake || media.paused || held.focus || held.hover || held.drag;
+  const visible = !!notice || awake || media.paused || held.focus || held.hover || held.drag || held.menu;
   const hold = (key: keyof typeof held, value: boolean) => setHeld((h) => (h[key] === value ? h : { ...h, [key]: value }));
 
   // Volume is applied before the element can start playing, so a quiet setting never blips at full volume.
@@ -135,8 +159,8 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
   }, []);
 
   const pulseTimer = useRef<number>(undefined);
-  const flash = (kind: PulseKind) => {
-    setPulse((p) => ({ kind, n: (p?.n ?? 0) + 1 }));
+  const flash = (kind: PulseKind, label?: string) => {
+    setPulse((p) => ({ kind, n: (p?.n ?? 0) + 1, ...(label && { label }) }));
     window.clearTimeout(pulseTimer.current);
     pulseTimer.current = window.setTimeout(() => setPulse(null), PULSE_MS);
   };
@@ -188,6 +212,10 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
         }
       }
     },
+    subtitles(track: SubtitleTrack | null) {
+      if (track) flash("subtitles-on", subtitleLabel(track, languageName).name);
+      else flash("subtitles-off", "Subtitles off");
+    },
     pip() {
       if (!video) return;
       if (document.pictureInPictureElement) void document.exitPictureInPicture();
@@ -226,6 +254,8 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
       flash("volume");
     } else if (key === "f") {
       actions.fullscreen();
+    } else if (key === "c" && subtitles.tracks.some((t) => t.renderable)) {
+      actions.subtitles(e.shiftKey ? subtitles.cycle() : subtitles.toggle());
     } else if (/^[0-9]$/.test(key)) {
       actions.seek((media.duration * Number(key)) / 10);
     } else {
@@ -296,6 +326,20 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
         />
       )}
 
+      <div className="player-scrim" data-edge="top" aria-hidden />
+      {src && !notice && <div className="player-scrim" data-edge="bottom" aria-hidden />}
+      {video && subtitles.render.kind === "plain" && <PlainSubtitles video={video} cues={subtitles.render.cues} style={subtitleStyle} />}
+      {video && subtitles.render.kind === "styled" && (
+        <StyledSubtitles
+          video={video}
+          track={subtitles.render.track}
+          content={subtitles.render.content}
+          fonts={subtitles.render.fonts}
+          onReady={subtitles.styledReady}
+          onFailed={subtitles.styledFailed}
+        />
+      )}
+
       <div className="player-center" aria-hidden>
         {buffering && !notice && (
           <span className="player-spinner">
@@ -308,6 +352,12 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
             {pulse.kind === "pause" && <PauseIcon size={34} />}
             {pulse.kind === "back" && <Back10Icon size={36} />}
             {pulse.kind === "forward" && <Forward10Icon size={36} />}
+            {(pulse.kind === "subtitles-on" || pulse.kind === "subtitles-off") && (
+              <>
+                <SubtitlesIcon on={pulse.kind === "subtitles-on"} size={26} />
+                <span className="player-pulse-label">{pulse.label}</span>
+              </>
+            )}
             {pulse.kind === "volume" && (
               <>
                 <VolumeIcon level={level} size={28} />
@@ -342,7 +392,7 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
         </header>
 
         {src && !notice && (
-          <div className="player-bottom" onPointerEnter={(e) => e.pointerType === "mouse" && hold("hover", true)} onPointerLeave={() => hold("hover", false)}>
+          <div ref={bar} className="player-bottom" onPointerEnter={(e) => e.pointerType === "mouse" && hold("hover", true)} onPointerLeave={() => hold("hover", false)}>
             <div className="player-timeline">
               <span className="player-time">{formatClock(media.time * 1000)}</span>
               <Scrubber video={video} duration={media.duration} buffered={media.buffered} onSeek={actions.seek} onDragChange={(d) => hold("drag", d)} />
@@ -372,6 +422,9 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
                 </ControlButton>
               </div>
               <div className="player-controls-end">
+                {subtitles.tracks.length > 0 && (
+                  <SubtitleMenu subtitles={subtitles} style={subtitleStyle} onStyle={changeSubtitleStyle} onOpenChange={holdForMenu} />
+                )}
                 {pipSupported && (
                   <ControlButton label={media.pip ? "Exit picture in picture" : "Picture in picture"} tip="Picture in picture" onClick={actions.pip} pressed={media.pip}>
                     <PipIcon />
@@ -433,6 +486,20 @@ function useReleaseStream(video: HTMLVideoElement | null) {
       video.load();
     };
   }, [video]);
+}
+
+/** Publishes the bottom bar's height as `--player-bar` on the player, so subtitles can rise just clear of it. */
+function useBarHeight(root: RefObject<HTMLDivElement | null>, shown: boolean) {
+  const bar = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = bar.current;
+    const player = root.current;
+    if (!shown || !el || !player) return;
+    const observer = new ResizeObserver(() => player.style.setProperty("--player-bar", `${el.offsetHeight}px`));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [root, shown]);
+  return bar;
 }
 
 /** True until `ms` pass without a `wake()`. */

@@ -260,3 +260,24 @@ export function RestartIcon(p: IconProps) {
     </svg>
   );
 }
+
+/** A caption box: two lines of text, solid while subtitles are on. */
+export function SubtitlesIcon({ on, ...p }: IconProps & { on: boolean }) {
+  return (
+    <svg {...stroke({ size: 22, ...p })}>
+      {on ? (
+        <path
+          fillRule="evenodd"
+          fill="currentColor"
+          stroke="none"
+          d="M5 4.5h14a2.5 2.5 0 0 1 2.5 2.5v10a2.5 2.5 0 0 1-2.5 2.5H5A2.5 2.5 0 0 1 2.5 17V7A2.5 2.5 0 0 1 5 4.5zM6.75 12.1a.9.9 0 0 0 0 1.8h3.5a.9.9 0 0 0 0-1.8zm6.5 0a.9.9 0 0 0 0 1.8h4a.9.9 0 0 0 0-1.8zm-6.5 3.2a.9.9 0 0 0 0 1.8h6.5a.9.9 0 0 0 0-1.8zm9.5 0a.9.9 0 0 0 0 1.8h1a.9.9 0 0 0 0-1.8z"
+        />
+      ) : (
+        <>
+          <rect x="3" y="5" width="18" height="14" rx="2.5" />
+          <path d="M6.75 13h3.5M13.25 13h4M6.75 16.2h6.5M16.25 16.2h1" />
+        </>
+      )}
+    </svg>
+  );
+}
