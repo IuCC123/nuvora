@@ -179,9 +179,10 @@
   bottom: 0;
   left: 0;
   height: 3px;
-  overflow: hidden;
   border-radius: 0 0 var(--nv-radius-sm) var(--nv-radius-sm);
   background: rgba(0, 0, 0, 0.6);
+  /* A dark seam above the bar, so amber still reads over warm artwork. */
+  box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.55);
 }
 
 .poster-progress > span {
