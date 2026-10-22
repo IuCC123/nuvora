@@ -19,10 +19,10 @@
 //! | POST   | /api/scan                   | Request a scan (admin; coalescing)       |
 //! | GET    | /api/openapi.json           | The spec                                 |
 //!
-//! Accounts, admin, watch, and show and library page routes live in
-//! [`accounts`], [`admin`], [`watch`] and [`browse`]. Access is set by the group a route is registered in
-//! ([`Access`]), which decides both the middleware and the spec's `security`,
-//! so the two cannot disagree.
+//! Accounts, admin, watch, show and library page, and subtitle routes live in
+//! [`accounts`], [`admin`], [`watch`], [`browse`] and [`subtitles`]. Access is set
+//! by the group a route is registered in ([`Access`]), which decides both the
+//! middleware and the spec's `security`, so the two cannot disagree.
 //!
 //! Every error body is [`ErrorBody`]. State-changing requests (anything but
 //! GET/HEAD/OPTIONS) must send `Content-Type: application/json`, even with an
@@ -31,6 +31,7 @@
 mod accounts;
 mod admin;
 mod browse;
+mod subtitles;
 #[cfg(test)]
 mod test_app;
 mod watch;
@@ -51,7 +52,7 @@ use nuvora_library::{
 };
 use nuvora_media::{
     AudioCodec, AudioSupport, Container, DeviceProfile, HdrFormat, Incompatibility, MediaInfo,
-    MediaTools, PlaybackDecision, SubtitleCodec, VideoCodec, VideoSupport,
+    MediaTools, PlaybackDecision, VideoCodec, VideoSupport,
 };
 use serde::{Deserialize, Serialize};
 use tower::ServiceExt;
@@ -156,6 +157,9 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(watch::put_watched, watch::delete_watched))
         .routes(routes!(get_image))
         .routes(routes!(stream_file))
+        .routes(routes!(subtitles::get_subtitle))
+        .routes(routes!(subtitles::list_fonts))
+        .routes(routes!(subtitles::get_font))
         .routes(routes!(get_scan))
         .routes(routes!(accounts::logout))
         .routes(routes!(accounts::update_me));
@@ -420,7 +424,7 @@ pub struct MediaDetails {
     pub bitrate: Option<u64>,
     pub video: Vec<VideoTrack>,
     pub audio: Vec<AudioTrack>,
-    pub subtitles: Vec<SubtitleTrack>,
+    pub subtitles: Vec<subtitles::SubtitleTrack>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -446,16 +450,6 @@ pub struct AudioTrack {
     pub language: Option<String>,
     pub title: Option<String>,
     pub is_default: bool,
-}
-
-#[derive(Serialize, ToSchema)]
-pub struct SubtitleTrack {
-    pub index: u32,
-    pub codec: String,
-    pub language: Option<String>,
-    pub title: Option<String>,
-    pub is_default: bool,
-    pub is_forced: bool,
 }
 
 /// What pressing Play does on the requesting device. Step 3 adds `hls`.
@@ -991,14 +985,7 @@ impl From<MediaInfo> for MediaDetails {
             subtitles: info
                 .subtitles
                 .into_iter()
-                .map(|s| SubtitleTrack {
-                    index: s.index,
-                    codec: subtitle_codec_name(&s.codec),
-                    language: s.language,
-                    title: s.title,
-                    is_default: s.is_default,
-                    is_forced: s.is_forced,
-                })
+                .map(subtitles::SubtitleTrack::from)
                 .collect(),
         }
     }
@@ -1162,18 +1149,6 @@ fn audio_codec_name(c: &AudioCodec) -> String {
         AudioCodec::Dts => "DTS".into(),
         AudioCodec::Pcm => "PCM".into(),
         AudioCodec::Other(name) => name.to_uppercase(),
-    }
-}
-
-fn subtitle_codec_name(c: &SubtitleCodec) -> String {
-    match c {
-        SubtitleCodec::Srt => "SRT".into(),
-        SubtitleCodec::Ass => "ASS".into(),
-        SubtitleCodec::WebVtt => "WebVTT".into(),
-        SubtitleCodec::MovText => "MP4 text".into(),
-        SubtitleCodec::Pgs => "PGS".into(),
-        SubtitleCodec::VobSub => "VobSub".into(),
-        SubtitleCodec::Other(name) => name.to_uppercase(),
     }
 }
 

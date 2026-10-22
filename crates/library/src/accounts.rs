@@ -33,6 +33,34 @@ impl Role {
     }
 }
 
+/// When the player turns subtitles on for this user.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SubtitleMode {
+    #[default]
+    Auto,
+    Always,
+    Off,
+}
+
+impl SubtitleMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            SubtitleMode::Auto => "auto",
+            SubtitleMode::Always => "always",
+            SubtitleMode::Off => "off",
+        }
+    }
+
+    fn parse(s: &str) -> Option<SubtitleMode> {
+        match s {
+            "auto" => Some(SubtitleMode::Auto),
+            "always" => Some(SubtitleMode::Always),
+            "off" => Some(SubtitleMode::Off),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {
     pub id: UserId,
@@ -44,6 +72,9 @@ pub struct User {
     pub disabled: bool,
     /// Unix ms of the latest request from any of the user's sessions.
     pub last_seen_at: Option<i64>,
+    pub subtitle_mode: SubtitleMode,
+    /// ISO 639-2; `None` means the device's language.
+    pub subtitle_language: Option<String>,
 }
 
 /// A user to create. `username` is unique ignoring case.
@@ -63,6 +94,9 @@ pub struct UserChanges {
     pub role: Option<Role>,
     pub disabled: Option<bool>,
     pub password_hash: Option<String>,
+    pub subtitle_mode: Option<SubtitleMode>,
+    /// `Some(None)` clears the language.
+    pub subtitle_language: Option<Option<String>>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -114,25 +148,31 @@ const SERVER_NAME: &str = "server_name";
 
 const USER_SELECT: &str = "SELECT u.id, u.username, u.display_name, u.role, u.created_at, \
      u.disabled_at IS NOT NULL, \
-     (SELECT max(s.last_seen_at) FROM session s WHERE s.user_id = u.id) \
+     (SELECT max(s.last_seen_at) FROM session s WHERE s.user_id = u.id), \
+     u.subtitle_mode, u.subtitle_language \
      FROM user u";
 
 fn user_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<User> {
     let role: String = r.get(3)?;
+    let subtitle_mode: String = r.get(7)?;
+    let unknown = |column: usize, what: &str, value: &str| {
+        rusqlite::Error::FromSqlConversionFailure(
+            column,
+            rusqlite::types::Type::Text,
+            format!("unknown {what} {value:?}").into(),
+        )
+    };
     Ok(User {
         id: UserId(r.get(0)?),
         username: r.get(1)?,
         display_name: r.get(2)?,
-        role: Role::parse(&role).ok_or_else(|| {
-            rusqlite::Error::FromSqlConversionFailure(
-                3,
-                rusqlite::types::Type::Text,
-                format!("unknown role {role:?}").into(),
-            )
-        })?,
+        role: Role::parse(&role).ok_or_else(|| unknown(3, "role", &role))?,
         created_at: r.get(4)?,
         disabled: r.get(5)?,
         last_seen_at: r.get(6)?,
+        subtitle_mode: SubtitleMode::parse(&subtitle_mode)
+            .ok_or_else(|| unknown(7, "subtitle mode", &subtitle_mode))?,
+        subtitle_language: r.get(8)?,
     })
 }
 
@@ -335,6 +375,18 @@ impl Library {
                         tx.execute("UPDATE user SET disabled_at = NULL WHERE id = ?1", [id.0])?;
                     }
                     None => {}
+                }
+                if let Some(mode) = changes.subtitle_mode {
+                    tx.execute(
+                        "UPDATE user SET subtitle_mode = ?1 WHERE id = ?2",
+                        params![mode.as_str(), id.0],
+                    )?;
+                }
+                if let Some(language) = &changes.subtitle_language {
+                    tx.execute(
+                        "UPDATE user SET subtitle_language = ?1 WHERE id = ?2",
+                        params![language, id.0],
+                    )?;
                 }
                 if let Some(hash) = &changes.password_hash {
                     tx.execute(

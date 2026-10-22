@@ -53,6 +53,10 @@ pub struct User {
     pub username: String,
     pub display_name: String,
     pub role: Role,
+    pub subtitle_mode: SubtitleMode,
+    /// The language subtitles should be in, ISO 639-2 (`"spa"`). `None`
+    /// means the device's language.
+    pub subtitle_language: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, ToSchema, Clone, Copy, PartialEq, Eq, Debug)]
@@ -60,6 +64,19 @@ pub struct User {
 pub enum Role {
     Admin,
     Member,
+}
+
+/// When the player turns subtitles on. The track chooser in `@nuvora/core`
+/// applies it.
+#[derive(Serialize, Deserialize, ToSchema, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum SubtitleMode {
+    /// The preferred language when the audio is in another one, else a
+    /// forced track, else a default-flagged track.
+    Auto,
+    /// The preferred language, else a default-flagged track.
+    Always,
+    Off,
 }
 
 /// Creates the first admin. Usernames are 1 to 32 letters, digits, `.`, `_` or
@@ -87,6 +104,22 @@ pub struct UpdateMeRequest {
     pub display_name: Option<String>,
     pub current_password: Option<String>,
     pub new_password: Option<String>,
+    pub subtitle_mode: Option<SubtitleMode>,
+    /// Three letters, ISO 639-2 (`"spa"`). `null` clears it, back to the
+    /// device's language; leaving it out keeps it.
+    #[serde(default, deserialize_with = "present")]
+    #[schema(value_type = Option<String>)]
+    pub subtitle_language: Option<Option<String>>,
+}
+
+/// `Some(value)` whenever the field is present, `null` included, so a PATCH
+/// can tell "clear it" from "leave it".
+fn present<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 #[utoipa::path(get, path = "/api/health", responses((status = 200, body = Health)))]
@@ -232,6 +265,11 @@ pub(super) async fn update_me(
             .as_deref()
             .map(valid_display_name)
             .transpose()?,
+        subtitle_mode: body.subtitle_mode.map(Into::into),
+        subtitle_language: body
+            .subtitle_language
+            .map(|language| language.as_deref().map(valid_language).transpose())
+            .transpose()?,
         ..UserChanges::default()
     };
     if let Some(new_password) = body.new_password {
@@ -339,6 +377,18 @@ pub(super) fn valid_display_name(raw: &str) -> Result<String, ApiError> {
     Ok(name.to_owned())
 }
 
+/// Three ASCII letters, an ISO 639-2 code, stored lowercased.
+fn valid_language(raw: &str) -> Result<String, ApiError> {
+    let code = raw.trim();
+    if code.len() != 3 || !code.chars().all(|c| c.is_ascii_alphabetic()) {
+        return Err(ApiError::validation(
+            "subtitle_language",
+            "Use a three-letter language code, like \"spa\"",
+        ));
+    }
+    Ok(code.to_ascii_lowercase())
+}
+
 /// At least 8 characters. The upper bound keeps hashing cheap to refuse.
 pub(super) fn valid_password(field: &str, password: String) -> Result<String, ApiError> {
     if !(8..=256).contains(&password.chars().count()) {
@@ -354,6 +404,8 @@ impl From<nuvora_library::User> for User {
             username: u.username,
             display_name: u.display_name,
             role: u.role.into(),
+            subtitle_mode: u.subtitle_mode.into(),
+            subtitle_language: u.subtitle_language,
         }
     }
 }
@@ -363,6 +415,26 @@ impl From<nuvora_library::Role> for Role {
         match r {
             nuvora_library::Role::Admin => Role::Admin,
             nuvora_library::Role::Member => Role::Member,
+        }
+    }
+}
+
+impl From<nuvora_library::SubtitleMode> for SubtitleMode {
+    fn from(m: nuvora_library::SubtitleMode) -> Self {
+        match m {
+            nuvora_library::SubtitleMode::Auto => SubtitleMode::Auto,
+            nuvora_library::SubtitleMode::Always => SubtitleMode::Always,
+            nuvora_library::SubtitleMode::Off => SubtitleMode::Off,
+        }
+    }
+}
+
+impl From<SubtitleMode> for nuvora_library::SubtitleMode {
+    fn from(m: SubtitleMode) -> Self {
+        match m {
+            SubtitleMode::Auto => nuvora_library::SubtitleMode::Auto,
+            SubtitleMode::Always => nuvora_library::SubtitleMode::Always,
+            SubtitleMode::Off => nuvora_library::SubtitleMode::Off,
         }
     }
 }
@@ -421,7 +493,14 @@ mod tests {
             state,
             json!({
                 "setup_required": false,
-                "user": {"id": 1, "username": "admin", "display_name": "Admin", "role": "admin"},
+                "user": {
+                    "id": 1,
+                    "username": "admin",
+                    "display_name": "Admin",
+                    "role": "admin",
+                    "subtitle_mode": "auto",
+                    "subtitle_language": null,
+                },
                 "server_name": "Nuvora",
             })
         );
@@ -966,5 +1045,54 @@ mod tests {
             app.login("admin", "new password").await.status,
             StatusCode::OK
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn subtitle_preferences_round_trip() {
+        let app = TestApp::new().await;
+        let cookie = app.setup_admin().await;
+        let patch = |body: serde_json::Value| {
+            let (app, cookie) = (&app, &cookie);
+            async move {
+                app.call("PATCH", "/api/auth/me", Some(cookie), Some(body))
+                    .await
+            }
+        };
+        let prefs = |user: &serde_json::Value| {
+            (
+                user["subtitle_mode"].clone(),
+                user["subtitle_language"].clone(),
+            )
+        };
+        let set = patch(json!({"subtitle_mode": "always", "subtitle_language": " SPA "})).await;
+        assert_eq!(set.status, StatusCode::OK);
+        assert_eq!(prefs(&set.json()), (json!("always"), json!("spa")));
+        let kept = patch(json!({"display_name": "Ana"})).await.json();
+        assert_eq!(prefs(&kept), (json!("always"), json!("spa")));
+        let state = app
+            .call("GET", "/api/auth/state", Some(&cookie), None)
+            .await
+            .json();
+        assert_eq!(prefs(&state["user"]), (json!("always"), json!("spa")));
+
+        let cleared = patch(json!({"subtitle_mode": "off", "subtitle_language": null}))
+            .await
+            .json();
+        assert_eq!(prefs(&cleared), (json!("off"), json!(null)));
+
+        let bad = patch(json!({"subtitle_language": "español"})).await;
+        assert_eq!(bad.status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            bad.json(),
+            json!({"code": "validation", "message": "Use a three-letter language code, like \"spa\"", "field": "subtitle_language"})
+        );
+        let unknown = patch(json!({"subtitle_mode": "sometimes"})).await;
+        assert_eq!(unknown.status, StatusCode::BAD_REQUEST);
+        assert_eq!(unknown.json()["code"], "bad_request");
+        let after = app
+            .call("GET", "/api/auth/state", Some(&cookie), None)
+            .await
+            .json();
+        assert_eq!(prefs(&after["user"]), (json!("off"), json!(null)));
     }
 }

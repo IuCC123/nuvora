@@ -22,6 +22,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0003_watch_state.sql"),
     include_str!("../migrations/0004_dolby_vision_compatibility.sql"),
     include_str!("../migrations/0005_shows.sql"),
+    include_str!("../migrations/0006_subtitle_prefs.sql"),
 ];
 
 #[derive(Debug, thiserror::Error)]

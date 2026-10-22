@@ -15,6 +15,7 @@ mod shows;
 #[cfg(test)]
 mod shows_tests;
 mod store;
+mod subtitles;
 #[cfg(test)]
 mod test_support;
 mod views;
@@ -29,7 +30,7 @@ use nuvora_media::{DeviceProfile, ImageSize, MediaTools};
 use tokio::sync::watch;
 
 pub use accounts::{
-    AccountError, Credentials, NewUser, Role, Session, TokenHash, User, UserChanges,
+    AccountError, Credentials, NewUser, Role, Session, SubtitleMode, TokenHash, User, UserChanges,
 };
 pub use browse::{
     GroupKey, IndexGroup, LibraryCursor, LibraryPage, LibraryQuery, Order, Resolution, Sort,
@@ -39,6 +40,7 @@ pub use ids::{ArtworkId, FileId, ItemId, LibraryId, ParseIdError, UserId};
 pub use libraries::{LibraryError, LibraryInfo};
 pub use scan::{ScanIssue, ScanPhase, ScanProgress, ScanState, ScanStatus, ScanSummary};
 pub use shows::{Episode, EpisodeRef, Season, SeasonSummary, Show};
+pub use subtitles::SubtitleSource;
 pub use views::{
     Artwork, Card, CardNote, CatalogRev, Cursor, EpisodeNumber, HOME_ROW_LIMIT, Home,
     InvalidCursor, Item, ItemKind, MAX_ROW_LIMIT, Movie, Row, RowKind, RowPage, StreamSource,
