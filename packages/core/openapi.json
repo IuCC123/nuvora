@@ -953,6 +953,138 @@
         }
       }
     },
+    "/api/files/{id}/fonts": {
+      "get": {
+        "summary": "The file's font attachments, in stream order. Empty for files without any\n(every MP4).",
+        "operationId": "list_fonts",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FontAttachment"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/files/{id}/fonts/{index}": {
+      "get": {
+        "summary": "One font attachment's bytes, immutable like a subtitle track. 404 when\nthe stream at `index` is not a font.",
+        "operationId": "get_font",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "font/*": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/files/{id}/stream": {
       "get": {
         "summary": "Direct play. Delegates to `tower_http::services::ServeFile` with the\ncontainer's MIME type, which implements `Range` (206 + `Content-Range`),\n`If-Range`, `Last-Modified` and `HEAD`, and streams from disk without\nbuffering. First-frame latency is then disk + network + decoder.",
@@ -1025,6 +1157,102 @@
           },
           "416": {
             "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/files/{id}/subtitles/{stream_index}": {
+      "get": {
+        "summary": "The track as text, extracted with ffmpeg on the first request and read\nfrom the server's cache after that. Answers with\n`Cache-Control: private, max-age=31536000, immutable`. 404 when the file\nhas no subtitle stream at `stream_index`; 400 when the track is not\nrenderable.",
+        "operationId": "get_subtitle",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "stream_index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Default `vtt`.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "The text format a track is delivered in.",
+              "enum": [
+                "vtt",
+                "ass"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "text/vtt": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/x-ssa": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1883,6 +2111,43 @@
           "internal"
         ]
       },
+      "FontAttachment": {
+        "type": "object",
+        "description": "A font attached to the file (Matroska attachments). Styled tracks name\nfonts that only these provide.",
+        "required": [
+          "index",
+          "file_name",
+          "mime_type",
+          "url"
+        ],
+        "properties": {
+          "file_name": {
+            "type": "string"
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The attachment's stream index: `{index}` in `url`.",
+            "minimum": 0
+          },
+          "mime_type": {
+            "type": "string",
+            "description": "`\"font/ttf\"`, `\"font/otf\"`, `\"font/collection\"`, `\"font/woff\"`, `\"font/woff2\"`."
+          },
+          "size_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "url": {
+            "type": "string",
+            "description": "`/api/files/{file_id}/fonts/{index}`. Immutable."
+          }
+        }
+      },
       "FsDir": {
         "type": "object",
         "required": [
@@ -2605,21 +2870,51 @@
         },
         "additionalProperties": false
       },
+      "SubtitleFormat": {
+        "type": "string",
+        "description": "What the track is, for choosing how to draw it. Clients treat an unknown\nformat like `other`.",
+        "enum": [
+          "srt",
+          "ass",
+          "vtt",
+          "mov_text",
+          "image",
+          "other"
+        ]
+      },
+      "SubtitleMode": {
+        "type": "string",
+        "description": "When the player turns subtitles on. The track chooser in `@nuvora/core`\napplies it.",
+        "enum": [
+          "auto",
+          "always",
+          "off"
+        ]
+      },
       "SubtitleTrack": {
         "type": "object",
+        "description": "One subtitle track of a version. Fetch a renderable one from\n`/api/files/{file_id}/subtitles/{index}`.",
         "required": [
           "index",
           "codec",
+          "format",
+          "renderable",
           "is_default",
-          "is_forced"
+          "is_forced",
+          "is_hearing_impaired"
         ],
         "properties": {
           "codec": {
-            "type": "string"
+            "type": "string",
+            "description": "Display name: `\"ASS\"`, `\"SRT\"`, `\"PGS\"`."
+          },
+          "format": {
+            "$ref": "#/components/schemas/SubtitleFormat"
           },
           "index": {
             "type": "integer",
             "format": "int32",
+            "description": "The stream index in the file: `{stream_index}` in the subtitle URL.",
             "minimum": 0
           },
           "is_default": {
@@ -2628,11 +2923,20 @@
           "is_forced": {
             "type": "boolean"
           },
+          "is_hearing_impaired": {
+            "type": "boolean",
+            "description": "Subtitles for the deaf and hard of hearing (SDH)."
+          },
           "language": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "ISO 639-2 as probed, lowercased: `\"spa\"`, `\"eng\"`."
+          },
+          "renderable": {
+            "type": "boolean",
+            "description": "The server can deliver the track as text. False for `image` and\n`other`, which need conversion."
           },
           "title": {
             "type": [
@@ -2701,6 +3005,23 @@
               "string",
               "null"
             ]
+          },
+          "subtitle_language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Three letters, ISO 639-2 (`\"spa\"`). `null` clears it, back to the\ndevice's language; leaving it out keeps it."
+          },
+          "subtitle_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SubtitleMode"
+              }
+            ]
           }
         },
         "additionalProperties": false
@@ -2758,7 +3079,8 @@
           "id",
           "username",
           "display_name",
-          "role"
+          "role",
+          "subtitle_mode"
         ],
         "properties": {
           "display_name": {
@@ -2770,6 +3092,16 @@
           },
           "role": {
             "$ref": "#/components/schemas/Role"
+          },
+          "subtitle_language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The language subtitles should be in, ISO 639-2 (`\"spa\"`). `None`\nmeans the device's language."
+          },
+          "subtitle_mode": {
+            "$ref": "#/components/schemas/SubtitleMode"
           },
           "username": {
             "type": "string"
