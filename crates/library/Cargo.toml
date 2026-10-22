@@ -1,0 +1,23 @@
+[package]
+name = "nuvora-library"
+description = "The catalog: owns the SQLite database, the scanner, and the artwork store."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+nuvora-media = { path = "../media" }
+rusqlite = { version = "0.37", features = ["bundled"] }
+tokio = { version = "1", features = ["rt", "sync", "macros", "fs"] }
+futures = "0.3"
+walkdir = "2"
+blake3 = "1"
+thiserror = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util"] }
+tempfile = "3"

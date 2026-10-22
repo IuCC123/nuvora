@@ -1,0 +1,33 @@
+[package]
+name = "nuvora-server"
+description = "The nuvora binary: config, HTTP API, OpenAPI document, embedded web app."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "nuvora"
+path = "src/main.rs"
+
+[dependencies]
+nuvora-library = { path = "../library" }
+nuvora-media = { path = "../media" }
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "fs"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["fs", "compression-br", "compression-gzip"] }
+utoipa = "5"
+utoipa-axum = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+clap = { version = "4", features = ["derive"] }
+rust-embed = { version = "8", features = ["mime-guess"] }
+blake3 = "1"
+directories = "6"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
