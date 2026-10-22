@@ -246,6 +246,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign-in for apps (the TV apps): the same check as `login`, but the
+         *     session token comes back in the body, to send as `Authorization: Bearer`.
+         *     No cookie is set.
+         */
+        post: operations["token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/files/{id}/fonts": {
         parameters: {
             query?: never;
@@ -860,6 +881,14 @@ export interface components {
             last_seen_at?: number | null;
             role: components["schemas"]["Role"];
             username: string;
+        };
+        /**
+         * @description An app's session: the token to send as `Authorization: Bearer <token>`,
+         *     valid for 30 days and renewed while it is used.
+         */
+        AppSession: {
+            token: string;
+            user: components["schemas"]["User"];
         };
         AudioSupport: {
             codec: string;
@@ -2758,6 +2787,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthState"];
+                };
+            };
+        };
+    };
+    token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppSession"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

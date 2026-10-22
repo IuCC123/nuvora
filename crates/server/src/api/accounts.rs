@@ -199,12 +199,57 @@ pub(super) async fn login(
     parts: Parts,
     JsonBody(body): JsonBody<LoginRequest>,
 ) -> Result<Response, ApiError> {
+    let user = authenticate(&state, &parts, body).await?;
+    sign_in(&state, user, &parts.headers).await
+}
+
+/// Sign-in for apps (the TV apps): the same check as `login`, but the
+/// session token comes back in the body, to send as `Authorization: Bearer`.
+/// No cookie is set.
+#[utoipa::path(
+    post,
+    path = "/api/auth/token",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, body = AppSession),
+        (status = 401, body = ErrorBody),
+        (status = 429, body = ErrorBody),
+    ),
+)]
+pub(super) async fn token(
+    State(state): State<AppState>,
+    parts: Parts,
+    JsonBody(body): JsonBody<LoginRequest>,
+) -> Result<Json<AppSession>, ApiError> {
+    let user = authenticate(&state, &parts, body).await?;
+    let token = new_session(&state, &user, &parts.headers).await?;
+    Ok(Json(AppSession {
+        token,
+        user: User::from(user),
+    }))
+}
+
+/// An app's session: the token to send as `Authorization: Bearer <token>`,
+/// valid for 30 days and renewed while it is used.
+#[derive(Serialize, ToSchema)]
+pub struct AppSession {
+    pub token: String,
+    pub user: User,
+}
+
+/// The account `body` names, when its password is right and it may sign in.
+/// Rate limited per username and per address (see `login`).
+async fn authenticate(
+    state: &AppState,
+    parts: &Parts,
+    body: LoginRequest,
+) -> Result<nuvora_library::User, ApiError> {
     let username = body.username.trim();
     // No account can have it, and the limiter must not hold it for 15 minutes.
     if username.chars().count() > MAX_USERNAME_CHARS {
         return Err(ApiError::bad_credentials());
     }
-    let keys = state.auth.sign_in_keys(username, &parts);
+    let keys = state.auth.sign_in_keys(username, parts);
     if let Some(retry_after) = state.auth.blocked_for(&keys) {
         return Err(ApiError::rate_limited(retry_after));
     }
@@ -221,7 +266,7 @@ pub(super) async fn login(
     match user {
         Some(user) if password_ok && !user.disabled => {
             state.auth.record_success(&keys);
-            sign_in(&state, user, &parts.headers).await
+            Ok(user)
         }
         _ => {
             state.auth.record_failure(&keys);
@@ -297,6 +342,17 @@ async fn sign_in(
     user: nuvora_library::User,
     headers: &HeaderMap,
 ) -> Result<Response, ApiError> {
+    let token = new_session(state, &user, headers).await?;
+    let cookie = auth::session_cookie(Some(&token), headers);
+    Ok(([(SET_COOKIE, cookie)], Json(User::from(user))).into_response())
+}
+
+/// A new session for `user`; returns its token.
+async fn new_session(
+    state: &AppState,
+    user: &nuvora_library::User,
+    headers: &HeaderMap,
+) -> Result<String, ApiError> {
     let (token, hash) = auth::new_token();
     let now = state.auth.now_ms();
     let user_agent = headers
@@ -314,8 +370,7 @@ async fn sign_in(
         )
         .await
         .map_err(ApiError::internal)?;
-    let cookie = auth::session_cookie(Some(&token), headers);
-    Ok(([(SET_COOKIE, cookie)], Json(User::from(user))).into_response())
+    Ok(token)
 }
 
 pub(super) async fn server_name(lib: &nuvora_library::Library) -> Result<String, ApiError> {
@@ -1094,5 +1149,46 @@ mod tests {
             .await
             .json();
         assert_eq!(prefs(&after["user"]), (json!("off"), json!(null)));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn apps_sign_in_for_a_bearer_token() {
+        let app = TestApp::new().await;
+        app.setup_admin().await;
+        let reply = app
+            .call(
+                "POST",
+                "/api/auth/token",
+                None,
+                Some(json!({"username": "admin", "password": ADMIN_PASSWORD})),
+            )
+            .await;
+        assert_eq!(reply.status, StatusCode::OK);
+        assert!(
+            reply.headers.get(SET_COOKIE).is_none(),
+            "apps get no cookie"
+        );
+        let body = reply.json();
+        assert_eq!(body["user"]["username"], "admin");
+        let token = body["token"].as_str().unwrap();
+        assert_eq!(token.len(), 64);
+        let home = app
+            .send(
+                Request::get("/api/home")
+                    .header(AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(home.status, StatusCode::OK);
+        let wrong = app
+            .call(
+                "POST",
+                "/api/auth/token",
+                None,
+                Some(json!({"username": "admin", "password": "nope"})),
+            )
+            .await;
+        assert_eq!(wrong.status, StatusCode::UNAUTHORIZED);
     }
 }

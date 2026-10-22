@@ -156,6 +156,7 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(accounts::auth_state))
         .routes(routes!(accounts::setup))
         .routes(routes!(accounts::login))
+        .routes(routes!(accounts::token))
         .layer(axum::extract::DefaultBodyLimit::max(PUBLIC_BODY_LIMIT));
     let mut member = OpenApiRouter::new()
         .routes(routes!(get_home))

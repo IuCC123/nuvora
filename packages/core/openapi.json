@@ -1166,6 +1166,54 @@
         }
       }
     },
+    "/api/auth/token": {
+      "post": {
+        "summary": "Sign-in for apps (the TV apps): the same check as `login`, but the\nsession token comes back in the body, to send as `Authorization: Bearer`.\nNo cookie is set.",
+        "operationId": "token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/files/{id}/fonts": {
       "get": {
         "summary": "The file's font attachments, in stream order. Empty for files without any\n(every MP4). The ETag is the file's fingerprint.",
@@ -3298,6 +3346,22 @@
           },
           "username": {
             "type": "string"
+          }
+        }
+      },
+      "AppSession": {
+        "type": "object",
+        "description": "An app's session: the token to send as `Authorization: Bearer <token>`,\nvalid for 30 days and renewed while it is used.",
+        "required": [
+          "token",
+          "user"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
           }
         }
       },
