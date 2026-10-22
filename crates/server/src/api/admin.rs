@@ -99,7 +99,6 @@ pub struct FsListing {
 
 #[derive(Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
-#[expect(dead_code, reason = "contract first; the implementation follows")]
 pub struct FsInspectQuery {
     /// An absolute folder.
     pub path: String,
@@ -328,13 +327,75 @@ pub(super) async fn list_dirs(Query(query): Query<FsQuery>) -> Result<Json<FsLis
     responses((status = 200, body = FsInspect), (status = 400, body = ErrorBody)),
 )]
 pub(super) async fn inspect_dir(
-    Query(_query): Query<FsInspectQuery>,
+    Query(query): Query<FsInspectQuery>,
 ) -> Result<Json<FsInspect>, ApiError> {
-    Err(ApiError::new(
-        StatusCode::NOT_IMPLEMENTED,
-        super::ErrorCode::Internal,
-        "Not implemented yet",
-    ))
+    tokio::task::spawn_blocking(move || inspect_folder(&query.path))
+        .await
+        .map_err(ApiError::internal)?
+        .map(Json)
+}
+
+/// Video files counted by [`inspect_folder`] before it stops.
+const INSPECT_FILES: u32 = 2_000;
+/// Directory entries read before it stops, whatever they are, so a huge
+/// tree (or a symlink loop) cannot keep the request open.
+const INSPECT_ENTRIES: u32 = 50_000;
+
+/// Counts video files under `path` as a scan would see them (hidden and
+/// extras folders skipped) and how many are named like episodes.
+fn inspect_folder(path: &str) -> Result<FsInspect, ApiError> {
+    use nuvora_media::{EpisodeName, PathClass, classify_path, is_skipped_dir};
+    let requested = PathBuf::from(path);
+    if !requested.is_absolute() {
+        return Err(ApiError::validation("path", "Use an absolute path"));
+    }
+    let root = requested
+        .canonicalize()
+        .ok()
+        .filter(|p| p.is_dir())
+        .ok_or_else(|| ApiError::validation("path", "That folder doesn't exist"))?;
+    let (mut video_files, mut episode_like, mut entries) = (0, 0, 0);
+    let mut truncated = false;
+    let mut folders = vec![root.clone()];
+    'walk: while let Some(folder) = folders.pop() {
+        let Ok(listing) = std::fs::read_dir(&folder) else {
+            continue;
+        };
+        for entry in listing.flatten() {
+            entries += 1;
+            if video_files >= INSPECT_FILES || entries >= INSPECT_ENTRIES {
+                truncated = true;
+                break 'walk;
+            }
+            let path = entry.path();
+            let Ok(rel) = path.strip_prefix(&root) else {
+                continue;
+            };
+            let Ok(meta) = std::fs::metadata(&path) else {
+                continue;
+            };
+            if meta.is_dir() {
+                if !is_skipped_dir(rel) {
+                    folders.push(path);
+                }
+            } else if classify_path(rel) == PathClass::Video {
+                video_files += 1;
+                if EpisodeName::parse(rel).is_some() {
+                    episode_like += 1;
+                }
+            }
+        }
+    }
+    Ok(FsInspect {
+        video_files,
+        episode_like,
+        suggested_kind: if episode_like * 2 > video_files {
+            LibraryKind::Shows
+        } else {
+            LibraryKind::Movies
+        },
+        truncated,
+    })
 }
 
 #[utoipa::path(get, path = "/api/admin/users", responses((status = 200, body = Vec<AdminUser>)))]

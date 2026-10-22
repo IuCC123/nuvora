@@ -151,8 +151,18 @@ impl TestApp {
     /// One second of video per folder name (`"Title (Year)"`) in the movies
     /// folder, then a scan; returns when the scan is done.
     pub async fn add_movies(&self, folders: &[&str]) {
-        let movies = self.path("movies");
-        let first = movies.join(folders[0]).join(format!("{}.mp4", folders[0]));
+        let files: Vec<String> = folders
+            .iter()
+            .map(|f| format!("movies/{f}/{f}.mp4"))
+            .collect();
+        self.clips(&files.iter().map(String::as_str).collect::<Vec<_>>());
+        self.scan().await;
+    }
+
+    /// One second of video at each path under the test directory, each
+    /// with distinct bytes (or the scan would see one file under two names).
+    pub fn clips(&self, paths: &[&str]) {
+        let first = self.path(paths[0]);
         std::fs::create_dir_all(first.parent().unwrap()).unwrap();
         let ffmpeg = std::process::Command::new("ffmpeg")
             .args(["-y", "-nostdin", "-v", "error", "-f", "lavfi", "-i"])
@@ -166,14 +176,17 @@ impl TestApp {
             .status()
             .unwrap();
         assert!(ffmpeg.success());
-        for (i, folder) in folders.iter().enumerate().skip(1) {
-            let file = movies.join(folder).join(format!("{folder}.mp4"));
+        for (i, path) in paths.iter().enumerate().skip(1) {
+            let file = self.path(path);
             std::fs::create_dir_all(file.parent().unwrap()).unwrap();
             let mut bytes = std::fs::read(&first).unwrap();
-            // Distinct bytes, or the scan would see one file under two names.
             bytes.extend(i.to_le_bytes());
             std::fs::write(file, bytes).unwrap();
         }
+    }
+
+    /// Requests a scan and returns when a scan started after the request is done.
+    pub async fn scan(&self) {
         let before = std::time::SystemTime::now();
         let mut status = self.state.library.watch_scan();
         self.state.library.request_scan();
