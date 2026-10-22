@@ -160,7 +160,7 @@ fn parse_id(s: &str) -> Result<ItemId, InvalidCursor> {
 }
 
 fn hex_decode_utf8(s: &str) -> Result<String, InvalidCursor> {
-    if s.len() % 2 != 0 || !s.is_ascii() {
+    if !s.len().is_multiple_of(2) || !s.is_ascii() {
         return Err(InvalidCursor);
     }
     let bytes = (0..s.len())
@@ -282,6 +282,15 @@ const CARDS: &str = "SELECT d.id, d.kind, d.title, d.year, d.added_at, d.sort_ti
 
 const CARD_COUNT: &str = "SELECT count(*) FROM item_display d \
     WHERE d.library_id IN (SELECT id FROM library WHERE kind = 'movies') AND d.missing_since IS NULL";
+
+#[cfg(test)]
+pub(crate) const CARDS_PLAN_RECENT: &str = "SELECT d.id FROM item_display d LEFT JOIN item_artwork p ON p.item_id = d.id AND p.role = 'poster' \
+    WHERE d.library_id IN (SELECT id FROM library WHERE kind = 'movies') AND d.missing_since IS NULL \
+    ORDER BY added_at DESC, id DESC LIMIT 41";
+#[cfg(test)]
+pub(crate) const CARDS_PLAN_TITLE: &str = "SELECT d.id FROM item_display d LEFT JOIN item_artwork p ON p.item_id = d.id AND p.role = 'poster' \
+    WHERE d.library_id IN (SELECT id FROM library WHERE kind = 'movies') AND d.missing_since IS NULL \
+    ORDER BY sort_title COLLATE NOCASE, id LIMIT 41";
 
 /// `SELECT ... FROM item_display d LEFT JOIN item_artwork p ON (p.item_id, p.role) = (d.id, 'poster')
 ///  WHERE d.library_id IN (movie libraries) AND d.missing_since IS NULL

@@ -1,7 +1,112 @@
-//! Direct database seeding for tests that need a populated catalog without a
-//! scan: `seed_movies` writes `n` movies straight into the tables.
+//! Test data: `seed_movies` writes `n` movies straight into the tables for
+//! tests that need a populated catalog without a scan, and `movie_library`
+//! generates a small on-disk library with ffmpeg for scan tests.
+
+use std::path::Path;
+use std::process::Command;
 
 use rusqlite::{Transaction, params};
+
+/// Run `ffmpeg -y -nostdin -v error <args> <out>`; panics with ffmpeg's stderr on failure.
+pub(crate) fn ffmpeg(args: &[&str], out: &Path) {
+    std::fs::create_dir_all(out.parent().unwrap()).unwrap();
+    let output = Command::new("ffmpeg")
+        .args(["-y", "-nostdin", "-v", "error"])
+        .args(args)
+        .arg(out)
+        .output()
+        .expect("ffmpeg on PATH");
+    assert!(
+        output.status.success(),
+        "ffmpeg {args:?} -> {}: {}",
+        out.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// One second of `testsrc2` + `sine`, SDR H.264 + AAC, in the container `out` names.
+pub(crate) fn sdr_movie(out: &Path) {
+    ffmpeg(
+        &[
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=320x180:rate=24:duration=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=1",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-ac",
+            "2",
+        ],
+        out,
+    );
+}
+
+/// The verification library's shape: four SDR movies (one with local poster
+/// and fanart, one named scene-style, one with a sample next to it, one loose
+/// file) and one HDR10 movie that must get no frame backdrop.
+pub(crate) fn movie_library(root: &Path) {
+    sdr_movie(&root.join("Big Buck (2008)/Big Buck (2008).mp4"));
+    ffmpeg(
+        &[
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=600x900",
+            "-frames:v",
+            "1",
+        ],
+        &root.join("Big Buck (2008)/poster.jpg"),
+    );
+    ffmpeg(
+        &[
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=1280x720",
+            "-frames:v",
+            "1",
+        ],
+        &root.join("Big Buck (2008)/fanart.jpg"),
+    );
+    sdr_movie(&root.join("Sintel (2010)/Sintel.2010.1080p.BluRay.x264-GRP.mkv"));
+    sdr_movie(&root.join("Elephants (2006)/Elephants.2006.mp4"));
+    sdr_movie(&root.join("Elephants (2006)/Elephants.2006.sample.mp4"));
+    sdr_movie(&root.join("Loose/The.Spring.2019.720p.WEB-DL.mp4"));
+    ffmpeg(
+        &[
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=320x180:rate=24:duration=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=1",
+            "-c:v",
+            "libx265",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p10le",
+            "-x265-params",
+            "colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:log-level=error",
+            "-c:a",
+            "aac",
+        ],
+        &root.join("Bright (2020)/Bright (2020).mkv"),
+    );
+    std::fs::write(root.join("Big Buck (2008)/movie.nfo"), "<movie/>").unwrap();
+}
 
 /// `n` movies in one `movies` library. Titles alternate between `Movie NNNN`
 /// and `A Movie NNNN` (so sort titles differ from titles), `added_at` repeats

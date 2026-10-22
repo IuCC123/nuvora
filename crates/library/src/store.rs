@@ -5,6 +5,7 @@
 //! - writing the same artwork twice is a no-op (idempotent rescans),
 //! - a URL never changes meaning, so the server sends `immutable` cache headers,
 //! - two movies with the same poster share files.
+//!
 //! The `artwork` table is the only reference to an id; anything on disk not
 //! referenced there is garbage and [`ArtworkStore::retain`] removes it.
 
