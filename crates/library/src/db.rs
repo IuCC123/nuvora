@@ -43,7 +43,7 @@ pub(crate) struct Db {
 
 struct ReadPool {
     idle: Mutex<Vec<Connection>>,
-    permits: Semaphore,
+    permits: Arc<Semaphore>,
 }
 
 impl Db {
@@ -71,7 +71,7 @@ impl Db {
             writer: Arc::new(Mutex::new(writer)),
             readers: Arc::new(ReadPool {
                 idle: Mutex::new(idle),
-                permits: Semaphore::new(readers),
+                permits: Arc::new(Semaphore::new(readers)),
             }),
             rev: Arc::new(AtomicU64::new(rev)),
         })
@@ -84,14 +84,15 @@ impl Db {
         T: Send + 'static,
         F: FnOnce(&Connection) -> rusqlite::Result<T> + Send + 'static,
     {
-        let _permit = self
-            .readers
-            .permits
-            .acquire()
+        let permit = Arc::clone(&self.readers.permits)
+            .acquire_owned()
             .await
             .map_err(|_| DbError::Panicked)?;
         let pool = Arc::clone(&self.readers);
         tokio::task::spawn_blocking(move || {
+            // Declared before `returning`, so it drops after the connection is
+            // back: a cancelled caller cannot free the permit early.
+            let _permit = permit;
             let conn = lock(&pool.idle)
                 .pop()
                 .expect("a permit is held, so a connection is idle");
@@ -306,5 +307,26 @@ mod tests {
             Db::open(&path, 1),
             Err(DbError::TooNew { found: 99, .. })
         ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_cancelled_read_does_not_break_the_next_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(&dir.path().join("nuvora.db"), 1).unwrap();
+        let slow = db.clone();
+        let reading = tokio::spawn(async move {
+            slow.read(|_| {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                Ok(())
+            })
+            .await
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        reading.abort();
+        let _ = reading.await;
+        let next = db
+            .read(|c| c.query_row("SELECT 1", [], |r| r.get::<_, i64>(0)))
+            .await;
+        assert_eq!(next.unwrap(), 1);
     }
 }
