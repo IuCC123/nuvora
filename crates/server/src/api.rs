@@ -1134,7 +1134,6 @@ pub struct ErrorBody {
 }
 
 /// Clients must treat an unknown code like `bad_request`.
-#[allow(dead_code)]
 #[derive(Serialize, ToSchema, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
@@ -1158,7 +1157,6 @@ pub struct ApiError {
     retry_after_s: Option<u64>,
 }
 
-#[allow(dead_code)]
 impl ApiError {
     fn new(status: StatusCode, code: ErrorCode, message: impl Into<String>) -> ApiError {
         ApiError {
@@ -1228,14 +1226,6 @@ impl ApiError {
         );
         error.retry_after_s = Some(retry_after_s);
         error
-    }
-
-    fn not_implemented() -> ApiError {
-        ApiError::new(
-            StatusCode::NOT_IMPLEMENTED,
-            ErrorCode::Internal,
-            "Not implemented yet",
-        )
     }
 }
 

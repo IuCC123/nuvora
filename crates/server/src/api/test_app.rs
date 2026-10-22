@@ -2,6 +2,7 @@
 //! folder, and requests sent through the real router (guards, CSRF and all).
 
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -16,7 +17,7 @@ use tower::ServiceExt;
 use super::{AppState, ServerSetup};
 
 pub struct TestApp {
-    _dir: tempfile::TempDir,
+    dir: tempfile::TempDir,
     pub router: axum::Router,
     pub state: AppState,
 }
@@ -79,9 +80,13 @@ impl TestApp {
         };
         TestApp {
             router: super::router(state.clone()).fallback(crate::web::serve_app),
-            _dir: dir,
+            dir,
             state,
         }
+    }
+
+    pub fn path(&self, rel: &str) -> PathBuf {
+        self.dir.path().join(rel)
     }
 
     pub async fn send(&self, request: Request<Body>) -> Reply {

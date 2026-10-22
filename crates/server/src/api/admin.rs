@@ -16,16 +16,20 @@
 //! | GET    | /api/admin/server                | Server info                      |
 //! | PATCH  | /api/admin/server                | Server name                      |
 
-#![allow(dead_code)]
+use std::path::PathBuf;
 
 use axum::Json;
-use axum::extract::{Path, Query};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
+use nuvora_library::{LibraryError, LibraryId, LibraryInfo, NewUser, UserChanges, UserId};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-use super::accounts::Role;
-use super::{ApiError, ErrorBody, JsonBody, ScanStatusResponse};
+use super::accounts::{
+    Role, account_error, server_name, valid_display_name, valid_password, valid_username,
+};
+use super::{ApiError, AppState, ErrorBody, JsonBody, ScanStatusResponse, scan_status_wire};
+use crate::auth::{self, SignedIn};
 
 #[derive(Serialize, ToSchema)]
 pub struct AdminLibrary {
@@ -153,8 +157,19 @@ pub struct UpdateServerRequest {
 }
 
 #[utoipa::path(get, path = "/api/admin/libraries", responses((status = 200, body = Vec<AdminLibrary>)))]
-pub(super) async fn list_libraries() -> Result<Json<Vec<AdminLibrary>>, ApiError> {
-    Err(ApiError::not_implemented())
+pub(super) async fn list_libraries(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<AdminLibrary>>, ApiError> {
+    let libraries = state
+        .library
+        .libraries()
+        .await
+        .map_err(ApiError::internal)?;
+    let mut out = Vec::with_capacity(libraries.len());
+    for library in libraries {
+        out.push(admin_library(library).await);
+    }
+    Ok(Json(out))
 }
 
 #[utoipa::path(
@@ -164,9 +179,21 @@ pub(super) async fn list_libraries() -> Result<Json<Vec<AdminLibrary>>, ApiError
     responses((status = 201, body = AdminLibrary), (status = 400, body = ErrorBody)),
 )]
 pub(super) async fn create_library(
-    JsonBody(_): JsonBody<CreateLibraryRequest>,
+    State(state): State<AppState>,
+    JsonBody(body): JsonBody<CreateLibraryRequest>,
 ) -> Result<(StatusCode, Json<AdminLibrary>), ApiError> {
-    Err(ApiError::not_implemented())
+    let name = valid_library_name(&body.name)?;
+    let roots = valid_folders(body.paths).await?;
+    let kind = match body.kind {
+        LibraryKind::Movies => nuvora_library::LibraryKind::Movies,
+    };
+    let library = state
+        .library
+        .create_library(name, kind, roots)
+        .await
+        .map_err(library_error)?;
+    state.library.request_scan();
+    Ok((StatusCode::CREATED, Json(admin_library(library).await)))
 }
 
 /// Starts a scan when `paths` changed.
@@ -182,10 +209,24 @@ pub(super) async fn create_library(
     ),
 )]
 pub(super) async fn update_library(
-    Path(_): Path<i64>,
-    JsonBody(_): JsonBody<UpdateLibraryRequest>,
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    JsonBody(body): JsonBody<UpdateLibraryRequest>,
 ) -> Result<Json<AdminLibrary>, ApiError> {
-    Err(ApiError::not_implemented())
+    let name = body.name.as_deref().map(valid_library_name).transpose()?;
+    let roots = match body.paths {
+        Some(paths) => Some(valid_folders(paths).await?),
+        None => None,
+    };
+    let (library, folders_changed) = state
+        .library
+        .update_library(LibraryId::from_raw(id), name, roots, state.auth.now_ms())
+        .await
+        .map_err(library_error)?;
+    if folders_changed {
+        state.library.request_scan();
+    }
+    Ok(Json(admin_library(library).await))
 }
 
 /// Removes the library and its items from the catalog. Files on disk are untouched.
@@ -195,8 +236,18 @@ pub(super) async fn update_library(
     params(("id" = i64, Path)),
     responses((status = 204), (status = 404, body = ErrorBody)),
 )]
-pub(super) async fn delete_library(Path(_): Path<i64>) -> Result<StatusCode, ApiError> {
-    Err(ApiError::not_implemented())
+pub(super) async fn delete_library(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, ApiError> {
+    state
+        .library
+        .delete_library(LibraryId::from_raw(id))
+        .await
+        .map_err(library_error)?;
+    // The scan's cleanup deletes the removed items' artwork files.
+    state.library.request_scan();
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Scan now. Scans run over every library and coalesce, so this is the same
@@ -208,9 +259,19 @@ pub(super) async fn delete_library(Path(_): Path<i64>) -> Result<StatusCode, Api
     responses((status = 202, body = ScanStatusResponse), (status = 404, body = ErrorBody)),
 )]
 pub(super) async fn scan_library(
-    Path(_): Path<i64>,
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
 ) -> Result<(StatusCode, Json<ScanStatusResponse>), ApiError> {
-    Err(ApiError::not_implemented())
+    state
+        .library
+        .library(LibraryId::from_raw(id))
+        .await
+        .map_err(ApiError::internal)?
+        .ok_or_else(ApiError::not_found)?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(scan_status_wire(state.library.request_scan())),
+    ))
 }
 
 #[utoipa::path(
@@ -219,13 +280,19 @@ pub(super) async fn scan_library(
     params(FsQuery),
     responses((status = 200, body = FsListing), (status = 400, body = ErrorBody)),
 )]
-pub(super) async fn list_dirs(Query(_): Query<FsQuery>) -> Result<Json<FsListing>, ApiError> {
-    Err(ApiError::not_implemented())
+pub(super) async fn list_dirs(Query(query): Query<FsQuery>) -> Result<Json<FsListing>, ApiError> {
+    tokio::task::spawn_blocking(move || list_folder(query.path.as_deref()))
+        .await
+        .map_err(ApiError::internal)?
+        .map(Json)
 }
 
 #[utoipa::path(get, path = "/api/admin/users", responses((status = 200, body = Vec<AdminUser>)))]
-pub(super) async fn list_users() -> Result<Json<Vec<AdminUser>>, ApiError> {
-    Err(ApiError::not_implemented())
+pub(super) async fn list_users(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<AdminUser>>, ApiError> {
+    let users = state.library.users().await.map_err(ApiError::internal)?;
+    Ok(Json(users.into_iter().map(AdminUser::from).collect()))
 }
 
 #[utoipa::path(
@@ -239,9 +306,21 @@ pub(super) async fn list_users() -> Result<Json<Vec<AdminUser>>, ApiError> {
     ),
 )]
 pub(super) async fn create_user(
-    JsonBody(_): JsonBody<CreateUserRequest>,
+    State(state): State<AppState>,
+    JsonBody(body): JsonBody<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<AdminUser>), ApiError> {
-    Err(ApiError::not_implemented())
+    let new = NewUser {
+        username: valid_username(&body.username)?,
+        display_name: valid_display_name(&body.display_name)?,
+        password_hash: auth::hash_password(valid_password("password", body.password)?).await?,
+        role: body.role.into(),
+    };
+    let user = state
+        .library
+        .create_user(new, state.auth.now_ms())
+        .await
+        .map_err(account_error)?;
+    Ok((StatusCode::CREATED, Json(AdminUser::from(user))))
 }
 
 /// 409 `last_admin` when the change would leave no enabled admin.
@@ -258,10 +337,34 @@ pub(super) async fn create_user(
     ),
 )]
 pub(super) async fn update_user(
-    Path(_): Path<i64>,
-    JsonBody(_): JsonBody<UpdateUserRequest>,
+    State(state): State<AppState>,
+    signed_in: SignedIn,
+    Path(id): Path<i64>,
+    JsonBody(body): JsonBody<UpdateUserRequest>,
 ) -> Result<Json<AdminUser>, ApiError> {
-    Err(ApiError::not_implemented())
+    let id = UserId::from_raw(id);
+    let password_hash = match body.password {
+        Some(password) => Some(auth::hash_password(valid_password("password", password)?).await?),
+        None => None,
+    };
+    let changes = UserChanges {
+        display_name: body
+            .display_name
+            .as_deref()
+            .map(valid_display_name)
+            .transpose()?,
+        role: body.role.map(Into::into),
+        disabled: body.disabled,
+        password_hash,
+    };
+    let me = signed_in.user.id;
+    let keep = (id == me).then_some(signed_in.token);
+    let user = state
+        .library
+        .update_user(me, id, changes, keep, state.auth.now_ms())
+        .await
+        .map_err(account_error)?;
+    Ok(Json(AdminUser::from(user)))
 }
 
 /// 409 `last_admin` for the last enabled admin; 400 for yourself.
@@ -276,13 +379,24 @@ pub(super) async fn update_user(
         (status = 409, body = ErrorBody),
     ),
 )]
-pub(super) async fn delete_user(Path(_): Path<i64>) -> Result<StatusCode, ApiError> {
-    Err(ApiError::not_implemented())
+pub(super) async fn delete_user(
+    State(state): State<AppState>,
+    signed_in: SignedIn,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, ApiError> {
+    state
+        .library
+        .delete_user(signed_in.user.id, UserId::from_raw(id))
+        .await
+        .map_err(account_error)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[utoipa::path(get, path = "/api/admin/server", responses((status = 200, body = ServerInfo)))]
-pub(super) async fn get_server() -> Result<Json<ServerInfo>, ApiError> {
-    Err(ApiError::not_implemented())
+pub(super) async fn get_server(
+    State(state): State<AppState>,
+) -> Result<Json<ServerInfo>, ApiError> {
+    server_info(&state).await.map(Json)
 }
 
 #[utoipa::path(
@@ -292,7 +406,547 @@ pub(super) async fn get_server() -> Result<Json<ServerInfo>, ApiError> {
     responses((status = 200, body = ServerInfo), (status = 400, body = ErrorBody)),
 )]
 pub(super) async fn update_server(
-    JsonBody(_): JsonBody<UpdateServerRequest>,
+    State(state): State<AppState>,
+    JsonBody(body): JsonBody<UpdateServerRequest>,
 ) -> Result<Json<ServerInfo>, ApiError> {
-    Err(ApiError::not_implemented())
+    let name = body.server_name.trim();
+    if !(1..=64).contains(&name.chars().count()) || name.chars().any(char::is_control) {
+        return Err(ApiError::validation(
+            "server_name",
+            "Use 1 to 64 characters",
+        ));
+    }
+    state
+        .library
+        .set_server_name(name.to_owned())
+        .await
+        .map_err(ApiError::internal)?;
+    server_info(&state).await.map(Json)
+}
+
+async fn server_info(state: &AppState) -> Result<ServerInfo, ApiError> {
+    let server = &state.server;
+    let tools = &server.tools;
+    Ok(ServerInfo {
+        server_name: server_name(&state.library).await?,
+        version: env!("CARGO_PKG_VERSION").to_owned(),
+        data_dir: server.data_dir.display().to_string(),
+        bind: server.bind.to_string(),
+        ffmpeg: ToolInfo {
+            path: on_path(tools.ffmpeg()).display().to_string(),
+            version: tools.ffmpeg_version().to_owned(),
+        },
+        ffprobe: ToolInfo {
+            path: on_path(tools.ffprobe()).display().to_string(),
+            version: tools.ffprobe_version().to_owned(),
+        },
+        uptime_s: server.started.elapsed().as_secs(),
+    })
+}
+
+/// Where a bare tool name such as `ffmpeg` resolves on `PATH`; other paths as given.
+fn on_path(tool: &std::path::Path) -> PathBuf {
+    if tool.components().count() != 1 {
+        return tool.to_path_buf();
+    }
+    std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
+        .map(|dir| dir.join(tool))
+        .find(|candidate| candidate.is_file())
+        .unwrap_or_else(|| tool.to_path_buf())
+}
+
+async fn admin_library(library: LibraryInfo) -> AdminLibrary {
+    let roots = library.roots.clone();
+    let missing = tokio::task::spawn_blocking(move || {
+        roots
+            .into_iter()
+            .filter(|root| std::fs::read_dir(root).is_err())
+            .collect::<Vec<_>>()
+    })
+    .await
+    .unwrap_or_default();
+    AdminLibrary {
+        id: library.id.raw(),
+        name: library.name,
+        kind: match library.kind {
+            nuvora_library::LibraryKind::Movies => LibraryKind::Movies,
+        },
+        paths: library
+            .roots
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect(),
+        item_count: library.item_count,
+        missing_paths: missing.iter().map(|p| p.display().to_string()).collect(),
+    }
+}
+
+fn library_error(e: LibraryError) -> ApiError {
+    match e {
+        LibraryError::PathInUse(path) => ApiError::validation(
+            "paths",
+            format!("{} is already in another library", path.display()),
+        ),
+        LibraryError::NotFound => ApiError::not_found(),
+        LibraryError::Query(e) => ApiError::internal(e),
+    }
+}
+
+fn valid_library_name(raw: &str) -> Result<String, ApiError> {
+    let name = raw.trim();
+    if !(1..=64).contains(&name.chars().count()) || name.chars().any(char::is_control) {
+        return Err(ApiError::validation("name", "Use 1 to 64 characters"));
+    }
+    Ok(name.to_owned())
+}
+
+/// At least one absolute path to an existing folder; canonical and deduplicated.
+async fn valid_folders(paths: Vec<String>) -> Result<Vec<PathBuf>, ApiError> {
+    if paths.is_empty() {
+        return Err(ApiError::validation("paths", "Choose at least one folder"));
+    }
+    tokio::task::spawn_blocking(move || {
+        let mut out = Vec::with_capacity(paths.len());
+        for raw in paths {
+            let path = PathBuf::from(&raw);
+            let folder = path
+                .is_absolute()
+                .then(|| path.canonicalize().ok())
+                .flatten()
+                .filter(|p| p.is_dir())
+                .ok_or_else(|| {
+                    ApiError::validation("paths", format!("{raw} is not a folder on the server"))
+                })?;
+            if !out.contains(&folder) {
+                out.push(folder);
+            }
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(ApiError::internal)?
+}
+
+/// The folder picker's listing of `path`, or of the filesystem roots.
+fn list_folder(path: Option<&str>) -> Result<FsListing, ApiError> {
+    let Some(raw) = path.filter(|p| !p.is_empty()) else {
+        return filesystem_roots();
+    };
+    let requested = PathBuf::from(raw);
+    if !requested.is_absolute() {
+        return Err(ApiError::validation("path", "Use an absolute path"));
+    }
+    let folder = requested
+        .canonicalize()
+        .ok()
+        .filter(|p| p.is_dir())
+        .ok_or_else(|| ApiError::validation("path", "That folder doesn't exist"))?;
+    let entries = std::fs::read_dir(&folder)
+        .map_err(|_| ApiError::validation("path", "Nuvora can't read that folder"))?;
+    let mut dirs: Vec<FsDir> = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            let path = entry.path();
+            // `metadata` follows symlinks, so a link to a folder is listed.
+            let meta = std::fs::metadata(&path).ok()?;
+            (meta.is_dir() && !is_hidden(&name, &meta)).then(|| FsDir {
+                name,
+                path: path.display().to_string(),
+            })
+        })
+        .collect();
+    dirs.sort_by_cached_key(|d| d.name.to_lowercase());
+    Ok(FsListing {
+        path: folder.display().to_string(),
+        parent: folder.parent().map(|p| p.display().to_string()),
+        dirs,
+    })
+}
+
+#[cfg(windows)]
+fn is_hidden(name: &str, meta: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+    name.starts_with('.') || meta.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0
+}
+
+#[cfg(not(windows))]
+fn is_hidden(name: &str, _: &std::fs::Metadata) -> bool {
+    name.starts_with('.')
+}
+
+/// Unix has one root, so list it directly.
+#[cfg(not(windows))]
+fn filesystem_roots() -> Result<FsListing, ApiError> {
+    list_folder(Some("/"))
+}
+
+#[cfg(windows)]
+fn filesystem_roots() -> Result<FsListing, ApiError> {
+    let dirs = (b'A'..=b'Z')
+        .map(|letter| format!("{}:\\", letter as char))
+        .filter(|drive| std::path::Path::new(drive).is_dir())
+        .map(|drive| FsDir {
+            name: drive.clone(),
+            path: drive,
+        })
+        .collect();
+    Ok(FsListing {
+        path: String::new(),
+        parent: None,
+        dirs,
+    })
+}
+
+impl From<nuvora_library::User> for AdminUser {
+    fn from(u: nuvora_library::User) -> Self {
+        AdminUser {
+            id: u.id.raw(),
+            username: u.username,
+            display_name: u.display_name,
+            role: u.role.into(),
+            created_at: u.created_at,
+            disabled: u.disabled,
+            last_seen_at: u.last_seen_at,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use axum::http::StatusCode;
+    use serde_json::{Value, json};
+
+    use super::super::test_app::TestApp;
+
+    async fn add_member(app: &TestApp, admin: &str, username: &str) -> Value {
+        let reply = app
+            .call(
+                "POST",
+                "/api/admin/users",
+                Some(admin),
+                Some(json!({"username": username, "display_name": username, "password": "member password", "role": "member"})),
+            )
+            .await;
+        assert_eq!(reply.status, StatusCode::CREATED, "{:?}", reply.json());
+        reply.json()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn members_browse_but_get_403_on_admin_routes() {
+        let app = TestApp::new().await;
+        let admin = app.setup_admin().await;
+        let created = add_member(&app, &admin, "kid").await;
+        assert_eq!(created["role"], "member");
+        assert_eq!(created["disabled"], false);
+        assert_eq!(created["last_seen_at"], Value::Null);
+
+        let member = app.login("kid", "member password").await.cookie();
+        assert_eq!(app.get("/api/home", &member).await.status, StatusCode::OK);
+        for (method, uri) in [
+            ("GET", "/api/admin/users"),
+            ("GET", "/api/admin/libraries"),
+            ("GET", "/api/admin/fs"),
+            ("GET", "/api/admin/server"),
+            ("POST", "/api/admin/libraries/1/scan"),
+            ("DELETE", "/api/admin/users/1"),
+        ] {
+            let reply = app.call(method, uri, Some(&member), None).await;
+            assert_eq!(reply.status, StatusCode::FORBIDDEN, "{method} {uri}");
+            assert_eq!(reply.json()["code"], "forbidden");
+        }
+
+        let taken = app
+            .call(
+                "POST",
+                "/api/admin/users",
+                Some(&admin),
+                Some(json!({"username": "KID", "display_name": "x", "password": "member password", "role": "member"})),
+            )
+            .await;
+        assert_eq!(taken.status, StatusCode::CONFLICT);
+        assert_eq!(taken.json()["code"], "username_taken");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_last_admin_cannot_be_demoted_disabled_or_deleted() {
+        let app = TestApp::new().await;
+        let admin = app.setup_admin().await;
+        let patch = |cookie: &str, id: i64, body: Value| {
+            let (app, cookie) = (&app, cookie.to_owned());
+            async move {
+                app.call(
+                    "PATCH",
+                    &format!("/api/admin/users/{id}"),
+                    Some(&cookie),
+                    Some(body),
+                )
+                .await
+            }
+        };
+        let demote = patch(&admin, 1, json!({"role": "member"})).await;
+        assert_eq!(demote.status, StatusCode::CONFLICT);
+        assert_eq!(demote.json()["code"], "last_admin");
+        let disable = patch(&admin, 1, json!({"disabled": true})).await;
+        assert_eq!(
+            disable.status,
+            StatusCode::BAD_REQUEST,
+            "nobody disables themselves"
+        );
+        let delete = app
+            .call("DELETE", "/api/admin/users/1", Some(&admin), None)
+            .await;
+        assert_eq!(
+            delete.status,
+            StatusCode::BAD_REQUEST,
+            "nobody deletes themselves"
+        );
+
+        let second = add_member(&app, &admin, "second").await;
+        let id = second["id"].as_i64().unwrap();
+        assert_eq!(
+            patch(&admin, id, json!({"role": "admin"})).await.status,
+            StatusCode::OK
+        );
+        let second = app.login("second", "member password").await.cookie();
+        let demoted = patch(&second, 1, json!({"role": "member"})).await;
+        assert_eq!(demoted.status, StatusCode::OK);
+        assert_eq!(demoted.json()["role"], "member");
+        assert_eq!(
+            app.get("/api/admin/users", &admin).await.status,
+            StatusCode::FORBIDDEN,
+            "a demoted admin loses the panel at once"
+        );
+        let last = app
+            .call(
+                "DELETE",
+                &format!("/api/admin/users/{id}"),
+                Some(&admin),
+                None,
+            )
+            .await;
+        assert_eq!(last.status, StatusCode::FORBIDDEN);
+        assert_eq!(
+            patch(&second, id, json!({"role": "member"})).await.json()["code"],
+            "last_admin"
+        );
+        let gone = app
+            .call("DELETE", "/api/admin/users/1", Some(&second), None)
+            .await;
+        assert_eq!(gone.status, StatusCode::NO_CONTENT);
+        assert_eq!(
+            app.get("/api/home", &admin).await.status,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn disabling_a_user_ends_their_sessions() {
+        let app = TestApp::new().await;
+        let admin = app.setup_admin().await;
+        let id = add_member(&app, &admin, "friend").await["id"]
+            .as_i64()
+            .unwrap();
+        let friend = app.login("friend", "member password").await.cookie();
+        assert_eq!(app.get("/api/home", &friend).await.status, StatusCode::OK);
+
+        let uri = format!("/api/admin/users/{id}");
+        let disabled = app
+            .call("PATCH", &uri, Some(&admin), Some(json!({"disabled": true})))
+            .await;
+        assert_eq!(disabled.status, StatusCode::OK);
+        assert_eq!(disabled.json()["disabled"], true);
+        assert_eq!(
+            disabled.json()["last_seen_at"],
+            Value::Null,
+            "sessions deleted"
+        );
+        assert_eq!(
+            app.get("/api/home", &friend).await.status,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            app.login("friend", "member password").await.json()["code"],
+            "bad_credentials"
+        );
+
+        app.call(
+            "PATCH",
+            &uri,
+            Some(&admin),
+            Some(json!({"disabled": false, "password": "reset password"})),
+        )
+        .await;
+        assert_eq!(
+            app.login("friend", "reset password").await.status,
+            StatusCode::OK
+        );
+        let users = app.get("/api/admin/users", &admin).await.json();
+        assert_eq!(users.as_array().unwrap().len(), 2);
+        assert!(users[1]["last_seen_at"].as_i64().unwrap() > 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn adding_a_library_scans_it() {
+        let app = TestApp::new().await;
+        let admin = app.setup_admin().await;
+        let films = app.path("films");
+        let movie = films.join("Big Buck (2008)/Big Buck (2008).mp4");
+        std::fs::create_dir_all(movie.parent().unwrap()).unwrap();
+        let ffmpeg = std::process::Command::new("ffmpeg")
+            .args(["-y", "-nostdin", "-v", "error", "-f", "lavfi", "-i"])
+            .args([
+                "testsrc2=size=320x180:rate=24:duration=1",
+                "-c:v",
+                "libx264",
+            ])
+            .args(["-preset", "ultrafast", "-pix_fmt", "yuv420p"])
+            .arg(&movie)
+            .status()
+            .unwrap();
+        assert!(ffmpeg.success());
+
+        let bad = app
+            .call(
+                "POST",
+                "/api/admin/libraries",
+                Some(&admin),
+                Some(json!({"name": "Films", "kind": "movies", "paths": ["/no/such/folder"]})),
+            )
+            .await;
+        assert_eq!(bad.status, StatusCode::BAD_REQUEST);
+        assert_eq!(bad.json()["field"], "paths");
+
+        let created = app
+            .call(
+                "POST",
+                "/api/admin/libraries",
+                Some(&admin),
+                Some(json!({"name": " Films ", "kind": "movies", "paths": [films.display().to_string()]})),
+            )
+            .await;
+        assert_eq!(created.status, StatusCode::CREATED);
+        let created = created.json();
+        let canonical = films.canonicalize().unwrap().display().to_string();
+        assert_eq!(created["name"], "Films");
+        assert_eq!(created["paths"], json!([canonical]));
+        assert_eq!(created["missing_paths"], json!([]));
+
+        let mut libraries = Value::Null;
+        for _ in 0..100 {
+            libraries = app.get("/api/admin/libraries", &admin).await.json();
+            if libraries[1]["item_count"] == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert_eq!(libraries[1]["item_count"], 1, "{libraries}");
+        let home = app.get("/api/home", &admin).await.json();
+        assert_eq!(home["rows"][1]["items"][0]["title"], "Big Buck");
+
+        let again = app
+            .call(
+                "POST",
+                "/api/admin/libraries",
+                Some(&admin),
+                Some(json!({"name": "Again", "kind": "movies", "paths": [canonical]})),
+            )
+            .await;
+        assert_eq!(
+            again.status,
+            StatusCode::BAD_REQUEST,
+            "a folder is in one library"
+        );
+
+        let id = created["id"].as_i64().unwrap();
+        let deleted = app
+            .call(
+                "DELETE",
+                &format!("/api/admin/libraries/{id}"),
+                Some(&admin),
+                None,
+            )
+            .await;
+        assert_eq!(deleted.status, StatusCode::NO_CONTENT);
+        let home = app.get("/api/home", &admin).await.json();
+        assert_eq!(home["rows"][1]["total"], 0);
+        assert!(movie.is_file(), "files on disk are untouched");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_folder_picker_lists_visible_folders_only() {
+        let app = TestApp::new().await;
+        let admin = app.setup_admin().await;
+        let root = app.path("pick");
+        for dir in ["b", "A", ".hidden"] {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+        }
+        std::fs::write(root.join("file.mkv"), b"").unwrap();
+        let canonical = root.canonicalize().unwrap();
+        let reply = app
+            .get(&format!("/api/admin/fs?path={}", root.display()), &admin)
+            .await;
+        assert_eq!(reply.status, StatusCode::OK);
+        assert_eq!(
+            reply.json(),
+            json!({
+                "path": canonical.display().to_string(),
+                "parent": canonical.parent().unwrap().display().to_string(),
+                "dirs": [
+                    {"name": "A", "path": canonical.join("A").display().to_string()},
+                    {"name": "b", "path": canonical.join("b").display().to_string()},
+                ],
+            })
+        );
+
+        #[cfg(unix)]
+        {
+            let top = app.get("/api/admin/fs", &admin).await.json();
+            assert_eq!((&top["path"], &top["parent"]), (&json!("/"), &Value::Null));
+        }
+        let relative = app.get("/api/admin/fs?path=movies", &admin).await;
+        assert_eq!(relative.status, StatusCode::BAD_REQUEST);
+        assert_eq!(relative.json()["field"], "path");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn server_info_and_name() {
+        let app = TestApp::new().await;
+        let admin = app.setup_admin().await;
+        let info = app.get("/api/admin/server", &admin).await.json();
+        assert_eq!(info["server_name"], "Nuvora");
+        assert_eq!(info["bind"], "127.0.0.1:8640");
+        assert_eq!(info["version"], env!("CARGO_PKG_VERSION"));
+        assert!(
+            info["ffmpeg"]["path"].as_str().unwrap().ends_with("ffmpeg"),
+            "{info}"
+        );
+        assert!(
+            info["ffprobe"]["version"]
+                .as_str()
+                .unwrap()
+                .chars()
+                .next()
+                .unwrap()
+                .is_ascii_digit(),
+            "{info}"
+        );
+
+        let renamed = app
+            .call(
+                "PATCH",
+                "/api/admin/server",
+                Some(&admin),
+                Some(json!({"server_name": "Den"})),
+            )
+            .await;
+        assert_eq!(renamed.json()["server_name"], "Den");
+        let state = app.call("GET", "/api/auth/state", None, None).await.json();
+        assert_eq!(state["server_name"], "Den");
+    }
 }
