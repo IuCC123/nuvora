@@ -1,5 +1,6 @@
 import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import {
   checkPassword,
   checkRequired,
@@ -194,11 +195,15 @@ function AddUser({ onDone }: { onDone: () => void }) {
  */
 function EditUser({ user, self, onDone, onDelete }: { user: AdminUser; self: boolean; onDone: () => void; onDelete: () => void }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const save = useMutation({
     mutationFn: (changes: Parameters<typeof client.admin.updateUser>[1]) => client.admin.updateUser(user.id, changes),
-    onSuccess: (updated) => {
+    onSuccess: async (updated) => {
       qc.setQueryData<AdminUser[]>(queryKeys.adminUsers, (all) => all?.map((u) => (u.id === updated.id ? updated : u)));
-      if (self) setSessionUser({ id: updated.id, username: updated.username, display_name: updated.display_name, role: updated.role });
+      if (!self) return;
+      setSessionUser({ id: updated.id, username: updated.username, display_name: updated.display_name, role: updated.role });
+      // An admin who made themselves a member can no longer see this screen.
+      if (updated.role !== "admin") await navigate({ to: "/settings/account" });
     },
   });
   const form = useForm(
