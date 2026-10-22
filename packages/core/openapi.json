@@ -1056,6 +1056,7 @@
     },
     "/api/home": {
       "get": {
+        "summary": "Per user: cards carry the signed-in user's progress, and the ETag is\n`\"<catalog_rev>.<watch_rev>\"`, so one user's progress never makes another\nuser's copy stale.",
         "operationId": "get_home",
         "responses": {
           "200": {
@@ -1156,6 +1157,7 @@
     },
     "/api/items/{id}": {
       "get": {
+        "summary": "Per user: `watch` is the signed-in user's state. The ETag is\n`\"<catalog_rev>.<watch_rev>-<device profile hash>\"`.",
         "operationId": "get_item",
         "parameters": [
           {
@@ -1218,9 +1220,177 @@
         ]
       }
     },
+    "/api/items/{id}/progress": {
+      "put": {
+        "summary": "Reports where playback is; the server decides what it means. Under 60 s\nstores nothing and clears earlier progress. From 60 s to under 90% of the\nduration stores the position. From 90% the movie counts as watched once and\nthe position is cleared; another report at 90% or more within 3 hours of\nthat does not count again.",
+        "operationId": "put_progress",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgressRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/items/{id}/watched": {
+      "put": {
+        "summary": "Marks the movie watched, like finishing it.",
+        "operationId": "put_watched",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "summary": "Marks the movie unwatched: clears the position, the play count and the\nlast finish.",
+        "operationId": "delete_watched",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/rows/{row}": {
       "get": {
-        "summary": "Keyset paging on the row's sort key. A malformed cursor, or one from\nanother row, is 400.",
+        "summary": "Keyset paging on the row's sort key. A malformed cursor, or one from\nanother row, is 400. Per user, with the same ETag as home.",
         "operationId": "get_row",
         "parameters": [
           {
@@ -1958,7 +2128,8 @@
         "required": [
           "id",
           "title",
-          "versions"
+          "versions",
+          "watch"
         ],
         "properties": {
           "backdrop": {
@@ -2008,6 +2179,9 @@
               "$ref": "#/components/schemas/Version"
             },
             "description": "Best first. Empty when every file of the movie is currently missing."
+          },
+          "watch": {
+            "$ref": "#/components/schemas/WatchState"
           },
           "year": {
             "type": [
@@ -2092,7 +2266,8 @@
         "required": [
           "id",
           "kind",
-          "title"
+          "title",
+          "watched"
         ],
         "properties": {
           "id": {
@@ -2112,8 +2287,20 @@
               }
             ]
           },
+          "progress": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "How far the signed-in user is into the movie, 0 to 1. `None` unless\nit is in progress."
+          },
           "title": {
             "type": "string"
+          },
+          "watched": {
+            "type": "boolean",
+            "description": "The signed-in user has finished the movie at least once."
           },
           "year": {
             "type": [
@@ -2125,6 +2312,34 @@
           }
         }
       },
+      "ProgressRequest": {
+        "type": "object",
+        "description": "Where playback is. Clients send it every 10 s while playing, on pause,\nafter a seek settles and when leaving the player.",
+        "required": [
+          "file_id",
+          "position_ms",
+          "duration_ms"
+        ],
+        "properties": {
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "At least 1. `position_ms` may exceed it by at most 5 s.",
+            "minimum": 0
+          },
+          "file_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The version playing. Must be a version of this item."
+          },
+          "position_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "Role": {
         "type": "string",
         "enum": [
@@ -2135,6 +2350,7 @@
       "RowKind": {
         "type": "string",
         "enum": [
+          "continue_watching",
           "recently_added",
           "all_movies"
         ]
@@ -2676,6 +2892,50 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "WatchState": {
+        "type": "object",
+        "description": "The signed-in user's state for one movie.",
+        "required": [
+          "watched",
+          "play_count"
+        ],
+        "properties": {
+          "file_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The version `position_ms` belongs to."
+          },
+          "last_watched_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Unix ms of the last finish."
+          },
+          "play_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "position_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Where to resume. `None` unless the movie is in progress.",
+            "minimum": 0
+          },
+          "watched": {
+            "type": "boolean",
+            "description": "Finished at least once."
           }
         }
       }

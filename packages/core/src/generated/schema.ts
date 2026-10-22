@@ -240,6 +240,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /**
+         * Per user: cards carry the signed-in user's progress, and the ETag is
+         *     `"<catalog_rev>.<watch_rev>"`, so one user's progress never makes another
+         *     user's copy stale.
+         */
         get: operations["get_home"];
         put?: never;
         post?: never;
@@ -278,10 +283,58 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /**
+         * Per user: `watch` is the signed-in user's state. The ETag is
+         *     `"<catalog_rev>.<watch_rev>-<device profile hash>"`.
+         */
         get: operations["get_item"];
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/items/{id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reports where playback is; the server decides what it means. Under 60 s
+         *     stores nothing and clears earlier progress. From 60 s to under 90% of the
+         *     duration stores the position. From 90% the movie counts as watched once and
+         *     the position is cleared; another report at 90% or more within 3 hours of
+         *     that does not count again.
+         */
+        put: operations["put_progress"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/items/{id}/watched": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Marks the movie watched, like finishing it. */
+        put: operations["put_watched"];
+        post?: never;
+        /**
+         * Marks the movie unwatched: clears the position, the play count and the
+         *     last finish.
+         */
+        delete: operations["delete_watched"];
         options?: never;
         head?: never;
         patch?: never;
@@ -296,7 +349,7 @@ export interface paths {
         };
         /**
          * Keyset paging on the row's sort key. A malformed cursor, or one from
-         *     another row, is 400.
+         *     another row, is 400. Per user, with the same ETag as home.
          */
         get: operations["get_row"];
         put?: never;
@@ -537,6 +590,7 @@ export interface components {
             title: string;
             /** @description Best first. Empty when every file of the movie is currently missing. */
             versions: components["schemas"]["Version"][];
+            watch: components["schemas"]["WatchState"];
             /** Format: int32 */
             year?: number | null;
         };
@@ -564,14 +618,40 @@ export interface components {
             id: number;
             kind: components["schemas"]["ItemKind"];
             poster?: null | components["schemas"]["Image"];
+            /**
+             * Format: float
+             * @description How far the signed-in user is into the movie, 0 to 1. `None` unless
+             *     it is in progress.
+             */
+            progress?: number | null;
             title: string;
+            /** @description The signed-in user has finished the movie at least once. */
+            watched: boolean;
             /** Format: int32 */
             year?: number | null;
+        };
+        /**
+         * @description Where playback is. Clients send it every 10 s while playing, on pause,
+         *     after a seek settles and when leaving the player.
+         */
+        ProgressRequest: {
+            /**
+             * Format: int64
+             * @description At least 1. `position_ms` may exceed it by at most 5 s.
+             */
+            duration_ms: number;
+            /**
+             * Format: int64
+             * @description The version playing. Must be a version of this item.
+             */
+            file_id: number;
+            /** Format: int64 */
+            position_ms: number;
         };
         /** @enum {string} */
         Role: "admin" | "member";
         /** @enum {string} */
-        RowKind: "recently_added" | "all_movies";
+        RowKind: "continue_watching" | "recently_added" | "all_movies";
         /** @description A later page of one row. */
         RowPage: {
             items: components["schemas"]["PosterCard"][];
@@ -731,6 +811,28 @@ export interface components {
             profile?: string | null;
             /** Format: int32 */
             width: number;
+        };
+        /** @description The signed-in user's state for one movie. */
+        WatchState: {
+            /**
+             * Format: int64
+             * @description The version `position_ms` belongs to.
+             */
+            file_id?: number | null;
+            /**
+             * Format: int64
+             * @description Unix ms of the last finish.
+             */
+            last_watched_at?: number | null;
+            /** Format: int32 */
+            play_count: number;
+            /**
+             * Format: int64
+             * @description Where to resume. `None` unless the movie is in progress.
+             */
+            position_ms?: number | null;
+            /** @description Finished at least once. */
+            watched: boolean;
         };
     };
     responses: never;
@@ -1645,6 +1747,126 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    put_progress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgressRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_watched: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_watched: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
             };
         };
     };

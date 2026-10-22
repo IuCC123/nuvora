@@ -19,6 +19,7 @@ use crate::CatalogRev;
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0001_init.sql"),
     include_str!("../migrations/0002_accounts.sql"),
+    include_str!("../migrations/0003_watch_state.sql"),
 ];
 
 #[derive(Debug, thiserror::Error)]
@@ -222,8 +223,8 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            tables, 12,
-            "7 catalog tables + user, session, setting + sqlite_sequence"
+            tables, 13,
+            "7 catalog tables + user, session, setting, watch_state + sqlite_sequence"
         );
     }
 
