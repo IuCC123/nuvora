@@ -564,7 +564,7 @@ pub(crate) fn item(
     let mut stmt = conn.prepare_cached(
         "SELECT s.file_id, s.stream_index, s.kind, s.codec, s.profile, s.level, s.bit_depth, s.width, s.height, \
          s.frame_rate, s.hdr, s.dv_profile, s.color_primaries, s.color_transfer, s.color_space, s.channels, \
-         s.channel_layout, s.sample_rate, s.language, s.title, s.is_default, s.is_forced \
+         s.channel_layout, s.sample_rate, s.language, s.title, s.is_default, s.is_forced, s.dv_compatibility \
          FROM media_stream s JOIN media_file f ON f.id = s.file_id \
          WHERE f.item_id = ?1 ORDER BY s.file_id, s.stream_index",
     )?;
@@ -647,6 +647,7 @@ fn stream_into(r: &rusqlite::Row<'_>, info: &mut MediaInfo) -> rusqlite::Result<
             hdr: HdrFormat::from_name(
                 r.get::<_, Option<String>>(10)?.as_deref().unwrap_or("sdr"),
                 r.get(11)?,
+                r.get(22)?,
             ),
             color: ColorInfo {
                 primaries: r.get(12)?,

@@ -139,10 +139,9 @@ impl VideoSupport {
         let has = |name: &str| self.hdr.iter().any(|h| h.as_str() == name);
         match hdr {
             HdrFormat::Sdr => true,
-            HdrFormat::DolbyVision {
-                compatible_with_hdr10: true,
-                ..
-            } => has("dolby_vision") || has("hdr10"),
+            HdrFormat::DolbyVision { .. } if hdr.has_hdr10_base() => {
+                has("dolby_vision") || has("hdr10")
+            }
             other => has(other.as_str()),
         }
     }
@@ -258,11 +257,11 @@ mod tests {
         let aac2 = || vec![audio(1, AudioCodec::Aac, 2, true)];
         let dv81 = HdrFormat::DolbyVision {
             profile: 8,
-            compatible_with_hdr10: true,
+            compatibility: 1,
         };
         let dv5 = HdrFormat::DolbyVision {
             profile: 5,
-            compatible_with_hdr10: false,
+            compatibility: 0,
         };
         let cases: Vec<(&str, MediaInfo, DeviceProfile, PlaybackDecision)> = vec![
             (

@@ -954,7 +954,7 @@ impl From<DeviceProfileWire> for DeviceProfile {
                         .hdr
                         .iter()
                         .filter(|h| matches!(h.as_str(), "hdr10" | "hlg" | "dolby_vision"))
-                        .map(|h| HdrFormat::from_name(h, None))
+                        .map(|h| HdrFormat::from_name(h, None, None))
                         .collect();
                     Some(VideoSupport {
                         codec,

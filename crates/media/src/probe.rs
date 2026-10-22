@@ -11,7 +11,7 @@ use crate::MediaTools;
 /// Bump when parsing changes in a way stored rows should pick up (new field,
 /// better HDR detection). The scanner re-probes every file whose stored
 /// `probe_version` differs, once.
-pub const PROBE_VERSION: u32 = 1;
+pub const PROBE_VERSION: u32 = 2;
 
 /// What is inside one media file.
 #[derive(Debug, Clone, PartialEq)]
@@ -98,11 +98,12 @@ pub enum HdrFormat {
     Sdr,
     Hdr10,
     Hlg,
-    /// Dolby Vision. `profile` from the DOVI configuration record; profile 8.1
-    /// has an HDR10 base layer, which Step 3 can exploit.
+    /// Dolby Vision, from the DOVI configuration record. `compatibility` is
+    /// its `dv_bl_signal_compatibility_id` (0 when absent): 1 and 6 mean an
+    /// HDR10 base layer (8.1, 7.6), which Step 3 can exploit; 4 is HLG (8.4).
     DolbyVision {
         profile: u8,
-        compatible_with_hdr10: bool,
+        compatibility: u8,
     },
 }
 
@@ -353,12 +354,13 @@ fn hdr_format(s: &raw::Stream) -> HdrFormat {
     });
     if let Some(dovi) = dovi {
         let profile = dovi.get("dv_profile").and_then(|p| p.as_u64()).unwrap_or(0) as u8;
-        let compat = dovi
+        let compatibility = dovi
             .get("dv_bl_signal_compatibility_id")
-            .and_then(|c| c.as_u64());
+            .and_then(|c| c.as_u64())
+            .unwrap_or(0) as u8;
         return HdrFormat::DolbyVision {
             profile,
-            compatible_with_hdr10: matches!(compat, Some(1 | 6)),
+            compatibility,
         };
     }
     match s.color_transfer.as_deref() {
@@ -369,8 +371,20 @@ fn hdr_format(s: &raw::Stream) -> HdrFormat {
 }
 
 impl HdrFormat {
+    /// A Dolby Vision stream whose base layer is plain HDR10.
+    pub fn has_hdr10_base(self) -> bool {
+        matches!(
+            self,
+            HdrFormat::DolbyVision {
+                compatibility: 1 | 6,
+                ..
+            }
+        )
+    }
+
     /// The family name stored in `media_stream.hdr` and sent by devices in
-    /// `VideoSupport.hdr`; the Dolby Vision profile travels separately.
+    /// `VideoSupport.hdr`; the Dolby Vision profile and compatibility id
+    /// travel separately.
     pub fn as_str(self) -> &'static str {
         match self {
             HdrFormat::Sdr => "sdr",
@@ -381,17 +395,18 @@ impl HdrFormat {
     }
 
     /// Inverse of [`HdrFormat::as_str`]; unknown names are SDR.
-    pub fn from_name(name: &str, dv_profile: Option<u8>) -> HdrFormat {
+    pub fn from_name(
+        name: &str,
+        dv_profile: Option<u8>,
+        dv_compatibility: Option<u8>,
+    ) -> HdrFormat {
         match name {
             "hdr10" => HdrFormat::Hdr10,
             "hlg" => HdrFormat::Hlg,
-            "dolby_vision" => {
-                let profile = dv_profile.unwrap_or(0);
-                HdrFormat::DolbyVision {
-                    profile,
-                    compatible_with_hdr10: profile == 8,
-                }
-            }
+            "dolby_vision" => HdrFormat::DolbyVision {
+                profile: dv_profile.unwrap_or(0),
+                compatibility: dv_compatibility.unwrap_or(0),
+            },
             _ => HdrFormat::Sdr,
         }
     }
@@ -680,9 +695,10 @@ mod tests {
             info.video[0].hdr,
             HdrFormat::DolbyVision {
                 profile: 8,
-                compatible_with_hdr10: true
+                compatibility: 1
             }
         );
+        assert!(info.video[0].hdr.has_hdr10_base());
         assert_eq!(info.video[0].bit_depth, Some(10));
         assert_eq!(info.duration_ms, Some(7_200_500));
         assert_eq!(info.container, Container::Matroska);
@@ -714,7 +730,7 @@ mod tests {
             assert_eq!(Container::from_name(c.as_str()), c);
         }
         for h in [HdrFormat::Sdr, HdrFormat::Hdr10, HdrFormat::Hlg] {
-            assert_eq!(HdrFormat::from_name(h.as_str(), None), h);
+            assert_eq!(HdrFormat::from_name(h.as_str(), None, None), h);
         }
     }
 }

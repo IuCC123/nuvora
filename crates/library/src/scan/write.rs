@@ -205,13 +205,16 @@ fn insert_streams(tx: &Transaction<'_>, file_id: i64, info: &MediaInfo) -> rusql
     let mut stmt = tx.prepare_cached(
         "INSERT INTO media_stream (file_id, stream_index, kind, codec, profile, level, bit_depth, width, height, \
          frame_rate, hdr, dv_profile, color_primaries, color_transfer, color_space, channels, channel_layout, \
-         sample_rate, language, title, is_default, is_forced) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
+         sample_rate, language, title, is_default, is_forced, dv_compatibility) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
     )?;
     for v in &info.video {
-        let dv_profile = match v.hdr {
-            HdrFormat::DolbyVision { profile, .. } => Some(profile),
-            _ => None,
+        let (dv_profile, dv_compatibility) = match v.hdr {
+            HdrFormat::DolbyVision {
+                profile,
+                compatibility,
+            } => (Some(profile), Some(compatibility)),
+            _ => (None, None),
         };
         stmt.execute(params![
             file_id,
@@ -236,6 +239,7 @@ fn insert_streams(tx: &Transaction<'_>, file_id: i64, info: &MediaInfo) -> rusql
             v.title,
             v.is_default,
             false,
+            dv_compatibility,
         ])?;
     }
     for a in &info.audio {
@@ -262,6 +266,7 @@ fn insert_streams(tx: &Transaction<'_>, file_id: i64, info: &MediaInfo) -> rusql
             a.title,
             a.is_default,
             false,
+            Option::<u8>::None,
         ])?;
     }
     for s in &info.subtitles {
@@ -288,6 +293,7 @@ fn insert_streams(tx: &Transaction<'_>, file_id: i64, info: &MediaInfo) -> rusql
             s.title,
             s.is_default,
             s.is_forced,
+            Option::<u8>::None,
         ])?;
     }
     Ok(())
@@ -584,4 +590,91 @@ pub(crate) fn live_artwork_ids(conn: &Connection) -> rusqlite::Result<HashSet<Ar
 pub(crate) fn bump_rev(tx: &Transaction<'_>) -> rusqlite::Result<()> {
     tx.execute("UPDATE catalog SET rev = rev + 1 WHERE id = 1", [])?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Db;
+    use crate::scan::walk::DiskFile;
+    use crate::views;
+    use crate::{Item, UserId, VersionMedia};
+    use nuvora_media::{ColorInfo, Container, DeviceProfile, VideoCodec, VideoStream};
+
+    fn dolby_vision(profile: u8, compatibility: u8) -> MediaInfo {
+        MediaInfo {
+            container: Container::Matroska,
+            duration_ms: Some(10_000),
+            bitrate: None,
+            video: vec![VideoStream {
+                index: 0,
+                codec: VideoCodec::Hevc,
+                profile: None,
+                level: None,
+                width: 3840,
+                height: 2160,
+                bit_depth: Some(10),
+                frame_rate: None,
+                hdr: HdrFormat::DolbyVision {
+                    profile,
+                    compatibility,
+                },
+                color: ColorInfo::default(),
+                language: None,
+                title: None,
+                is_default: true,
+            }],
+            audio: vec![],
+            subtitles: vec![],
+        }
+    }
+
+    /// Store `info` as the only file of a fresh library and read its video HDR back.
+    async fn round_trip(info: MediaInfo) -> HdrFormat {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(&dir.path().join("nuvora.db"), 1).unwrap();
+        db.write(move |tx| {
+            tx.execute(
+                "INSERT INTO library (key, name, kind) VALUES ('movies', 'Movies', 'movies')",
+                [],
+            )?;
+            tx.execute(
+                "INSERT INTO library_root (library_id, path) VALUES (1, '/media')",
+                [],
+            )?;
+            let job = ProbeJob {
+                root: RootId(1),
+                library_id: 1,
+                disk: DiskFile {
+                    rel: RelPath("Heat (1995)/Heat (1995).mkv".into()),
+                    size: 1,
+                    mtime_ns: 1,
+                },
+                existing: None,
+            };
+            let name = MovieName::parse(Path::new(&job.disk.rel.0));
+            upsert_file(tx, &job, [0; 16], &name, &Ok(info), 0)
+        })
+        .await
+        .unwrap();
+        let item = db
+            .read(|c| views::item(c, ItemId(1), &DeviceProfile::baseline(), UserId(0)))
+            .await
+            .unwrap();
+        let Some(Item::Movie(movie)) = item else {
+            panic!("stored movie")
+        };
+        let VersionMedia::Probed { info, .. } = &movie.versions[0].media else {
+            panic!("probed version")
+        };
+        info.video[0].hdr
+    }
+
+    #[tokio::test]
+    async fn dolby_vision_compatibility_survives_the_database() {
+        for hdr in [dolby_vision(7, 6), dolby_vision(8, 4), dolby_vision(5, 0)] {
+            let stored = hdr.video[0].hdr;
+            assert_eq!(round_trip(hdr).await, stored);
+        }
+    }
 }
