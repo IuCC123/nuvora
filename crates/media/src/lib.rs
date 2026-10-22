@@ -1,6 +1,7 @@
 //! Everything Nuvora knows about a media file that does not depend on state:
 //! what the file is (by name), what is inside it (ffprobe), what its artwork
-//! looks like at the sizes the UI uses, and whether a device can play it.
+//! looks like at the sizes the UI uses, whether a device can play it, and its
+//! subtitles and fonts as files a player can use.
 //!
 //! No database, no HTTP, no global state. Each public function takes a path or
 //! bytes and returns a domain value, so each is tested against real files.
@@ -10,6 +11,7 @@ mod artwork;
 mod name;
 mod playback;
 mod probe;
+mod subtitles;
 #[cfg(test)]
 mod test_fixtures;
 mod tools;
@@ -23,5 +25,9 @@ pub use playback::{AudioSupport, DeviceProfile, Incompatibility, PlaybackDecisio
 pub use probe::{
     AudioCodec, AudioStream, ColorInfo, Container, HdrFormat, MediaInfo, PROBE_VERSION, ProbeError,
     SubtitleCodec, SubtitleStream, VideoCodec, VideoStream, probe,
+};
+pub use subtitles::{
+    ExtractError, FontAttachment, SubtitleText, dump_attachment, extract_subtitle,
+    font_attachments, font_mime_type,
 };
 pub use tools::{MediaTools, ToolsError};

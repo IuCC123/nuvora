@@ -16,6 +16,8 @@ pub struct MediaTools {
     /// Kill ffprobe after this long. NAS shares can stall on a bad sector; one
     /// stuck file must not stall the scan.
     pub(crate) probe_timeout: Duration,
+    /// Kill an ffmpeg extraction (a subtitle track, a font) after this long.
+    pub(crate) extract_timeout: Duration,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -52,6 +54,7 @@ impl MediaTools {
             ffprobe_version,
             ffmpeg_version,
             probe_timeout: Duration::from_secs(30),
+            extract_timeout: Duration::from_secs(120),
         })
     }
 

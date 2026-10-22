@@ -356,6 +356,7 @@ pub(super) async fn update_user(
         role: body.role.map(Into::into),
         disabled: body.disabled,
         password_hash,
+        ..UserChanges::default()
     };
     let me = signed_in.user.id;
     let keep = (id == me).then_some(signed_in.token);
