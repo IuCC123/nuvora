@@ -4,6 +4,8 @@ import { ApiError, type AbortSignalLike, type FetchLike } from "./transport";
 type Schemas = components["schemas"];
 export type HomeResponse = Schemas["HomeResponse"];
 export type HomeRow = Schemas["HomeRow"];
+export type RowKind = Schemas["RowKind"];
+export type RowPage = Schemas["RowPage"];
 export type PosterCard = Schemas["PosterCard"];
 export type ItemDetail = Schemas["ItemDetail"];
 export type MovieDetail = Schemas["MovieDetail"];
@@ -29,6 +31,8 @@ export interface ClientOptions {
  */
 export interface NuvoraClient {
   home(signal?: AbortSignalLike): Promise<HomeResponse>;
+  /** The page of a home row after `after` (a `next` from `home()` or a previous page). */
+  row(kind: RowKind, after: string, signal?: AbortSignalLike): Promise<RowPage>;
   /** Rejects with `ApiError(404)` when the item does not exist. */
   item(id: number, signal?: AbortSignalLike): Promise<ItemDetail>;
   scanStatus(signal?: AbortSignalLike): Promise<ScanStatus>;
@@ -46,8 +50,14 @@ type Path = keyof paths;
 export function createClient(options: ClientOptions): NuvoraClient {
   const headers = { accept: "application/json", "nuvora-device": JSON.stringify(options.device) };
 
-  async function call<T>(method: "GET" | "POST", path: Path, params: Record<string, string | number>, signal?: AbortSignalLike): Promise<T> {
-    const url = options.baseUrl + fill(path, params);
+  async function call<T>(
+    method: "GET" | "POST",
+    path: Path,
+    params: Record<string, string | number>,
+    signal?: AbortSignalLike,
+    query?: Record<string, string>,
+  ): Promise<T> {
+    const url = options.baseUrl + fill(path, params) + queryString(query);
     const init = signal ? { method, headers, signal } : { method, headers };
     const res = await options.fetch(url, init);
     if (!res.ok) throw new ApiError(res.status, `${method} ${url} -> ${res.status}`);
@@ -58,6 +68,7 @@ export function createClient(options: ClientOptions): NuvoraClient {
 
   return {
     home: (signal) => call<HomeResponse>("GET", "/api/home", {}, signal),
+    row: (kind, after, signal) => call<RowPage>("GET", "/api/rows/{row}", { row: kind }, signal, { after }),
     item: (id, signal) => call<ItemDetail>("GET", "/api/items/{id}", { id }, signal),
     scanStatus: (signal) => call<ScanStatus>("GET", "/api/scan", {}, signal),
     startScan: () => call<ScanStatus>("POST", "/api/scan", {}),
@@ -68,4 +79,10 @@ export function createClient(options: ClientOptions): NuvoraClient {
 
 function fill(path: Path, params: Record<string, string | number>): string {
   return path.replace(/\{(\w+)\}/g, (_, name: string) => encodeURIComponent(String(params[name])));
+}
+
+function queryString(query: Record<string, string> | undefined): string {
+  if (!query) return "";
+  const pairs = Object.entries(query).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+  return pairs.length ? `?${pairs.join("&")}` : "";
 }

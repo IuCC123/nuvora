@@ -6,7 +6,8 @@
 //!
 //! | method | path                        | screen / purpose                         |
 //! |--------|-----------------------------|------------------------------------------|
-//! | GET    | /api/home                   | Home                                     |
+//! | GET    | /api/home                   | Home (first page of each row)            |
+//! | GET    | /api/rows/{row}             | Later pages of one home row              |
 //! | GET    | /api/items/{id}             | Movie detail (and the Player)            |
 //! | GET    | /api/images/{id}/{size}     | Artwork, immutable                       |
 //! | GET    | /api/files/{id}/stream      | Direct play, HTTP Range                  |
@@ -14,14 +15,14 @@
 //! | POST   | /api/scan                   | Request a scan (idempotent, coalescing)  |
 //! | GET    | /api/openapi.json           | The spec                                 |
 
-use axum::extract::{FromRequestParts, Path, State};
+use axum::extract::{FromRequestParts, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, request::Parts};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use nuvora_library::{Library, ScanStatus};
+use nuvora_library::{CatalogRev, Library, ScanStatus};
 use nuvora_media::DeviceProfile;
 use serde::{Deserialize, Serialize};
-use utoipa::{OpenApi, ToSchema};
+use utoipa::{IntoParams, OpenApi, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[derive(OpenApi)]
@@ -33,6 +34,7 @@ struct ApiDoc;
 pub fn router() -> (axum::Router<Library>, utoipa::openapi::OpenApi) {
     let (router, spec) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(get_home))
+        .routes(routes!(get_row))
         .routes(routes!(get_item))
         .routes(routes!(get_image))
         .routes(routes!(stream_file))
@@ -42,11 +44,13 @@ pub fn router() -> (axum::Router<Library>, utoipa::openapi::OpenApi) {
     (router.route("/api/openapi.json", axum::routing::get(move || async move { Json(spec_json) })), spec)
 }
 
-/// Compress JSON, JS, CSS and HTML only. The default predicate would compress
-/// `video/*`, which breaks Range requests and wastes CPU on incompressible data.
+/// Gzip at the fastest level: brotli at its default level costs more time than
+/// the 50 ms home budget allows. Never `video/*` (it would break Range requests)
+/// or `image/*` (WebP is already compressed).
 pub fn compression() -> tower_http::compression::CompressionLayer<impl tower_http::compression::Predicate + Clone> {
+    use tower_http::CompressionLevel;
     use tower_http::compression::predicate::{NotForContentType, Predicate, SizeAbove};
-    tower_http::compression::CompressionLayer::new().compress_when(
+    tower_http::compression::CompressionLayer::new().quality(CompressionLevel::Fastest).compress_when(
         SizeAbove::new(1024)
             .and(NotForContentType::const_new("video/"))
             .and(NotForContentType::const_new("image/")),
@@ -63,16 +67,46 @@ pub struct HomeResponse {
 
 #[derive(Serialize, ToSchema)]
 pub struct HomeRow {
-    pub kind: HomeRowKind,
+    pub kind: RowKind,
     pub title: String,
+    /// Cards in the whole row, not just `items`.
+    pub total: u32,
+    /// The first page, at most 40 cards.
     pub items: Vec<PosterCard>,
+    /// Opaque cursor for `GET /api/rows/{row}?after=`. `None` when `items` is the whole row.
+    pub next: Option<String>,
 }
 
+/// A later page of one row.
 #[derive(Serialize, ToSchema)]
+pub struct RowPage {
+    pub items: Vec<PosterCard>,
+    pub next: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, ToSchema, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
-pub enum HomeRowKind {
+pub enum RowKind {
     RecentlyAdded,
     AllMovies,
+}
+
+impl From<RowKind> for nuvora_library::RowKind {
+    fn from(k: RowKind) -> Self {
+        match k {
+            RowKind::RecentlyAdded => nuvora_library::RowKind::RecentlyAdded,
+            RowKind::AllMovies => nuvora_library::RowKind::AllMovies,
+        }
+    }
+}
+
+#[derive(Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct RowQuery {
+    /// `next` from the previous page; absent = from the start.
+    pub after: Option<String>,
+    /// Default 40, clamped to 1..=100.
+    pub limit: Option<u32>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -296,21 +330,47 @@ pub struct AudioSupportWire {
 
 /// Extracts the `Nuvora-Device` header into a domain profile. Absent =>
 /// `DeviceProfile::baseline()`. Malformed => 400 (a client bug, surfaced loudly).
-pub struct Device(pub DeviceProfile);
+pub struct Device {
+    pub profile: DeviceProfile,
+    /// blake3 of the raw header bytes (empty when absent), first 8 bytes as hex.
+    /// The item ETag includes it because the item body depends on the device.
+    pub hash: String,
+}
 
 impl<S: Send + Sync> FromRequestParts<S> for Device {
     type Rejection = ApiError;
     async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
         let _ = parts;
-        todo!("serde_json::from_slice::<DeviceProfileWire> -> DeviceProfile (codec from_name)")
+        todo!("serde_json::from_slice::<DeviceProfileWire> -> DeviceProfile (codec from_name); hash")
     }
 }
 
 #[utoipa::path(get, path = "/api/home", responses((status = 200, body = HomeResponse), (status = 304)))]
 async fn get_home(State(lib): State<Library>, headers: HeaderMap) -> Result<Response, ApiError> {
+    if if_none_match(&headers, &rev_etag(lib.rev())) {
+        return Ok(StatusCode::NOT_MODIFIED.into_response());
+    }
     let home = lib.home().await.map_err(ApiError::internal)?;
-    let _ = (home, headers);
-    todo!("json_with_etag(&headers, &HomeResponse::from(home))")
+    let _ = home;
+    todo!("json_with_etag(&rev_etag(home.rev), &HomeResponse::from(home))")
+}
+
+/// Keyset paging on the row's sort key. A malformed cursor, or one from
+/// another row, is 400.
+#[utoipa::path(
+    get,
+    path = "/api/rows/{row}",
+    params(("row" = RowKind, Path), RowQuery),
+    responses((status = 200, body = RowPage), (status = 304), (status = 400)),
+)]
+async fn get_row(
+    State(lib): State<Library>,
+    Path(row): Path<RowKind>,
+    Query(query): Query<RowQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let _ = (lib, row, query, headers);
+    todo!("304 on rev; Cursor::parse(row.into(), after) -> 400; lib.row(..); json_with_etag(&rev_etag(page.rev), ..)")
 }
 
 #[utoipa::path(
@@ -325,11 +385,11 @@ async fn get_home(State(lib): State<Library>, headers: HeaderMap) -> Result<Resp
 async fn get_item(
     State(lib): State<Library>,
     Path(id): Path<i64>,
-    Device(device): Device,
+    device: Device,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     let _ = (lib, id, device, headers);
-    todo!("lib.item(ItemId::from_raw(id), device) -> 404 | json_with_etag + `Vary: Nuvora-Device`")
+    todo!("304 on item_etag; lib.item(ItemId::from_raw(id), device.profile) -> 404 | json_with_etag + `Vary: Nuvora-Device`")
 }
 
 /// Reads the WebP from the store (tens of KB) and answers with
@@ -374,16 +434,40 @@ async fn post_scan(State(lib): State<Library>) -> (StatusCode, Json<ScanStatusRe
 
 // ----------------------------------------------------------------- mapping
 
+/// Row titles are display strings, so they live here, not in the catalog.
+fn row_title(kind: nuvora_library::RowKind) -> &'static str {
+    match kind {
+        nuvora_library::RowKind::RecentlyAdded => "Recently Added",
+        nuvora_library::RowKind::AllMovies => "All Movies",
+    }
+}
+
 fn scan_status_wire(status: ScanStatus) -> ScanStatusResponse {
     let _ = status;
     todo!()
 }
 
-/// Serialize, ETag = blake3 of the body (first 16 bytes, quoted), answer 304
-/// when `If-None-Match` matches, else 200 with `Cache-Control: no-cache` (the
-/// client always revalidates; an unchanged home costs one small 304).
-fn json_with_etag<T: Serialize>(request_headers: &HeaderMap, body: &T) -> Response {
-    let _ = (request_headers, body);
+/// `"<rev>"`: the ETag of home and row pages.
+fn rev_etag(rev: CatalogRev) -> String {
+    format!("\"{}\"", rev.get())
+}
+
+/// `"<rev>-<profile hash>"`: an item's body depends on the catalog and the device.
+fn item_etag(rev: CatalogRev, device: &Device) -> String {
+    format!("\"{}-{}\"", rev.get(), device.hash)
+}
+
+/// True when the request's `If-None-Match` lists `etag`; the caller answers 304
+/// before running any query.
+fn if_none_match(request_headers: &HeaderMap, etag: &str) -> bool {
+    let _ = (request_headers, etag);
+    todo!()
+}
+
+/// 200 with `ETag: etag` and `Cache-Control: no-cache` (the client always
+/// revalidates; an unchanged catalog costs one small 304).
+fn json_with_etag<T: Serialize>(etag: &str, body: &T) -> Response {
+    let _ = (etag, body);
     todo!()
 }
 

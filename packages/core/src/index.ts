@@ -17,6 +17,8 @@ export type {
   NuvoraClient,
   Playback,
   PosterCard,
+  RowKind,
+  RowPage,
   ScanStatus,
   Version,
 } from "./client";

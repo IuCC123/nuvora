@@ -18,7 +18,7 @@ nuvora-media = { path = "../media" }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "fs"] }
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["fs", "compression-br", "compression-gzip"] }
+tower-http = { version = "0.6", features = ["fs", "compression-gzip"] }
 utoipa = "5"
 utoipa-axum = "0.2"
 serde = { version = "1", features = ["derive"] }

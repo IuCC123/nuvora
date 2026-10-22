@@ -79,6 +79,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/rows/{row}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Keyset paging on the row's sort key. A malformed cursor, or one from
+         *     another row, is 400.
+         */
+        get: operations["get_row"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scan": {
         parameters: {
             query?: never;
@@ -133,12 +153,18 @@ export interface components {
             rows: components["schemas"]["HomeRow"][];
         };
         HomeRow: {
+            /** @description The first page, at most 40 cards. */
             items: components["schemas"]["PosterCard"][];
-            kind: components["schemas"]["HomeRowKind"];
+            kind: components["schemas"]["RowKind"];
+            /** @description Opaque cursor for `GET /api/rows/{row}?after=`. `None` when `items` is the whole row. */
+            next?: string | null;
             title: string;
+            /**
+             * Format: int32
+             * @description Cards in the whole row, not just `items`.
+             */
+            total: number;
         };
-        /** @enum {string} */
-        HomeRowKind: "recently_added" | "all_movies";
         /** @description An artwork. URL: `/api/images/{id}/{size}`. Immutable: cache forever. */
         Image: {
             /**
@@ -213,6 +239,13 @@ export interface components {
             title: string;
             /** Format: int32 */
             year?: number | null;
+        };
+        /** @enum {string} */
+        RowKind: "recently_added" | "all_movies";
+        /** @description A later page of one row. */
+        RowPage: {
+            items: components["schemas"]["PosterCard"][];
+            next?: string | null;
         };
         ScanIssue: {
             message: string;
@@ -440,6 +473,44 @@ export interface operations {
                 content?: never;
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_row: {
+        parameters: {
+            query?: {
+                /** @description `next` from the previous page; absent = from the start. */
+                after?: string;
+                /** @description Default 40, clamped to 1..=100. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                row: components["schemas"]["RowKind"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RowPage"];
+                };
+            };
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

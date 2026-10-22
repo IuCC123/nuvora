@@ -186,6 +186,60 @@
         }
       }
     },
+    "/api/rows/{row}": {
+      "get": {
+        "summary": "Keyset paging on the row's sort key. A malformed cursor, or one from\nanother row, is 400.",
+        "operationId": "get_row",
+        "parameters": [
+          {
+            "name": "row",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/RowKind"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "`next` from the previous page; absent = from the start.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Default 40, clamped to 1..=100.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RowPage"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": ""
+          },
+          "400": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/scan": {
       "get": {
         "operationId": "get_scan",
@@ -334,6 +388,7 @@
         "required": [
           "kind",
           "title",
+          "total",
           "items"
         ],
         "properties": {
@@ -341,22 +396,29 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PosterCard"
-            }
+            },
+            "description": "The first page, at most 40 cards."
           },
           "kind": {
-            "$ref": "#/components/schemas/HomeRowKind"
+            "$ref": "#/components/schemas/RowKind"
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opaque cursor for `GET /api/rows/{row}?after=`. `None` when `items` is the whole row."
           },
           "title": {
             "type": "string"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cards in the whole row, not just `items`.",
+            "minimum": 0
           }
         }
-      },
-      "HomeRowKind": {
-        "type": "string",
-        "enum": [
-          "recently_added",
-          "all_movies"
-        ]
       },
       "Image": {
         "type": "object",
@@ -638,6 +700,34 @@
             ],
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "RowKind": {
+        "type": "string",
+        "enum": [
+          "recently_added",
+          "all_movies"
+        ]
+      },
+      "RowPage": {
+        "type": "object",
+        "description": "A later page of one row.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PosterCard"
+            }
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
