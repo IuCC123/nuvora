@@ -79,8 +79,9 @@ function Metadata() {
     <section className="settings-section" aria-labelledby="metadata">
       <h2 id="metadata">Descriptions and artwork</h2>
       <p className="settings-note">
-        Nuvora looks up synopses, posters, cast and voice actors online. Anime comes from AniList and TV shows from TVmaze, with no setup.
-        Movies need a free TMDB key: create an account at themoviedb.org, then copy the API key from Settings › API.
+        Nuvora looks up synopses, posters, cast and voice actors online, with no setup: anime from AniList, TV shows from TVmaze, and movies
+        from Wikipedia. A free TMDB key adds ratings and better posters for movies: create an account at themoviedb.org, then copy the API key
+        from Settings › API.
       </p>
       <form
         className="form settings-form"

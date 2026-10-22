@@ -647,6 +647,336 @@ pub(crate) async fn tmdb_movie(
     Ok(Some((found, movie.tagline.filter(|t| !t.is_empty()))))
 }
 
+// ----------------------------------------------------------- Wikidata
+
+pub(crate) const WIKI_SPACING: Duration = Duration::from_millis(300);
+const WIKIDATA_API: &str = "https://www.wikidata.org/w/api.php";
+
+/// `instance of` values that make an item a film: film, short, animated,
+/// animated feature, feature, TV film, silent, documentary, animated short,
+/// anime film, 3D film.
+const FILM_CLASSES: [&str; 11] = [
+    "Q11424",
+    "Q24862",
+    "Q202866",
+    "Q29168811",
+    "Q24869",
+    "Q506240",
+    "Q226730",
+    "Q93204",
+    "Q17517379",
+    "Q20650540",
+    "Q229390",
+];
+
+/// A film from Wikidata, with Wikipedia's summary as the overview. No key,
+/// so it is what every movie gets without TMDB. Candidates come from
+/// Wikidata's search; one counts when it is a film, a title matches, and
+/// the year agrees within one.
+pub(crate) async fn wikidata_movie(
+    http: &reqwest::Client,
+    search: &str,
+    year: Option<u16>,
+) -> Result<Option<Found>, ProviderError> {
+    let hits = wiki_get(
+        http,
+        WIKIDATA_API,
+        &[
+            ("action", "wbsearchentities"),
+            ("search", search),
+            ("language", "en"),
+            ("uselang", "en"),
+            ("type", "item"),
+            ("limit", "7"),
+            ("format", "json"),
+        ],
+    )
+    .await?;
+    let ids: Vec<&str> = hits["search"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|h| h["id"].as_str())
+        .collect();
+    if ids.is_empty() {
+        return Ok(None);
+    }
+    tokio::time::sleep(WIKI_SPACING).await;
+    let candidates = entities(http, &ids, "claims|labels|descriptions|sitelinks").await?;
+    let Some((qid, film)) = ids.iter().find_map(|id| {
+        let e = &candidates["entities"][*id];
+        let is_film = claim_ids(e, "P31")
+            .iter()
+            .any(|c| FILM_CLASSES.contains(&c.as_str()))
+            || e["descriptions"]["en"]["value"]
+                .as_str()
+                .is_some_and(|d| d.contains("film"));
+        let label = e["labels"]["en"]["value"].as_str().unwrap_or_default();
+        let titles: Vec<String> = std::iter::once(label.to_owned())
+            .chain(claim_strings(e, "P1476"))
+            .collect();
+        let titles: Vec<&str> = titles.iter().map(String::as_str).collect();
+        let year_ok = match (year, film_year(e)) {
+            (Some(want), Some(got)) => want.abs_diff(got) <= 1,
+            _ => true,
+        };
+        (is_film && year_ok && matches(search, &titles)).then(|| (id.to_string(), e.clone()))
+    }) else {
+        return Ok(None);
+    };
+
+    let cast: Vec<(String, Option<String>)> = claim_statements(&film, "P161")
+        .into_iter()
+        .filter_map(|st| {
+            let actor = st["mainsnak"]["datavalue"]["value"]["id"]
+                .as_str()?
+                .to_owned();
+            let character = st["qualifiers"]["P453"][0]["datavalue"]["value"]["id"]
+                .as_str()
+                .map(str::to_owned)
+                .or_else(|| {
+                    st["qualifiers"]["P4633"][0]["datavalue"]["value"]
+                        .as_str()
+                        .map(|s| format!("text:{s}"))
+                });
+            Some((actor, character))
+        })
+        .take(15)
+        .collect();
+    let genres: Vec<String> = claim_ids(&film, "P136").into_iter().take(4).collect();
+    let studio = claim_ids(&film, "P272").into_iter().next();
+
+    // Labels for everything referenced, and the cast's photos (their P18).
+    let mut ids: Vec<String> = cast.iter().map(|(a, _)| a.clone()).collect();
+    ids.extend(
+        cast.iter()
+            .filter_map(|(_, c)| c.clone())
+            .filter(|c| !c.starts_with("text:")),
+    );
+    ids.extend(genres.iter().cloned());
+    ids.extend(studio.iter().cloned());
+    ids.sort();
+    ids.dedup();
+    let mut named = serde_json::Map::new();
+    for chunk in ids.chunks(50) {
+        tokio::time::sleep(WIKI_SPACING).await;
+        let refs: Vec<&str> = chunk.iter().map(String::as_str).collect();
+        if let serde_json::Value::Object(map) =
+            entities(http, &refs, "claims|labels").await?["entities"].take()
+        {
+            named.extend(map);
+        }
+    }
+    let label = |id: &str| {
+        named
+            .get(id)
+            .and_then(|e| e["labels"]["en"]["value"].as_str())
+            .map(str::to_owned)
+    };
+
+    let credits = cast
+        .iter()
+        .filter_map(|(actor, character)| {
+            Some(FoundCredit {
+                kind: "cast",
+                name: label(actor)?,
+                character: character
+                    .as_deref()
+                    .and_then(|c| match c.strip_prefix("text:") {
+                        Some(text) => Some(text.to_owned()),
+                        None => label(c),
+                    }),
+                language: None,
+                image_url: named
+                    .get(actor)
+                    .and_then(|e| claim_strings(e, "P18").into_iter().next())
+                    .map(|file| commons_file(&file, 400)),
+                character_image_url: None,
+            })
+        })
+        .collect();
+
+    let page = film["sitelinks"]["enwiki"]["title"]
+        .as_str()
+        .map(str::to_owned);
+    let summary = match &page {
+        Some(page) => {
+            tokio::time::sleep(WIKI_SPACING).await;
+            wikipedia_summary(http, page).await?
+        }
+        None => serde_json::Value::Null,
+    };
+    // A poster: Wikidata's film poster, else Wikipedia's lead image when it is portrait.
+    let lead = &summary["originalimage"];
+    let lead_portrait =
+        lead["height"].as_u64().unwrap_or(0) > lead["width"].as_u64().unwrap_or(u64::MAX);
+    let poster_url = claim_strings(&film, "P3383")
+        .into_iter()
+        .next()
+        .map(|file| commons_file(&file, 780))
+        .or_else(|| {
+            lead_portrait
+                .then(|| lead["source"].as_str().map(str::to_owned))
+                .flatten()
+        });
+    let title = film["labels"]["en"]["value"]
+        .as_str()
+        .unwrap_or(search)
+        .to_owned();
+    Ok(Some(Found {
+        provider_id: format!("wikidata:{qid}"),
+        original_title: claim_strings(&film, "P1476")
+            .into_iter()
+            .find(|t| *t != title),
+        title,
+        year: film_year(&film),
+        overview: summary["extract"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned),
+        genres: genres
+            .iter()
+            .filter_map(|g| label(g))
+            .map(|g| genre_name(&g))
+            .collect(),
+        rating: None,
+        studio: studio.as_deref().and_then(label),
+        external_url: page
+            .map(|p| format!("https://en.wikipedia.org/wiki/{}", p.replace(' ', "_")))
+            .or_else(|| Some(format!("https://www.wikidata.org/wiki/{qid}"))),
+        poster_url,
+        backdrop_url: None,
+        credits,
+    }))
+}
+
+async fn wiki_get(
+    http: &reqwest::Client,
+    url: &str,
+    query: &[(&str, &str)],
+) -> Result<serde_json::Value, ProviderError> {
+    let resp = http.get(url).query(query).send().await?;
+    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err(ProviderError::RateLimited);
+    }
+    Ok(resp.error_for_status()?.json().await?)
+}
+
+async fn entities(
+    http: &reqwest::Client,
+    ids: &[&str],
+    props: &str,
+) -> Result<serde_json::Value, ProviderError> {
+    let ids = ids.join("|");
+    wiki_get(
+        http,
+        WIKIDATA_API,
+        &[
+            ("action", "wbgetentities"),
+            ("ids", &ids),
+            ("props", props),
+            ("languages", "en"),
+            ("sitefilter", "enwiki"),
+            ("format", "json"),
+        ],
+    )
+    .await
+}
+
+async fn wikipedia_summary(
+    http: &reqwest::Client,
+    page: &str,
+) -> Result<serde_json::Value, ProviderError> {
+    let mut url = reqwest::Url::parse("https://en.wikipedia.org/api/rest_v1/page/summary/")
+        .expect("static URL");
+    url.path_segments_mut()
+        .expect("https URL has segments")
+        .pop_if_empty()
+        .push(&page.replace(' ', "_"));
+    let resp = http.get(url).send().await?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(serde_json::Value::Null);
+    }
+    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err(ProviderError::RateLimited);
+    }
+    Ok(resp.error_for_status()?.json().await?)
+}
+
+/// A Wikimedia Commons file, scaled to `width`.
+fn commons_file(file: &str, width: u32) -> String {
+    let mut url = reqwest::Url::parse("https://commons.wikimedia.org/wiki/Special:FilePath/")
+        .expect("static URL");
+    url.path_segments_mut()
+        .expect("https URL has segments")
+        .pop_if_empty()
+        .push(&file.replace(' ', "_"));
+    url.query_pairs_mut()
+        .append_pair("width", &width.to_string());
+    url.to_string()
+}
+
+fn claim_statements(entity: &serde_json::Value, property: &str) -> Vec<serde_json::Value> {
+    entity["claims"][property]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// The item ids a property points at, in statement order.
+fn claim_ids(entity: &serde_json::Value, property: &str) -> Vec<String> {
+    entity["claims"][property]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|st| {
+            st["mainsnak"]["datavalue"]["value"]["id"]
+                .as_str()
+                .map(str::to_owned)
+        })
+        .collect()
+}
+
+/// String, monolingual text and file values of a property.
+fn claim_strings(entity: &serde_json::Value, property: &str) -> Vec<String> {
+    entity["claims"][property]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|st| {
+            let v = &st["mainsnak"]["datavalue"]["value"];
+            v.as_str().or_else(|| v["text"].as_str()).map(str::to_owned)
+        })
+        .collect()
+}
+
+/// The earliest publication year (`P577`, `"+1999-03-31T00:00:00Z"`).
+fn film_year(entity: &serde_json::Value) -> Option<u16> {
+    entity["claims"]["P577"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|st| {
+            st["mainsnak"]["datavalue"]["value"]["time"]
+                .as_str()?
+                .trim_start_matches('+')
+                .get(..4)?
+                .parse::<u16>()
+                .ok()
+        })
+        .min()
+}
+
+/// "science fiction film" → "Science fiction".
+fn genre_name(label: &str) -> String {
+    let base = label.strip_suffix(" film").unwrap_or(label);
+    let mut chars = base.chars();
+    chars
+        .next()
+        .map(|c| c.to_uppercase().chain(chars).collect())
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -685,5 +1015,28 @@ mod tests {
             "The second season."
         );
         assert_eq!(strip_html("<p>A &amp; B</p>"), "A & B");
+    }
+
+    #[test]
+    fn wikidata_values_parse() {
+        let film = serde_json::json!({"claims": {
+            "P577": [
+                {"mainsnak": {"datavalue": {"value": {"time": "+1999-07-14T00:00:00Z"}}}},
+                {"mainsnak": {"datavalue": {"value": {"time": "+1999-03-31T00:00:00Z"}}}}
+            ],
+            "P1476": [{"mainsnak": {"datavalue": {"value": {"text": "The Matrix", "language": "en"}}}}],
+            "P3383": [{"mainsnak": {"datavalue": {"value": "Big buck bunny poster big.jpg"}}}],
+            "P136": [{"mainsnak": {"datavalue": {"value": {"id": "Q2484376"}}}}, {"mainsnak": {"snaktype": "novalue"}}]
+        }});
+        assert_eq!(film_year(&film), Some(1999));
+        assert_eq!(claim_strings(&film, "P1476"), ["The Matrix"]);
+        assert_eq!(claim_ids(&film, "P136"), ["Q2484376"]);
+        assert!(claim_ids(&film, "P161").is_empty());
+        assert_eq!(
+            commons_file(&claim_strings(&film, "P3383")[0], 780),
+            "https://commons.wikimedia.org/wiki/Special:FilePath/Big_buck_bunny_poster_big.jpg?width=780"
+        );
+        assert_eq!(genre_name("science fiction film"), "Science fiction");
+        assert_eq!(genre_name("cyberpunk"), "Cyberpunk");
     }
 }

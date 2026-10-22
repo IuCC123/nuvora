@@ -139,7 +139,6 @@ async fn run(
                     }
                 }
             }
-            Ok(None) if p.kind == "movie" && tmdb_key.is_none() => "no_provider",
             Ok(None) => "no_match",
             Err(ProviderError::RateLimited) => {
                 tracing::info!("metadata provider rate limit hit; resuming next run");
@@ -166,7 +165,8 @@ async fn run(
 }
 
 /// Shows: AniList, then TVmaze, over each title variant. Movies: TMDB when a
-/// key is set, then AniList's anime films (strict: title and year must agree).
+/// key is set, then AniList's anime films (strict: title and year must agree),
+/// then Wikidata and Wikipedia, which need no key.
 async fn lookup(
     http: &reqwest::Client,
     p: &Pending,
@@ -195,7 +195,11 @@ async fn lookup(
         }
     }
     tokio::time::sleep(providers::ANILIST_SPACING).await;
-    Ok(providers::anilist(http, &p.title, true, p.year)
+    if let Some(f) = providers::anilist(http, &p.title, true, p.year).await? {
+        return Ok(Some((f, None)));
+    }
+    tokio::time::sleep(providers::WIKI_SPACING).await;
+    Ok(providers::wikidata_movie(http, &p.title, p.year)
         .await?
         .map(|f| (f, None)))
 }

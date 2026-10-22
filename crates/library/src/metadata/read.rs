@@ -19,7 +19,7 @@ pub struct Extras {
     pub studio: Option<String>,
     /// e.g. `https://anilist.co/anime/153406`.
     pub external_url: Option<String>,
-    /// `"AniList"`, `"TVmaze"` or `"TMDB"`.
+    /// `"AniList"`, `"TVmaze"`, `"TMDB"` or `"Wikipedia"`.
     pub source: Option<&'static str>,
     pub credits: Vec<Credit>,
 }
@@ -94,6 +94,7 @@ pub(crate) fn extras(conn: &Connection, item: ItemId) -> rusqlite::Result<Extras
         Some("anilist") => Some("AniList"),
         Some("tvmaze") => Some("TVmaze"),
         Some("tmdb") => Some("TMDB"),
+        Some("wikidata") => Some("Wikipedia"),
         _ => None,
     };
     Ok(Extras {
