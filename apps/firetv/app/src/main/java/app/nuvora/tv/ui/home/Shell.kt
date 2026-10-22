@@ -11,8 +11,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import app.nuvora.tv.store
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.remember
@@ -38,6 +45,7 @@ import app.nuvora.tv.ui.HomeRoute
 import app.nuvora.tv.ui.LibraryRoute
 import app.nuvora.tv.ui.SearchRoute
 import app.nuvora.tv.ui.SettingsRoute
+import app.nuvora.tv.ui.TogetherRoute
 import app.nuvora.tv.ui.common.Load
 import app.nuvora.tv.ui.common.NvIcons
 import app.nuvora.tv.ui.common.rememberLoad
@@ -49,6 +57,7 @@ sealed interface Section {
     data object Search : Section
     data class Library(val id: Long) : Section
     data object Settings : Section
+    data object Together : Section
 }
 
 /**
@@ -58,6 +67,7 @@ sealed interface Section {
 @Composable
 fun Shell(nav: NavHostController, section: Section, content: @Composable () -> Unit) {
     val (libraries) = rememberLoad { libraries() }
+    val live by LocalContext.current.store.party.state.collectAsState()
     val list = (libraries as? Load.Ready<List<LibrarySummary>>)?.value.orEmpty()
 
     fun go(to: Section) {
@@ -66,6 +76,7 @@ fun Shell(nav: NavHostController, section: Section, content: @Composable () -> U
             Section.Home -> HomeRoute
             Section.Search -> SearchRoute
             Section.Settings -> SettingsRoute
+            Section.Together -> TogetherRoute
             is Section.Library -> LibraryRoute(to.id, list.firstOrNull { it.id == to.id }?.name ?: "Library")
         }
         nav.navigate(route) {
@@ -92,6 +103,9 @@ fun Shell(nav: NavHostController, section: Section, content: @Composable () -> U
                 }
                 Item(section == Section.Search, NvIcons.Search, "Search", current) { go(Section.Search) }
                 Item(section == Section.Home, NvIcons.Home, "Home", current) { go(Section.Home) }
+                Item(section == Section.Together, NvIcons.Users, if (live.party != null) "Watching together" else "Watch together", current, dot = live.invites.isNotEmpty() || live.party != null) {
+                    go(Section.Together)
+                }
                 list.forEach { library ->
                     Item(
                         section == Section.Library(library.id),
@@ -110,12 +124,18 @@ fun Shell(nav: NavHostController, section: Section, content: @Composable () -> U
 }
 
 @Composable
-private fun NavigationDrawerScope.Item(selected: Boolean, icon: ImageVector, label: String, current: FocusRequester, onClick: () -> Unit) {
+private fun NavigationDrawerScope.Item(selected: Boolean, icon: ImageVector, label: String, current: FocusRequester, dot: Boolean = false, onClick: () -> Unit) {
     NavigationDrawerItem(
         selected = selected,
         onClick = onClick,
         modifier = if (selected) Modifier.focusRequester(current) else Modifier,
-        leadingContent = { Icon(icon, null, modifier = Modifier.size(22.dp)) },
+        leadingContent = {
+            Box {
+                Icon(icon, null, modifier = Modifier.size(22.dp))
+                // An invitation waiting, or a group to go back to.
+                if (dot) Box(Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-2).dp).size(9.dp).clip(CircleShape).background(Nv.accent))
+            }
+        },
         colors = NavigationDrawerItemDefaults.colors(
             focusedContainerColor = Nv.textPrimary,
             focusedContentColor = Nv.canvas,

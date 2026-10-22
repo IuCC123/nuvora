@@ -28,6 +28,9 @@ class SessionStore(context: Context, profile: DeviceProfile) {
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
+    /** Watch Together's live connection, one for the app. */
+    val party = PartyLink()
+
     private val _session = MutableStateFlow(load())
     val session: StateFlow<Session?> = _session
 
@@ -61,7 +64,32 @@ class SessionStore(context: Context, profile: DeviceProfile) {
 
     fun signOut() {
         prefs.edit().remove("token").remove("user").apply()
+        party.stop()
         _session.value = null
+    }
+
+    /** The signed-in account changed on the server (a setting saved). */
+    fun updateUser(user: User) {
+        val current = _session.value ?: return
+        prefs.edit().putString("user", json.encodeToString(User.serializer(), user)).apply()
+        _session.value = current.copy(user = user)
+    }
+
+    // ------------------------------------------------------------ player
+
+    var subtitleStyle: SubtitleStyle
+        get() = prefs.getString("subtitle_style", null)
+            ?.let { runCatching { json.decodeFromString(SubtitleStyle.serializer(), it) }.getOrNull() }
+            ?: SubtitleStyle()
+        set(value) = prefs.edit().putString("subtitle_style", json.encodeToString(SubtitleStyle.serializer(), value)).apply()
+
+    /** The viewer's last subtitle choice for [scope] (`"show:12"`, `"movie:4"`); per user, so two people on one TV keep their own. */
+    fun subtitleChoice(userId: Long, scope: String): RememberedSubtitle? =
+        prefs.getString("subtitles.$userId.$scope", null)
+            ?.let { runCatching { json.decodeFromString(RememberedSubtitle.serializer(), it) }.getOrNull() }
+
+    fun saveSubtitleChoice(userId: Long, scope: String, choice: RememberedSubtitle) {
+        prefs.edit().putString("subtitles.$userId.$scope", json.encodeToString(RememberedSubtitle.serializer(), choice)).apply()
     }
 
     private fun load(): Session? {

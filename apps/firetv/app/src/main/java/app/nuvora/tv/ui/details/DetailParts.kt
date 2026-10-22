@@ -19,10 +19,23 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.Icon
+import androidx.tv.material3.Surface
+import app.nuvora.tv.data.Version
+import app.nuvora.tv.data.languageCode
+import app.nuvora.tv.data.languageName
+import app.nuvora.tv.ui.common.NvIcons
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +52,7 @@ import androidx.tv.material3.Text
 import app.nuvora.tv.data.CastMember
 import app.nuvora.tv.data.Image
 import app.nuvora.tv.ui.common.ArtworkImage
+import app.nuvora.tv.ui.common.MinimalScroll
 import app.nuvora.tv.ui.common.TitleCard
 import app.nuvora.tv.ui.theme.Nv
 
@@ -127,19 +141,6 @@ fun DetailLayout(
     }
 }
 
-/** Scrolls just enough to show what gained focus, from whichever edge it is past. */
-@OptIn(ExperimentalFoundationApi::class)
-private val MinimalScroll = object : BringIntoViewSpec {
-    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
-        val end = offset + size
-        return when {
-            offset >= 0 && end <= containerSize -> 0f
-            offset < 0 || size > containerSize -> offset
-            else -> end - containerSize
-        }
-    }
-}
-
 /** The cast, as round photos with who they play. */
 @Composable
 fun CastRow(cast: List<CastMember>) {
@@ -186,5 +187,87 @@ fun NotPlayable(reasons: List<String>) {
     Column(Modifier.clip(RoundedCornerShape(10.dp)).background(Nv.surface).padding(16.dp)) {
         Text("This can't play on this TV", style = MaterialTheme.typography.titleMedium, color = Nv.textPrimary)
         reasons.forEach { Text(it, style = MaterialTheme.typography.bodyMedium, color = Nv.textSecondary) }
+    }
+}
+
+/** `1_420_000_000` -> `"1.4 GB"`. */
+fun sizeText(bytes: Long): String? = when {
+    bytes <= 0 -> null
+    bytes >= 1_000_000_000 -> "%.1f GB".format(bytes / 1e9)
+    else -> "${bytes / 1_000_000} MB"
+}
+
+/** What's in a file: its audio and subtitle tracks, its name and size. */
+@Composable
+fun VersionFacts(version: Version, modifier: Modifier = Modifier) {
+    val media = version.media ?: return
+    Column(modifier.padding(horizontal = 56.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (media.audio.isNotEmpty()) {
+            Fact("Audio", media.audio.joinToString("  ·  ") { a -> listOfNotNull(languageCode(a.language)?.let(::languageName), a.title?.takeIf { it.isNotBlank() }, a.layout ?: "${a.channels} ch").joinToString(" ") })
+        }
+        if (media.subtitles.isNotEmpty()) {
+            val names = media.subtitles.map { t -> languageCode(t.language)?.let(::languageName) ?: t.title ?: t.codec }.distinct()
+            Fact("Subtitles", names.take(8).joinToString(", ") + if (names.size > 8) " +${names.size - 8}" else "")
+        }
+        Fact("File", listOfNotNull(version.fileName, sizeText(version.sizeBytes)).joinToString("  ·  "))
+    }
+}
+
+@Composable
+private fun Fact(label: String, value: String) {
+    Row {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = Nv.textMuted, modifier = Modifier.width(110.dp))
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = Nv.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** The versions of a movie or episode, to play a different one. */
+@Composable
+fun VersionPicker(versions: List<Version>, chosen: Long, onPick: (Version) -> Unit, onClose: () -> Unit) {
+    BackHandler(onBack = onClose)
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f))) {
+        Column(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(560.dp).background(Nv.surface).padding(28.dp)) {
+            Text("Version", style = MaterialTheme.typography.headlineSmall, color = Nv.textPrimary)
+            Spacer(Modifier.height(18.dp))
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(versions, key = { it.fileId }) { version ->
+                    val selected = version.fileId == chosen
+                    Surface(
+                        onClick = { onPick(version) },
+                        enabled = version.playback.playable,
+                        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+                        colors = ClickableSurfaceDefaults.colors(
+                            containerColor = Color.Transparent,
+                            contentColor = if (selected) Nv.accent else Nv.textPrimary,
+                            focusedContainerColor = Nv.textPrimary,
+                            focusedContentColor = Nv.canvas,
+                            disabledContainerColor = Color.Transparent,
+                            disabledContentColor = Nv.textMuted,
+                        ),
+                        modifier = (if (selected) Modifier.focusRequester(first) else Modifier).fillMaxWidth(),
+                    ) {
+                        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.width(28.dp)) { if (selected) Icon(NvIcons.Check, null, modifier = Modifier.size(18.dp)) }
+                            Column {
+                                Text(version.summary.ifBlank { version.fileName }, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    listOfNotNull(
+                                        version.fileName.takeIf { version.summary.isNotBlank() },
+                                        sizeText(version.sizeBytes),
+                                        "converted for this TV".takeIf { version.playback.kind == "hls" },
+                                        "can't play here".takeIf { !version.playback.playable },
+                                    ).joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

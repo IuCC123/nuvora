@@ -44,6 +44,7 @@ import app.nuvora.tv.ui.common.ThumbHash
 import app.nuvora.tv.ui.common.key
 import app.nuvora.tv.ui.common.rememberInitialFocus
 import app.nuvora.tv.ui.common.rememberLoad
+import app.nuvora.tv.ui.LibraryRoute
 import app.nuvora.tv.ui.open
 import app.nuvora.tv.ui.theme.Nv
 
@@ -94,6 +95,8 @@ private fun HomeRows(nav: NavHostController, home: HomeResponse) {
                         },
                         focusRequester = if (row === focusRow) requester else null,
                         focusKey = if (row === focusRow) lastCard else null,
+                        onSeeAll = row.libraryId?.let { id -> { nav.navigate(LibraryRoute(id, row.title)) } },
+                        total = row.total,
                         modifier = Modifier.padding(bottom = 18.dp),
                     )
                 }

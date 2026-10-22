@@ -37,6 +37,17 @@ import app.nuvora.tv.ui.common.PosterCardView
 import app.nuvora.tv.ui.common.PosterWidth
 import app.nuvora.tv.ui.common.initialFocus
 import app.nuvora.tv.ui.common.rememberInitialFocus
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import app.nuvora.tv.ui.common.ArtworkImage
+import app.nuvora.tv.ui.together.initials
 import app.nuvora.tv.ui.home.Section
 import app.nuvora.tv.ui.home.Shell
 import app.nuvora.tv.ui.open
@@ -91,7 +102,7 @@ fun SearchScreen(nav: NavHostController) {
                 error != null -> Message(error.orEmpty())
                 query.isBlank() -> Message("Find anything by its title, an episode by its name, or an actor or voice actor.")
                 found == null -> {}
-                found.titles.isEmpty() && found.episodes.isEmpty() -> Message("Nothing matches “${query.trim()}”.")
+                found.titles.isEmpty() && found.episodes.isEmpty() && found.people.isEmpty() -> Message("Nothing matches “${query.trim()}”.")
                 else -> Results(nav, found)
             }
         }
@@ -120,6 +131,24 @@ private fun Results(nav: NavHostController, found: SearchResponse) {
             item(span = { GridItemSpan(maxLineSpan) }) { Heading("Episodes") }
             items(episodeCards, key = { "e${it.id}" }) { card ->
                 PosterCardView(card, onClick = { nav.navigate(PlayerRoute(card.id)) })
+            }
+        }
+        // Each person, then what they're in, as whom.
+        found.people.forEachIndexed { n, person ->
+            item(span = { GridItemSpan(maxLineSpan) }, key = "p$n") {
+                if (n == 0) Heading("People")
+                Row(Modifier.padding(top = if (n == 0) 44.dp else 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(56.dp).clip(CircleShape).background(Nv.surfaceRaised), contentAlignment = Alignment.Center) {
+                        if (person.image != null) ArtworkImage(person.image, Modifier.fillMaxSize())
+                        else Text(initials(person.name), style = MaterialTheme.typography.labelLarge, color = Nv.textSecondary)
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    Text(person.name, style = MaterialTheme.typography.titleMedium, color = Nv.textPrimary)
+                }
+            }
+            items(person.roles, key = { "p$n-${it.card.kind}${it.card.id}" }) { role ->
+                val card = role.card.copy(subtitle = role.character?.let { "as $it" } ?: role.card.subtitle)
+                PosterCardView(card, onClick = { nav.open(card.kind, card.id) })
             }
         }
     }

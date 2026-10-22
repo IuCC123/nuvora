@@ -88,7 +88,15 @@ data class LibraryPage(
 data class SearchResponse(
     val titles: List<PosterCard> = emptyList(),
     val episodes: List<SearchEpisode> = emptyList(),
+    val people: List<SearchPerson> = emptyList(),
 )
+
+@Serializable
+data class SearchPerson(val name: String, val image: Image? = null, val roles: List<SearchRole> = emptyList())
+
+/** One title a person is in, and who they play or voice there. */
+@Serializable
+data class SearchRole(val card: PosterCard, val character: String? = null)
 
 @Serializable
 data class SearchEpisode(
@@ -133,6 +141,7 @@ data class Version(
     @SerialName("file_id") val fileId: Long,
     @SerialName("file_name") val fileName: String = "",
     val summary: String = "",
+    @SerialName("size_bytes") val sizeBytes: Long = 0,
     val media: MediaDetails? = null,
     val playback: Playback,
 )
@@ -153,6 +162,7 @@ data class Playback(
 data class MediaDetails(
     val container: String = "",
     @SerialName("duration_ms") val durationMs: Long? = null,
+    val bitrate: Long? = null,
     val audio: List<AudioTrack> = emptyList(),
     val subtitles: List<SubtitleTrack> = emptyList(),
 )
@@ -296,3 +306,80 @@ data class AudioSupport(
     val codec: String,
     @SerialName("max_channels") val maxChannels: Int,
 )
+
+// ------------------------------------------------------------ watch together
+
+@Serializable
+data class PartyPerson(val id: Long, @SerialName("display_name") val displayName: String)
+
+@Serializable
+data class PartyMember(val id: Long, @SerialName("display_name") val displayName: String, val online: Boolean = true)
+
+/**
+ * The party's shared clock: at server time [atMs] the position is
+ * [positionMs]; while [playing] it advances in real time from there.
+ */
+@Serializable
+data class PartyPlayback(
+    @SerialName("item_id") val itemId: Long,
+    @SerialName("file_id") val fileId: Long,
+    /** `"movie"` or `"episode"`. */
+    val kind: String,
+    val title: String,
+    val subtitle: String? = null,
+    val playing: Boolean,
+    @SerialName("position_ms") val positionMs: Long,
+    @SerialName("at_ms") val atMs: Long,
+    val seq: Long,
+    val by: PartyPerson? = null,
+    /** `"start"`, `"play"`, `"pause"` or `"seek"`. */
+    val action: String,
+)
+
+@Serializable
+data class PartyView(
+    val id: String,
+    @SerialName("host_id") val hostId: Long,
+    val members: List<PartyMember> = emptyList(),
+    val invited: List<PartyPerson> = emptyList(),
+    val playback: PartyPlayback? = null,
+)
+
+@Serializable
+data class PartyInvite(
+    @SerialName("party_id") val partyId: String,
+    val from: PartyPerson,
+    val members: List<PartyPerson> = emptyList(),
+    @SerialName("sent_at_ms") val sentAtMs: Long,
+) {
+    val key get() = "$partyId:$sentAtMs"
+}
+
+@Serializable
+data class PartyStatus(val party: PartyView? = null, val invites: List<PartyInvite> = emptyList())
+
+@Serializable
+data class InviteRequest(@SerialName("user_id") val userId: Long)
+
+// ------------------------------------------------------------------- scans
+
+@Serializable
+data class ScanSummary(
+    @SerialName("finished_at") val finishedAt: Long = 0,
+    val added: Int = 0,
+    val changed: Int = 0,
+    val removed: Int = 0,
+    val failed: Int = 0,
+)
+
+/** `GET /api/scan`: idle (with the last scan's result) or running. */
+@Serializable
+data class ScanStatus(
+    val state: String = "idle",
+    val phase: String? = null,
+    val done: Int = 0,
+    val total: Int = 0,
+    val last: ScanSummary? = null,
+) {
+    val running get() = state == "running"
+}

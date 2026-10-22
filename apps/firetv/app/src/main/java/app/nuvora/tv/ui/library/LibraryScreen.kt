@@ -28,8 +28,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
-import androidx.tv.material3.FilterChip
-import androidx.tv.material3.FilterChipDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import app.nuvora.tv.data.ApiException
@@ -37,6 +35,7 @@ import app.nuvora.tv.data.PosterCard
 import app.nuvora.tv.ui.common.ErrorState
 import app.nuvora.tv.ui.common.LocalApi
 import app.nuvora.tv.ui.common.Loading
+import app.nuvora.tv.ui.common.NvChip
 import app.nuvora.tv.ui.common.PosterCardView
 import app.nuvora.tv.ui.common.PosterWidth
 import app.nuvora.tv.ui.common.key
@@ -103,10 +102,10 @@ fun LibraryScreen(nav: NavHostController, id: Long, name: String) {
                 Spacer(Modifier.weight(1f))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Sort.entries.forEach { option ->
-                        Chip(option.label, sort == option) { sort = option }
+                        NvChip(option.label, sort == option) { sort = option }
                     }
                     Spacer(Modifier.width(12.dp))
-                    Chip("Unwatched", unwatched) { unwatched = !unwatched }
+                    NvChip("Unwatched", unwatched) { unwatched = !unwatched }
                 }
             }
             when {
@@ -132,25 +131,5 @@ fun LibraryScreen(nav: NavHostController, id: Long, name: String) {
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        colors = FilterChipDefaults.colors(
-            containerColor = Nv.surface,
-            contentColor = Nv.textSecondary,
-            selectedContainerColor = Nv.surfaceRaised,
-            selectedContentColor = Nv.accent,
-            focusedContainerColor = Nv.textPrimary,
-            focusedContentColor = Nv.canvas,
-            focusedSelectedContainerColor = Nv.accent,
-            focusedSelectedContentColor = Nv.accentText,
-        ),
-    ) {
-        Text(label, style = MaterialTheme.typography.labelLarge)
     }
 }

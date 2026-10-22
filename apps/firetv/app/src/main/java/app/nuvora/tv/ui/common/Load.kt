@@ -1,5 +1,7 @@
 package app.nuvora.tv.ui.common
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -69,3 +71,20 @@ fun rememberInitialFocus(key: Any? = Unit): FocusRequester {
 fun Modifier.initialFocus(requester: FocusRequester): Modifier = focusRequester(requester)
 
 fun Modifier.onFocusGained(block: () -> Unit): Modifier = onFocusChanged { if (it.isFocused) block() }
+
+/**
+ * Scrolls just enough to show what gained focus, from whichever edge it is
+ * past, plus a little of what comes next so the page reads as going on.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+val MinimalScroll = object : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val end = offset + size
+        val margin = containerSize * 0.08f
+        return when {
+            offset >= 0 && end <= containerSize -> 0f
+            offset < 0 || size > containerSize -> offset - margin
+            else -> end - containerSize + margin
+        }
+    }
+}

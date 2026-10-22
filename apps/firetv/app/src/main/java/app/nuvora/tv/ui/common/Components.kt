@@ -45,6 +45,8 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
+import androidx.tv.material3.FilterChip
+import androidx.tv.material3.FilterChipDefaults
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -175,6 +177,9 @@ fun PosterRow(
     onFocus: (PosterCard) -> Unit = {},
     focusRequester: FocusRequester? = null,
     focusKey: String? = null,
+    /** A last card that opens the whole list: `total` titles. */
+    onSeeAll: (() -> Unit)? = null,
+    total: Int = 0,
 ) {
     Column(modifier) {
         Text(title, style = MaterialTheme.typography.titleMedium, color = Nv.textPrimary, modifier = Modifier.padding(start = 48.dp, bottom = 8.dp))
@@ -191,6 +196,33 @@ fun PosterRow(
                     width = PosterWidth,
                     modifier = Modifier.onFocusGained { onFocus(card) }.then(if (target) Modifier.focusRequester(focusRequester) else Modifier),
                 )
+            }
+            if (onSeeAll != null) {
+                item(key = "see-all") { SeeAllCard(total, onSeeAll) }
+            }
+        }
+    }
+}
+
+/** The end of a row: the library behind it. */
+@Composable
+private fun SeeAllCard(total: Int, onClick: () -> Unit) {
+    Column(Modifier.width(PosterWidth)) {
+        Card(
+            onClick = onClick,
+            shape = CardDefaults.shape(posterShape),
+            scale = CardDefaults.scale(focusedScale = 1.08f),
+            border = CardDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Nv.accent), shape = posterShape)),
+            colors = CardDefaults.colors(containerColor = Nv.surface, focusedContainerColor = Nv.surfaceRaised),
+            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
+        ) {
+            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Box(Modifier.size(44.dp).clip(CircleShape).background(Nv.hairline), contentAlignment = Alignment.Center) {
+                    Icon(NvIcons.ArrowRight, null, tint = Nv.textPrimary, modifier = Modifier.size(22.dp))
+                }
+                Spacer(Modifier.height(12.dp))
+                Text("See all", style = MaterialTheme.typography.titleSmall, color = Nv.textPrimary)
+                if (total > 0) Text("$total", style = MaterialTheme.typography.bodySmall, color = Nv.textMuted)
             }
         }
     }
@@ -225,6 +257,36 @@ fun NvButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, i
             if (icon != null) Icon(icon, null, modifier = Modifier.size(20.dp))
             Text(text, style = MaterialTheme.typography.labelLarge)
         }
+    }
+}
+
+/** A choice among a few: amber when chosen. */
+@Composable
+fun NvChip(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        modifier = modifier,
+        colors = FilterChipDefaults.colors(
+            containerColor = Nv.surfaceRaised,
+            contentColor = Nv.textSecondary,
+            selectedContainerColor = Nv.surfaceRaised,
+            selectedContentColor = Nv.accent,
+            focusedContainerColor = Nv.textPrimary,
+            focusedContentColor = Nv.canvas,
+            focusedSelectedContainerColor = Nv.accent,
+            focusedSelectedContentColor = Nv.accentText,
+        ),
+    ) {
+        Text(label, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+/** One of [options] (value to label), as a row of chips. */
+@Composable
+fun OptionChips(options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        options.forEach { (value, label) -> NvChip(label, value == selected) { onSelect(value) } }
     }
 }
 

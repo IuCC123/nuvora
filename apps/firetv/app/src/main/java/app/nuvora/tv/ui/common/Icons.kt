@@ -29,6 +29,10 @@ object NvIcons {
     val SignOut = stroke("M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9")
     val User = stroke("M17 8a5 5 0 1 1-10 0a5 5 0 1 1 10 0z", "M20 21a8 8 0 0 0-16 0")
     val Back = stroke("m12 19-7-7 7-7M19 12H5")
+    val Users = stroke("M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", "M13 7a4 4 0 1 1-8 0a4 4 0 1 1 8 0z", "M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75")
+    val ArrowRight = stroke("M5 12h14M12 5l7 7-7 7")
+    val Close = stroke("M18 6 6 18M6 6l12 12")
+    val Layers = stroke("m12 2 10 5-10 5L2 7l10-5z", "m2 17 10 5 10-5", "m2 12 10 5 10-5")
     val Rewind = stroke("M11 19 2 12l9-7v14z", "M22 19l-9-7 9-7v14z")
     val Forward = stroke("M13 19l9-7-9-7v14z", "M2 19l9-7-9-7v14z")
 

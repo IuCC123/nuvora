@@ -5,7 +5,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -89,6 +91,41 @@ class NuvoraApi(
     suspend fun setWatched(itemId: Long, watched: Boolean) {
         sendNoContent(if (watched) "PUT" else "DELETE", "/api/items/$itemId/watched")
     }
+
+    // ------------------------------------------------------- watch together
+
+    /** Everyone else on the server, who can be invited. */
+    suspend fun people(): List<PartyPerson> = get("/api/people", ListSerializer(PartyPerson.serializer()))
+
+    suspend fun invite(userId: Long): PartyView =
+        send("POST", "/api/party/invites", PartyView.serializer(), InviteRequest(userId), InviteRequest.serializer())
+
+    suspend fun cancelInvite(userId: Long): PartyView = execute(request("DELETE", url("/api/party/invites/$userId")), PartyView.serializer())
+
+    suspend fun joinParty(partyId: String): PartyView = execute(request("POST", url("/api/party/$partyId/join")), PartyView.serializer())
+
+    suspend fun declineParty(partyId: String) = sendNoContent("POST", "/api/party/$partyId/decline")
+
+    suspend fun leaveParty() = sendNoContent("POST", "/api/party/leave")
+
+    /** The live connection's request: `/api/live` with this session. */
+    fun liveRequest(): Request = request("GET", url("/api/live"))
+
+    // ------------------------------------------------------------ account
+
+    /** Who is signed in, as the server has it now. */
+    suspend fun me(): User? = authState().user
+
+    /** The account's subtitle setting; a null [language] means the TV's own. */
+    suspend fun setSubtitlePrefs(mode: String, language: String?): User {
+        val body = JsonObject(mapOf("subtitle_mode" to JsonPrimitive(mode), "subtitle_language" to (language?.let(::JsonPrimitive) ?: JsonNull)))
+        return execute(request("PATCH", url("/api/auth/me"), body.toString().toRequestBody(JSON_TYPE)), User.serializer())
+    }
+
+    suspend fun scanStatus(): ScanStatus = get("/api/scan", ScanStatus.serializer())
+
+    /** Scans every library (admins only); joins a scan already running. */
+    suspend fun startScan(): ScanStatus = execute(request("POST", url("/api/scan")), ScanStatus.serializer())
 
     /** An artwork URL; images are immutable, so caches may keep them forever. */
     fun imageUrl(image: Image, size: String = "small"): String = "$baseUrl/api/images/${image.id}/$size"
