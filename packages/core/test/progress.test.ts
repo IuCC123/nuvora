@@ -148,6 +148,24 @@ test("nothing is reported before the duration is known", async () => {
   expect(sent).toEqual([]);
 });
 
+test("nothing is reported before playback has played or seeked, so a blocked autoplay keeps the resume point", async () => {
+  const p = setup();
+  p.clock.advance(30_000);
+  p.pause();
+  const beacon: number[] = [];
+  p.reporter.flush((r) => beacon.push(r.position_ms));
+  await p.reporter.leave();
+  expect(p.sent()).toEqual([]);
+  expect(beacon).toEqual([]);
+});
+
+test("a seek alone is enough to start reporting", async () => {
+  const p = setup();
+  p.seek(90_000);
+  await p.reporter.leave();
+  expect(p.sent()).toEqual([90_000]);
+});
+
 test("a failed send does not reject leave", async () => {
   const clock = fakeClock();
   const reporter = createProgressReporter({
@@ -156,6 +174,7 @@ test("a failed send does not reject leave", async () => {
     send: () => Promise.reject(new Error("offline")),
     timers: clock.timers,
   });
+  reporter.playing();
   await expect(reporter.leave()).resolves.toBeUndefined();
 });
 

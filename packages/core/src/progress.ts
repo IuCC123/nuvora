@@ -52,6 +52,8 @@ export function createProgressReporter<H>(options: ProgressReporterOptions<H>): 
   let cadence: { handle: H } | null = null;
   let settle: { handle: H } | null = null;
   let last: ProgressRequest | null = null;
+  // Until playback has run or moved, the element sits at 0 (autoplay blocked, a stalled load); reporting that would erase the resume point.
+  let started = false;
 
   const stop = (timer: { handle: H } | null) => {
     if (timer) timers.clearTimeout(timer.handle);
@@ -59,6 +61,7 @@ export function createProgressReporter<H>(options: ProgressReporterOptions<H>): 
   };
 
   function report(): ProgressRequest | null {
+    if (!started) return null;
     const at = options.read();
     if (!at || !Number.isFinite(at.durationMs) || at.durationMs <= 0 || !Number.isFinite(at.positionMs)) return null;
     const duration_ms = Math.round(at.durationMs);
@@ -93,6 +96,7 @@ export function createProgressReporter<H>(options: ProgressReporterOptions<H>): 
     playing() {
       if (phase !== "paused") return;
       phase = "playing";
+      started = true;
       schedule();
     },
     paused() {
@@ -104,6 +108,7 @@ export function createProgressReporter<H>(options: ProgressReporterOptions<H>): 
     },
     seeked() {
       if (phase === "left") return;
+      started = true;
       settle = stop(settle);
       settle = {
         handle: timers.setTimeout(() => {
