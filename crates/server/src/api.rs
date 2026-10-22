@@ -10,6 +10,9 @@
 //! | GET    | /api/home                   | Home (first page of each row)            |
 //! | GET    | /api/rows/{row}             | Later pages of one home row              |
 //! | GET    | /api/items/{id}             | Movie detail (and the Player)            |
+//! | PUT    | /api/items/{id}/progress    | Report where playback is                 |
+//! | PUT    | /api/items/{id}/watched     | Mark watched                             |
+//! | DELETE | /api/items/{id}/watched     | Mark unwatched                           |
 //! | GET    | /api/images/{id}/{size}     | Artwork, immutable                       |
 //! | GET    | /api/files/{id}/stream      | Direct play, HTTP Range                  |
 //! | GET    | /api/scan                   | Scan status                              |
@@ -124,6 +127,8 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(get_home))
         .routes(routes!(get_row))
         .routes(routes!(get_item))
+        .routes(routes!(put_progress))
+        .routes(routes!(put_watched, delete_watched))
         .routes(routes!(get_image))
         .routes(routes!(stream_file))
         .routes(routes!(get_scan, post_scan))
@@ -251,15 +256,19 @@ pub struct RowPage {
 #[derive(Serialize, Deserialize, ToSchema, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum RowKind {
+    /// The signed-in user's movies in progress, most recently watched first.
+    /// On home only when it has items.
+    ContinueWatching,
     RecentlyAdded,
     AllMovies,
 }
 
-impl From<RowKind> for nuvora_library::RowKind {
-    fn from(k: RowKind) -> Self {
-        match k {
-            RowKind::RecentlyAdded => nuvora_library::RowKind::RecentlyAdded,
-            RowKind::AllMovies => nuvora_library::RowKind::AllMovies,
+impl RowKind {
+    fn catalog(self) -> Option<nuvora_library::RowKind> {
+        match self {
+            RowKind::ContinueWatching => None,
+            RowKind::RecentlyAdded => Some(nuvora_library::RowKind::RecentlyAdded),
+            RowKind::AllMovies => Some(nuvora_library::RowKind::AllMovies),
         }
     }
 }
@@ -286,6 +295,11 @@ pub struct PosterCard {
     pub title: String,
     pub year: Option<u16>,
     pub poster: Option<Image>,
+    /// How far the signed-in user is into the movie, 0 to 1. `None` unless
+    /// it is in progress.
+    pub progress: Option<f32>,
+    /// The signed-in user has finished the movie at least once.
+    pub watched: bool,
 }
 
 /// An artwork. URL: `/api/images/{id}/{size}`. Immutable: cache forever.
@@ -335,6 +349,33 @@ pub struct MovieDetail {
     pub backdrop: Option<Image>,
     /// Best first. Empty when every file of the movie is currently missing.
     pub versions: Vec<Version>,
+    pub watch: WatchState,
+}
+
+/// The signed-in user's state for one movie.
+#[derive(Serialize, ToSchema)]
+pub struct WatchState {
+    /// Where to resume. `None` unless the movie is in progress.
+    pub position_ms: Option<u64>,
+    /// The version `position_ms` belongs to.
+    pub file_id: Option<i64>,
+    /// Finished at least once.
+    pub watched: bool,
+    pub play_count: u32,
+    /// Unix ms of the last finish.
+    pub last_watched_at: Option<i64>,
+}
+
+/// Where playback is. Clients send it every 10 s while playing, on pause,
+/// after a seek settles and when leaving the player.
+#[derive(Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProgressRequest {
+    /// The version playing. Must be a version of this item.
+    pub file_id: i64,
+    pub position_ms: u64,
+    /// At least 1. `position_ms` may exceed it by at most 5 s.
+    pub duration_ms: u64,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -524,6 +565,9 @@ impl<S: Send + Sync> FromRequestParts<S> for Device {
     }
 }
 
+/// Per user: cards carry the signed-in user's progress, and the ETag is
+/// `"<catalog_rev>.<watch_rev>"`, so one user's progress never makes another
+/// user's copy stale.
 #[utoipa::path(get, path = "/api/home", responses((status = 200, body = HomeResponse), (status = 304)))]
 async fn get_home(State(lib): State<Library>, headers: HeaderMap) -> Result<Response, ApiError> {
     if if_none_match(&headers, &rev_etag(lib.rev())) {
@@ -537,7 +581,7 @@ async fn get_home(State(lib): State<Library>, headers: HeaderMap) -> Result<Resp
 }
 
 /// Keyset paging on the row's sort key. A malformed cursor, or one from
-/// another row, is 400.
+/// another row, is 400. Per user, with the same ETag as home.
 #[utoipa::path(
     get,
     path = "/api/rows/{row}",
@@ -553,7 +597,9 @@ async fn get_row(
     if if_none_match(&headers, &rev_etag(lib.rev())) {
         return Ok(StatusCode::NOT_MODIFIED.into_response());
     }
-    let kind: nuvora_library::RowKind = row.into();
+    let Some(kind) = row.catalog() else {
+        return Ok(StatusCode::NOT_IMPLEMENTED.into_response());
+    };
     let after = query
         .after
         .as_deref()
@@ -571,6 +617,8 @@ async fn get_row(
     Ok(json_with_etag(&rev_etag(page.rev), &body))
 }
 
+/// Per user: `watch` is the signed-in user's state. The ETag is
+/// `"<catalog_rev>.<watch_rev>-<device profile hash>"`.
 #[utoipa::path(
     get,
     path = "/api/items/{id}",
@@ -600,6 +648,70 @@ async fn get_item(
         .headers_mut()
         .insert(VARY, HeaderValue::from_static("Nuvora-Device"));
     Ok(response)
+}
+
+/// Reports where playback is; the server decides what it means. Under 60 s
+/// stores nothing and clears earlier progress. From 60 s to under 90% of the
+/// duration stores the position. From 90% the movie counts as watched once and
+/// the position is cleared; another report at 90% or more within 3 hours of
+/// that does not count again.
+#[utoipa::path(
+    put,
+    path = "/api/items/{id}/progress",
+    params(("id" = i64, Path)),
+    request_body = ProgressRequest,
+    responses((status = 204), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody)),
+)]
+async fn put_progress(
+    Path(_id): Path<i64>,
+    JsonBody(body): JsonBody<ProgressRequest>,
+) -> Result<StatusCode, ApiError> {
+    valid_progress(&body)?;
+    let _ = body.file_id;
+    Ok(StatusCode::NOT_IMPLEMENTED)
+}
+
+/// How far past the reported duration a position may be: players report the
+/// duration rounded, and the last report lands a little after the end.
+const PAST_END_SLACK_MS: u64 = 5_000;
+
+fn valid_progress(body: &ProgressRequest) -> Result<(), ApiError> {
+    if body.duration_ms == 0 {
+        return Err(ApiError::validation(
+            "duration_ms",
+            "Duration must be at least 1 ms",
+        ));
+    }
+    if body.position_ms > body.duration_ms + PAST_END_SLACK_MS {
+        return Err(ApiError::validation(
+            "position_ms",
+            "Position is past the end of the movie",
+        ));
+    }
+    Ok(())
+}
+
+/// Marks the movie watched, like finishing it.
+#[utoipa::path(
+    put,
+    path = "/api/items/{id}/watched",
+    params(("id" = i64, Path)),
+    responses((status = 204), (status = 404, body = ErrorBody)),
+)]
+async fn put_watched(Path(_id): Path<i64>) -> StatusCode {
+    StatusCode::NOT_IMPLEMENTED
+}
+
+/// Marks the movie unwatched: clears the position, the play count and the
+/// last finish.
+#[utoipa::path(
+    delete,
+    path = "/api/items/{id}/watched",
+    params(("id" = i64, Path)),
+    responses((status = 204), (status = 404, body = ErrorBody)),
+)]
+async fn delete_watched(Path(_id): Path<i64>) -> StatusCode {
+    StatusCode::NOT_IMPLEMENTED
 }
 
 /// Reads the WebP from the store (tens of KB) and answers with
@@ -767,6 +879,8 @@ impl From<nuvora_library::Card> for PosterCard {
             title: card.title,
             year: card.year,
             poster: card.poster.map(Image::from),
+            progress: None,
+            watched: false,
         }
     }
 }
@@ -793,6 +907,13 @@ impl From<nuvora_library::Item> for ItemDetail {
                 poster: movie.poster.map(Image::from),
                 backdrop: movie.backdrop.map(Image::from),
                 versions: movie.versions.into_iter().map(Version::from).collect(),
+                watch: WatchState {
+                    position_ms: None,
+                    file_id: None,
+                    watched: false,
+                    play_count: 0,
+                    last_watched_at: None,
+                },
             }),
         }
     }
