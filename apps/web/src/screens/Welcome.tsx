@@ -111,7 +111,7 @@ export function WelcomeLibrary() {
         <Steps step={2} />
         <h1>Add your movies</h1>
         <p className="auth-lede">
-          Choose the folder that holds your movie files. Nuvora finds the movies in it and keeps watching for new ones.
+          Choose the folder that holds your movie files, and Nuvora brings them in. When you add more later, scan again from Settings.
         </p>
         {existing.length > 0 && (
           <p className="welcome-existing">
