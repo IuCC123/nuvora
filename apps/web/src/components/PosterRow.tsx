@@ -19,14 +19,17 @@ export function PosterRow({ row }: { row: HomeRow }) {
   const [armed, setArmed] = useState(false);
   const pages = useInfiniteQuery({ ...queries.rowPages(row.kind, row.next ?? ""), enabled: armed && row.next != null });
   const { cards, hasMore } = rowCards(row, pages.data?.pages);
-  const pending = hasMore ? Math.min(MAX_PENDING_CARDS, Math.max(1, row.total - cards.length)) : 0;
+  const failed = pages.isError && !pages.isFetching;
+  const pending = hasMore && !failed ? Math.min(MAX_PENDING_CARDS, Math.max(1, row.total - cards.length)) : 0;
   const { atStart, atEnd } = useScrollEdges(strip, cards.length + pending);
 
   const loadMore = useCallback(() => {
     if (!armed) setArmed(true);
     else if (pages.hasNextPage && !pages.isFetchingNextPage) void pages.fetchNextPage();
   }, [armed, pages]);
-  const sentinel = useNearEnd(strip, hasMore && !pages.isFetching, loadMore);
+  // A failed page waits for Try again; re-arming on the error would refetch in a loop.
+  const sentinel = useNearEnd(strip, hasMore && !pages.isFetching && !pages.isError, loadMore);
+  const retry = () => void (pages.data ? pages.fetchNextPage() : pages.refetch());
 
   return (
     <section className="row" aria-labelledby={`${headingId}-title`} id={headingId}>
@@ -48,6 +51,16 @@ export function PosterRow({ row }: { row: HomeRow }) {
             <PosterCardView card={card} />
           </li>
         ))}
+        {failed && (
+          <li className="row-item row-failed">
+            <div className="poster-frame">
+              <p>Couldn't load more.</p>
+              <button type="button" className="btn btn-secondary btn-small" onClick={retry}>
+                Try again
+              </button>
+            </div>
+          </li>
+        )}
         {Array.from({ length: pending }, (_, i) => (
           <li key={`pending-${i}`} className="row-item row-pending" aria-hidden ref={i === 0 ? sentinel : undefined}>
             <span className="poster-frame" />

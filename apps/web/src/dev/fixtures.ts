@@ -8,6 +8,9 @@ import type { FetchLike, HomeResponse, HttpMethod, ItemDetail, PosterCard, RowPa
  * the typecheck. Images and the stream are served by the fixture plugin in
  * `vite.config.ts`. Watch state follows the server's rules (`fixtureWatch.ts`).
  *
+ * A scripted check can make requests fail: `sessionStorage["nuvora-fixtures-fail"]`
+ * holds a pattern, and every matching path and query answers 503 until it is removed.
+ *
  * Sample content: Blender Studio open movie titles and years. Runtimes, sizes,
  * codecs and the gradient artwork are invented.
  */
@@ -55,7 +58,15 @@ function home(): HomeResponse {
   };
 }
 
-const allMoviesPage2 = (): RowPage => ({ items: cards().slice(ALL_FIRST_PAGE), next: null });
+const ROW_PAGE = 3;
+
+/** The rest of All Movies, three at a time, so a scroll loads more than one page. */
+function allMoviesAfter(after: string | null): RowPage {
+  const start = Number(/^after-(\d+)$/.exec(after ?? "")?.[1] ?? ALL_FIRST_PAGE);
+  const all = cards();
+  const end = start + ROW_PAGE;
+  return { items: all.slice(start, end), next: end < all.length ? `after-${end}` : null };
+}
 
 const directPlay = (id: number): Version["playback"] => ({ kind: "direct_play", url: `/api/files/${id}/stream`, mime_type: "video/mp4" });
 
@@ -154,7 +165,12 @@ export const fixtureFetch: FetchLike = async (url, init) => {
   const { pathname, searchParams } = new URL(url, location.origin);
   await new Promise((r) => setTimeout(r, 60));
   const body: unknown = init.body ? JSON.parse(init.body) : undefined;
-  const reply = accountRoute(init.method, pathname, searchParams, body) ?? catalogRoute(init.method, pathname, body);
+  const failing = sessionStorage.getItem("nuvora-fixtures-fail");
+  if (failing && new RegExp(failing).test(pathname + (searchParams.size ? `?${searchParams}` : ""))) {
+    console.info(`fixture 503 ${init.method} ${pathname}`);
+    return { ok: false, status: 503, json: async () => ({ code: "internal", message: "Unavailable", field: null }) };
+  }
+  const reply = accountRoute(init.method, pathname, searchParams, body) ?? catalogRoute(init.method, pathname, searchParams, body);
   return {
     ok: reply.status < 300,
     status: reply.status,
@@ -165,20 +181,20 @@ export const fixtureFetch: FetchLike = async (url, init) => {
   };
 };
 
-function catalogRoute(method: HttpMethod, path: string, request: unknown): Reply {
+function catalogRoute(method: HttpMethod, path: string, query: URLSearchParams, request: unknown): Reply {
   if (!signedIn()) return { status: 401, body: { code: "unauthorized", message: "Sign in to continue.", field: null } };
   const watch = watchRoute(method, path, request, (id) => item(id)?.versions.map((v) => v.file_id));
   if (watch) return watch;
   if (path === "/api/scan" && method === "POST" && !signedInAsAdmin()) {
     return { status: 403, body: { code: "forbidden", message: "Only an admin can do that.", field: null } };
   }
-  const body = route(method, path);
+  const body = route(method, path, query);
   return body === undefined ? { status: 404, body: { code: "not_found", message: "Not found", field: null } } : { status: 200, body };
 }
 
-function route(method: HttpMethod, path: string): unknown {
+function route(method: HttpMethod, path: string, query: URLSearchParams): unknown {
   if (path === "/api/home") return home();
-  if (path === "/api/rows/all_movies") return allMoviesPage2();
+  if (path === "/api/rows/all_movies") return allMoviesAfter(query.get("after"));
   if (path === "/api/scan" && method === "POST") {
     if (scanStatus().state === "idle") Object.assign(scan, { startedAt: Date.now(), from: 0 });
     return scanStatus();

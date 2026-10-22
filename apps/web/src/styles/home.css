@@ -93,6 +93,18 @@
   background: var(--nv-color-surface);
 }
 
+.row-failed .poster-frame {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px;
+  text-align: center;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+}
+
 /* Poster card */
 
 .poster-card {
