@@ -74,6 +74,7 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
         tools: tools.clone(),
         probe_concurrency,
         settle_window: SETTLE_WINDOW,
+        online_metadata: true,
     })
     .await?;
     tracing::info!(data_dir = %config.data_dir.display(), "catalog open");

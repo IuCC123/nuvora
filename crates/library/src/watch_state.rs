@@ -450,6 +450,7 @@ mod tests {
                 tools: MediaTools::locate(None, None).await.unwrap(),
                 probe_concurrency: NonZeroUsize::new(1).unwrap(),
                 settle_window: Duration::ZERO,
+                online_metadata: false,
             })
             .await
             .unwrap();

@@ -34,12 +34,18 @@ pub(crate) struct MetadataHandle {
 
 impl MetadataHandle {
     /// Runs after every finished scan, and whenever [`MetadataHandle::request`] is called.
+    /// Starts the lookup job, unless `enabled` is false: then requests are
+    /// accepted and nothing runs.
     pub(crate) fn spawn(
         db: Db,
         store: Arc<ArtworkStore>,
         mut scans: watch::Receiver<ScanStatus>,
+        enabled: bool,
     ) -> MetadataHandle {
         let (tx, mut rx) = mpsc::channel::<()>(1);
+        if !enabled {
+            return MetadataHandle { tx };
+        }
         let kick = tx.clone();
         tokio::spawn(async move {
             let mut last_finished = scans.borrow().last.as_ref().map(|s| s.finished_at);

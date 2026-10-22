@@ -25,6 +25,7 @@ async fn open(root: &Path, data: &Path, kind: LibraryKind) -> Library {
         tools: MediaTools::locate(None, None).await.unwrap(),
         probe_concurrency: NonZeroUsize::new(4).unwrap(),
         settle_window: Duration::ZERO,
+        online_metadata: false,
     })
     .await
     .unwrap()

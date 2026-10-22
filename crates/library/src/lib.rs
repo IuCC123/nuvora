@@ -67,6 +67,9 @@ pub struct LibraryConfig {
     /// Files modified more recently than this are skipped by a scan as still
     /// being copied. The server uses 60 s; tests use zero.
     pub settle_window: Duration,
+    /// Look up descriptions, artwork and cast online after each scan. The
+    /// server does; tests don't, so they never depend on the network.
+    pub online_metadata: bool,
 }
 
 /// One library from the config file or `--movies`. `key` is the stable identity
@@ -173,8 +176,12 @@ impl Library {
             probe_concurrency: config.probe_concurrency,
             settle_window: config.settle_window,
         });
-        let metadata =
-            metadata::MetadataHandle::spawn(db.clone(), Arc::clone(&store), scan.subscribe());
+        let metadata = metadata::MetadataHandle::spawn(
+            db.clone(),
+            Arc::clone(&store),
+            scan.subscribe(),
+            config.online_metadata,
+        );
         Ok(Library {
             inner: Arc::new(Inner {
                 db,
@@ -393,6 +400,7 @@ mod tests {
             tools,
             probe_concurrency: NonZeroUsize::new(4).unwrap(),
             settle_window: Duration::ZERO,
+            online_metadata: false,
         })
         .await
         .unwrap()
@@ -1002,6 +1010,7 @@ mod tests {
             tools,
             probe_concurrency: NonZeroUsize::new(1).unwrap(),
             settle_window: Duration::ZERO,
+            online_metadata: false,
         })
         .await
         .unwrap();
@@ -1056,7 +1065,12 @@ mod tests {
         eprintln!("home() with 2000 movies: min {min:?} median {median:?} max {max:?}");
         eprintln!("recently_added plan: {}", plans[0]);
         eprintln!("all_movies plan: {}", plans[1]);
-        assert!(median < Duration::from_millis(50), "median {median:?}");
+        // Shared CI runners are slower; they raise the budget.
+        let budget = std::env::var("NUVORA_PERF_BUDGET_MS")
+            .ok()
+            .and_then(|ms| ms.parse().ok())
+            .unwrap_or(50);
+        assert!(median < Duration::from_millis(budget), "median {median:?}");
     }
 
     #[cfg(unix)]
