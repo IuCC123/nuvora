@@ -12,6 +12,7 @@ import { Scrubber } from "../components/player/Scrubber";
 import { StyledSubtitles } from "../components/player/StyledSubtitles";
 import { SubtitleMenu } from "../components/player/SubtitleMenu";
 import { UpNext } from "../components/player/UpNext";
+import { useHls } from "../components/player/useHls";
 import { useSubtitles } from "../components/player/useSubtitles";
 import { Volume } from "../components/player/Volume";
 import { languageName } from "../lib/languageName";
@@ -94,7 +95,13 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
   }, [id, file]);
   const decided = version ? playState([version]) : undefined;
   const notice = failed ? playerFailed : movie && !version ? fileGone : decided?.kind === "blocked" ? decided.notice : undefined;
-  const src = !notice && version?.playback.kind === "direct_play" ? client.resolve(version.playback.url) : undefined;
+  const playback = notice ? undefined : version?.playback;
+  const source: Source | undefined =
+    playback?.kind === "direct_play"
+      ? { kind: "direct", url: client.resolve(playback.url) }
+      : playback?.kind === "hls"
+        ? { kind: "hls", url: client.resolve(playback.url) }
+        : undefined;
 
   return (
     <PlayerView
@@ -105,7 +112,7 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
       year={movie?.kind === "movie" ? movie.year : undefined}
       episode={episode}
       onNext={playNext}
-      src={src}
+      source={source}
       startAt={startAt}
       subtitleTracks={version?.media?.subtitles ?? NO_TRACKS}
       audioLanguage={version?.media ? audioLanguage(version.media.audio) : null}
@@ -120,6 +127,9 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
 
 const NO_TRACKS: SubtitleTrack[] = [];
 
+/** The file as it is, or streamed through the server as HLS. */
+type Source = { kind: "direct" | "hls"; url: string };
+
 interface PlayerViewProps {
   itemId: number;
   fileId: number;
@@ -127,7 +137,7 @@ interface PlayerViewProps {
   year: number | null | undefined;
   episode: EpisodeDetail | undefined;
   onNext: (next: EpisodeRef) => void;
-  src: string | undefined;
+  source: Source | undefined;
   /** Seconds. Read once: the URL keeps moving with playback after that. */
   startAt: number | undefined;
   subtitleTracks: readonly SubtitleTrack[];
@@ -142,8 +152,9 @@ interface PlayerViewProps {
 
 type PulseKind = "play" | "pause" | "back" | "forward" | "volume" | "subtitles-on" | "subtitles-off";
 
-function PlayerView({ itemId, fileId, title, year, episode, onNext, src, startAt: initialStart, subtitleTracks, audioLanguage, subtitleScope, notice, onBack, onFailed, onPosition }: PlayerViewProps) {
+function PlayerView({ itemId, fileId, title, year, episode, onNext, source, startAt: initialStart, subtitleTracks, audioLanguage, subtitleScope, notice, onBack, onFailed, onPosition }: PlayerViewProps) {
   const [startAt] = useState(initialStart);
+  const src = source?.url;
   const root = useRef<HTMLDivElement>(null);
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   const media = useMediaState(video);
@@ -156,6 +167,7 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, src, startAt
   const buffering = useHeldFor(media.starved && !!src, SPINNER_DELAY_MS);
   const lastPointer = useRef("mouse");
   useProgressReporting(src ? video : null, itemId, fileId, onPosition);
+  useHls(video, source?.kind === "hls" ? source.url : undefined, startAt, onFailed);
   useReleaseStream(video);
   const subtitles = useSubtitles(fileId, subtitleTracks, audioLanguage, subtitleScope);
   const [subtitleStyle, setSubtitleStyle] = useState(loadSubtitleStyle);
@@ -318,7 +330,7 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, src, startAt
           ref={attach}
           className="player-video"
           data-ready={ready}
-          src={startAt ? `${src}#t=${startAt}` : src}
+          src={source?.kind === "direct" ? (startAt ? `${src}#t=${startAt}` : src) : undefined}
           autoPlay
           playsInline
           preload="auto"
@@ -336,7 +348,7 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, src, startAt
           }}
           onLoadedData={(e) => !e.currentTarget.seeking && setReady(true)}
           onSeeked={() => setReady(true)}
-          onError={(e) => e.currentTarget.error?.code !== MediaError.MEDIA_ERR_ABORTED && onFailed()}
+          onError={(e) => source?.kind === "direct" && e.currentTarget.error?.code !== MediaError.MEDIA_ERR_ABORTED && onFailed()}
         />
       )}
       {src && (

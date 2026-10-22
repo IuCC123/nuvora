@@ -1301,6 +1301,307 @@
         ]
       }
     },
+    "/api/files/{id}/hls/{plan}/init.mp4": {
+      "get": {
+        "summary": "The fMP4 init segment.",
+        "operationId": "get_init",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "plan",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session",
+            "in": "query",
+            "description": "The player's id for this playback: 1 to 64 letters, digits, `-` or `_`.\nDefaults to `default`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "description": "Playlist only: where playback starts, in seconds, so the first\nsegments made are the ones the player asks for first.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Init segment only: the segment a first run starts at (written into\nthe playlist).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/files/{id}/hls/{plan}/main.m3u8": {
+      "get": {
+        "summary": "The media playlist for the whole file, VOD, segment URIs relative.",
+        "operationId": "get_playlist",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "plan",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session",
+            "in": "query",
+            "description": "The player's id for this playback: 1 to 64 letters, digits, `-` or `_`.\nDefaults to `default`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "description": "Playlist only: where playback starts, in seconds, so the first\nsegments made are the ones the player asks for first.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Init segment only: the segment a first run starts at (written into\nthe playlist).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/vnd.apple.mpegurl": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/files/{id}/hls/{plan}/{segment}": {
+      "get": {
+        "summary": "Media segment `{n}.m4s`, made on demand: a request past what the current\nrun has made restarts it there.",
+        "operationId": "get_segment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "plan",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "segment",
+            "in": "path",
+            "description": "`{n}.m4s`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session",
+            "in": "query",
+            "description": "The player's id for this playback: 1 to 64 letters, digits, `-` or `_`.\nDefaults to `default`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "description": "Playlist only: where playback starts, in seconds, so the first\nsegments made are the ones the player asks for first.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Init segment only: the segment a first run starts at (written into\nthe playlist).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/files/{id}/stream": {
       "get": {
         "summary": "Direct play. Delegates to `tower_http::services::ServeFile` with the\ncontainer's MIME type, which implements `Range` (206 + `Content-Range`),\n`If-Range`, `Last-Modified` and `HEAD`, and streams from disk without\nbuffering. First-frame latency is then disk + network + decoder.",
@@ -4000,6 +4301,43 @@
           },
           {
             "type": "object",
+            "description": "Plays through the server as HLS (fMP4): remuxed, with audio and/or\nvideo converted where this device can't decode them. Append\n`?session=<id>` (one id per playback, 1 to 64 of `[A-Za-z0-9_-]`) and\noptionally `&start=<seconds>`.",
+            "required": [
+              "url",
+              "reasons",
+              "converts_video",
+              "converts_audio",
+              "kind"
+            ],
+            "properties": {
+              "converts_audio": {
+                "type": "boolean"
+              },
+              "converts_video": {
+                "type": "boolean",
+                "description": "The picture is re-encoded (slower to start, uses the server's CPU);\nfalse when only the container or audio changes."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "hls"
+                ]
+              },
+              "reasons": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Why it can't play directly, as for `needs_transcode`."
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Nothing the server can do makes it play on this device.",
             "required": [
               "reasons",
               "kind"
@@ -4040,7 +4378,7 @@
             }
           }
         ],
-        "description": "What pressing Play does on the requesting device. Step 3 adds `hls`.\nClients must treat an unknown `kind` like `needs_transcode`."
+        "description": "What pressing Play does on the requesting device. Clients must treat an\nunknown `kind` like `needs_transcode`."
       },
       "PosterCard": {
         "type": "object",

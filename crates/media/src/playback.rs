@@ -1,13 +1,13 @@
-//! "Can this device play this file as-is?" The rules live here, server-side, as
-//! one pure function over the probe result and a device's declared capabilities.
+//! "Can this device play this file as-is, and if not, how does the server
+//! stream it?" The rules live here, server-side, as pure functions over the
+//! probe result and a device's declared capabilities.
 //!
 //! Clients declare *facts* (what their decoder handles), measured with their own
 //! platform API: the web app with `MediaSource.isTypeSupported`, Fire TV with
 //! `MediaCodecList`, Vega with its media capabilities API. The server makes the
-//! *decision*, because Step 3 must turn the same incompatibility list into a
-//! remux/transcode plan, and three clients must not re-implement codec rules.
+//! *decision* and the plan, so three clients never re-implement codec rules.
 
-use crate::{AudioCodec, Container, HdrFormat, MediaInfo, VideoCodec};
+use crate::{AudioCodec, AudioStream, Container, HdrFormat, MediaInfo, VideoCodec, VideoStream};
 
 /// What a device can decode natively. Sent by every client on every API call
 /// (header `Nuvora-Device`), so the server holds no per-device state.
@@ -37,15 +37,17 @@ pub struct AudioSupport {
     pub max_channels: u8,
 }
 
-/// The outcome. Step 3 adds `Remux { .. }` (container only) and `Transcode { .. }`
-/// variants; every client already renders "unknown variant => needs transcoding",
-/// so adding them is not a breaking change on the wire.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlaybackDecision {
     DirectPlay,
-    /// Every reason, not just the first: Step 3 needs the full list to decide
-    /// copy-video-transcode-audio vs full transcode.
-    NeedsTranscode(Vec<Incompatibility>),
+    /// Plays through the server instead: remuxed to HLS, with audio and/or
+    /// video converted as `plan` says. `reasons` lists every incompatibility.
+    Convert {
+        plan: StreamPlan,
+        reasons: Vec<Incompatibility>,
+    },
+    /// Nothing the server can do makes it play on this device.
+    Unplayable(Vec<Incompatibility>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -65,6 +67,49 @@ pub enum Incompatibility {
     /// ffprobe failed on this file; nothing can be decided.
     Unreadable,
 }
+
+/// How the server streams a file a device can't play as-is: HLS with fMP4
+/// segments, so any codec the device decodes can pass through untouched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct StreamPlan {
+    pub video: VideoPlan,
+    /// `None` for a file without audio.
+    pub audio: Option<AudioPlan>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum VideoPlan {
+    /// The video stream as it is; segments are cut at its keyframes.
+    Copy,
+    /// H.264 High, 8-bit SDR, scaled down to at most `max_height`.
+    H264 { max_height: u32 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AudioPlan {
+    /// The audio stream's index in the file.
+    pub stream: u32,
+    pub output: AudioOutput,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AudioOutput {
+    Copy,
+    Aac { channels: u8 },
+}
+
+/// Video codecs fMP4 HLS carries and players accept.
+const HLS_VIDEO: [VideoCodec; 4] = [
+    VideoCodec::H264,
+    VideoCodec::Hevc,
+    VideoCodec::Av1,
+    VideoCodec::Vp9,
+];
+/// Audio codecs fMP4 HLS carries on every player (MP3, FLAC and Opus in
+/// fMP4 are patchy: hls.js rejects MP3 there).
+const HLS_AUDIO: [AudioCodec; 3] = [AudioCodec::Aac, AudioCodec::Ac3, AudioCodec::Eac3];
+/// Converted video is never taller than this: the encoder must keep up in software.
+const MAX_CONVERT_HEIGHT: u32 = 1080;
 
 impl DeviceProfile {
     /// Used when a request carries no profile: H.264 8-bit 1080p SDR + AAC
@@ -87,7 +132,7 @@ impl DeviceProfile {
     }
 
     /// Pure. Checks container, the primary video stream, and the default audio
-    /// stream. Subtitles never block direct play in Step 1 (not delivered yet).
+    /// stream; when any fails, plans the conversion.
     pub fn decide(&self, media: &MediaInfo) -> PlaybackDecision {
         let mut why = Vec::new();
         if !self.containers.contains(&media.container) {
@@ -95,39 +140,150 @@ impl DeviceProfile {
         }
         match media.video.first() {
             None => why.push(Incompatibility::Unreadable),
-            Some(video) => match self.video.iter().find(|s| s.codec == video.codec) {
-                None => why.push(Incompatibility::VideoCodec(video.codec.clone())),
-                Some(support) => {
-                    if video.width > support.max_width || video.height > support.max_height {
-                        why.push(Incompatibility::Resolution {
-                            width: video.width,
-                            height: video.height,
-                        });
-                    }
-                    let bit_depth = video.bit_depth.unwrap_or(8);
-                    if bit_depth > support.max_bit_depth {
-                        why.push(Incompatibility::BitDepth(bit_depth));
-                    }
-                    if !support.renders(video.hdr) {
-                        why.push(Incompatibility::Hdr(video.hdr));
-                    }
-                }
-            },
+            Some(video) => why.extend(self.video_problems(video)),
         }
         if let Some(audio) = media.default_audio() {
-            match self.audio.iter().find(|s| s.codec == audio.codec) {
-                None => why.push(Incompatibility::AudioCodec(audio.codec.clone())),
-                Some(support) if audio.channels > support.max_channels => {
-                    why.push(Incompatibility::AudioChannels(audio.channels));
-                }
-                Some(_) => {}
-            }
+            why.extend(self.audio_problem(audio));
         }
         if why.is_empty() {
-            PlaybackDecision::DirectPlay
-        } else {
-            PlaybackDecision::NeedsTranscode(why)
+            return PlaybackDecision::DirectPlay;
         }
+        match self.plan(media, media.default_audio().map(|a| a.index)) {
+            Some(plan) => PlaybackDecision::Convert { plan, reasons: why },
+            None => PlaybackDecision::Unplayable(why),
+        }
+    }
+
+    /// The HLS plan for `media` with audio stream `audio` (`None`: no audio).
+    /// Passes each stream through when this device decodes it, converts it
+    /// otherwise. `None` when there is no video or the device takes neither
+    /// the video nor H.264 (or needs AAC and takes none).
+    pub fn plan(&self, media: &MediaInfo, audio: Option<u32>) -> Option<StreamPlan> {
+        let video = media.video.first()?;
+        let video = if HLS_VIDEO.contains(&video.codec) && self.video_problems(video).is_empty() {
+            VideoPlan::Copy
+        } else {
+            let h264 = self.video.iter().find(|s| s.codec == VideoCodec::H264)?;
+            let source = if video.height == 0 {
+                MAX_CONVERT_HEIGHT
+            } else {
+                video.height
+            };
+            VideoPlan::H264 {
+                max_height: source.min(h264.max_height).min(MAX_CONVERT_HEIGHT),
+            }
+        };
+        let audio = match audio {
+            None => None,
+            Some(index) => {
+                let stream = media.audio.iter().find(|a| a.index == index)?;
+                let output =
+                    if HLS_AUDIO.contains(&stream.codec) && self.audio_problem(stream).is_none() {
+                        AudioOutput::Copy
+                    } else {
+                        let aac = self.audio.iter().find(|s| s.codec == AudioCodec::Aac)?;
+                        AudioOutput::Aac {
+                            channels: stream.channels.clamp(1, aac.max_channels.clamp(1, 6)),
+                        }
+                    };
+                Some(AudioPlan {
+                    stream: index,
+                    output,
+                })
+            }
+        };
+        Some(StreamPlan { video, audio })
+    }
+
+    fn video_problems(&self, video: &VideoStream) -> Vec<Incompatibility> {
+        let Some(support) = self.video.iter().find(|s| s.codec == video.codec) else {
+            return vec![Incompatibility::VideoCodec(video.codec.clone())];
+        };
+        let mut why = Vec::new();
+        if video.width > support.max_width || video.height > support.max_height {
+            why.push(Incompatibility::Resolution {
+                width: video.width,
+                height: video.height,
+            });
+        }
+        let bit_depth = video.bit_depth.unwrap_or(8);
+        if bit_depth > support.max_bit_depth {
+            why.push(Incompatibility::BitDepth(bit_depth));
+        }
+        if !support.renders(video.hdr) {
+            why.push(Incompatibility::Hdr(video.hdr));
+        }
+        why
+    }
+
+    fn audio_problem(&self, audio: &AudioStream) -> Option<Incompatibility> {
+        match self.audio.iter().find(|s| s.codec == audio.codec) {
+            None => Some(Incompatibility::AudioCodec(audio.codec.clone())),
+            Some(support) if audio.channels > support.max_channels => {
+                Some(Incompatibility::AudioChannels(audio.channels))
+            }
+            Some(_) => None,
+        }
+    }
+}
+
+impl StreamPlan {
+    /// A short, URL-safe name for the plan: `copy.a1`, `h264-1080.a2-aac2`,
+    /// `copy.none`. [`StreamPlan::parse`] reads it back.
+    pub fn code(&self) -> String {
+        let video = match self.video {
+            VideoPlan::Copy => "copy".to_owned(),
+            VideoPlan::H264 { max_height } => format!("h264-{max_height}"),
+        };
+        let audio = match self.audio {
+            None => "none".to_owned(),
+            Some(AudioPlan {
+                stream,
+                output: AudioOutput::Copy,
+            }) => format!("a{stream}"),
+            Some(AudioPlan {
+                stream,
+                output: AudioOutput::Aac { channels },
+            }) => {
+                format!("a{stream}-aac{channels}")
+            }
+        };
+        format!("{video}.{audio}")
+    }
+
+    pub fn parse(code: &str) -> Option<StreamPlan> {
+        let (video, audio) = code.split_once('.')?;
+        let video = match video {
+            "copy" => VideoPlan::Copy,
+            _ => {
+                let height: u32 = video.strip_prefix("h264-")?.parse().ok()?;
+                if !(144..=MAX_CONVERT_HEIGHT).contains(&height) {
+                    return None;
+                }
+                VideoPlan::H264 { max_height: height }
+            }
+        };
+        let audio = match audio {
+            "none" => None,
+            _ => {
+                let rest = audio.strip_prefix('a')?;
+                let (stream, output) = match rest.split_once("-aac") {
+                    None => (rest, AudioOutput::Copy),
+                    Some((stream, channels)) => {
+                        let channels: u8 = channels.parse().ok()?;
+                        if !(1..=6).contains(&channels) {
+                            return None;
+                        }
+                        (stream, AudioOutput::Aac { channels })
+                    }
+                };
+                Some(AudioPlan {
+                    stream: stream.parse().ok()?,
+                    output,
+                })
+            }
+        };
+        Some(StreamPlan { video, audio })
     }
 }
 
@@ -263,12 +419,12 @@ mod tests {
             profile: 5,
             compatibility: 0,
         };
-        let cases: Vec<(&str, MediaInfo, DeviceProfile, PlaybackDecision)> = vec![
+        let cases: Vec<(&str, MediaInfo, DeviceProfile, Vec<Incompatibility>)> = vec![
             (
                 "happy mp4",
                 media(Container::Mp4, h264_1080(), aac2()),
                 DeviceProfile::baseline(),
-                PlaybackDecision::DirectPlay,
+                vec![],
             ),
             (
                 "hevc on baseline",
@@ -278,9 +434,7 @@ mod tests {
                     aac2(),
                 ),
                 DeviceProfile::baseline(),
-                PlaybackDecision::NeedsTranscode(vec![Incompatibility::VideoCodec(
-                    VideoCodec::Hevc,
-                )]),
+                vec![Incompatibility::VideoCodec(VideoCodec::Hevc)],
             ),
             (
                 "main10 on 8-bit-only h264",
@@ -290,7 +444,7 @@ mod tests {
                     aac2(),
                 ),
                 DeviceProfile::baseline(),
-                PlaybackDecision::NeedsTranscode(vec![Incompatibility::BitDepth(10)]),
+                vec![Incompatibility::BitDepth(10)],
             ),
             (
                 "hdr10 on an sdr h264 device",
@@ -300,7 +454,7 @@ mod tests {
                     aac2(),
                 ),
                 DeviceProfile::baseline(),
-                PlaybackDecision::NeedsTranscode(vec![Incompatibility::Hdr(HdrFormat::Hdr10)]),
+                vec![Incompatibility::Hdr(HdrFormat::Hdr10)],
             ),
             (
                 "dts default audio with an aac secondary",
@@ -313,17 +467,13 @@ mod tests {
                     ],
                 ),
                 DeviceProfile::baseline(),
-                PlaybackDecision::NeedsTranscode(vec![Incompatibility::AudioCodec(
-                    AudioCodec::Dts,
-                )]),
+                vec![Incompatibility::AudioCodec(AudioCodec::Dts)],
             ),
             (
                 "mkv on an mp4-only device",
                 media(Container::Matroska, h264_1080(), aac2()),
                 DeviceProfile::baseline(),
-                PlaybackDecision::NeedsTranscode(vec![Incompatibility::Container(
-                    Container::Matroska,
-                )]),
+                vec![Incompatibility::Container(Container::Matroska)],
             ),
             (
                 "4k on a 1080p device",
@@ -333,10 +483,10 @@ mod tests {
                     aac2(),
                 ),
                 DeviceProfile::baseline(),
-                PlaybackDecision::NeedsTranscode(vec![Incompatibility::Resolution {
+                vec![Incompatibility::Resolution {
                     width: 3840,
                     height: 2160,
-                }]),
+                }],
             ),
             (
                 "5.1 aac on a stereo device",
@@ -346,7 +496,7 @@ mod tests {
                     vec![audio(1, AudioCodec::Aac, 6, true)],
                 ),
                 DeviceProfile::baseline(),
-                PlaybackDecision::NeedsTranscode(vec![Incompatibility::AudioChannels(6)]),
+                vec![Incompatibility::AudioChannels(6)],
             ),
             (
                 "every reason is listed",
@@ -356,11 +506,11 @@ mod tests {
                     vec![audio(1, AudioCodec::TrueHd, 8, true)],
                 ),
                 DeviceProfile::baseline(),
-                PlaybackDecision::NeedsTranscode(vec![
+                vec![
                     Incompatibility::Container(Container::Matroska),
                     Incompatibility::VideoCodec(VideoCodec::Hevc),
                     Incompatibility::AudioCodec(AudioCodec::TrueHd),
-                ]),
+                ],
             ),
             (
                 "chromium plays hevc main10 hdr10 mkv",
@@ -370,7 +520,7 @@ mod tests {
                     aac2(),
                 ),
                 chromium(),
-                PlaybackDecision::DirectPlay,
+                vec![],
             ),
             (
                 "dolby vision 8.1 plays as hdr10",
@@ -380,7 +530,7 @@ mod tests {
                     aac2(),
                 ),
                 chromium(),
-                PlaybackDecision::DirectPlay,
+                vec![],
             ),
             (
                 "dolby vision profile 5 does not",
@@ -390,13 +540,13 @@ mod tests {
                     aac2(),
                 ),
                 chromium(),
-                PlaybackDecision::NeedsTranscode(vec![Incompatibility::Hdr(dv5)]),
+                vec![Incompatibility::Hdr(dv5)],
             ),
             (
                 "video-only file plays",
                 media(Container::Mp4, h264_1080(), vec![]),
                 DeviceProfile::baseline(),
-                PlaybackDecision::DirectPlay,
+                vec![],
             ),
             (
                 "unknown codec never matches",
@@ -412,13 +562,96 @@ mod tests {
                     aac2(),
                 ),
                 chromium(),
-                PlaybackDecision::NeedsTranscode(vec![Incompatibility::VideoCodec(
-                    VideoCodec::Other("prores".into()),
-                )]),
+                vec![Incompatibility::VideoCodec(VideoCodec::Other(
+                    "prores".into(),
+                ))],
             ),
         ];
         for (name, media, profile, want) in cases {
-            assert_eq!(profile.decide(&media), want, "{name}");
+            let got = match profile.decide(&media) {
+                PlaybackDecision::DirectPlay => vec![],
+                PlaybackDecision::Convert { reasons, .. }
+                | PlaybackDecision::Unplayable(reasons) => reasons,
+            };
+            assert_eq!(got, want, "{name}");
+        }
+    }
+
+    #[test]
+    fn plans_pass_through_what_the_device_decodes() {
+        let aac = |ch| vec![audio(1, AudioCodec::Aac, ch, true)];
+        let plan = |media: &MediaInfo, profile: &DeviceProfile| match profile.decide(media) {
+            PlaybackDecision::Convert { plan, .. } => Some(plan.code()),
+            _ => None,
+        };
+        let h264 = || video(VideoCodec::H264, 1920, 1080, 8, HdrFormat::Sdr);
+        // Container only: remux, nothing converted.
+        let mkv = media(Container::Matroska, h264(), aac(2));
+        assert_eq!(
+            plan(&mkv, &DeviceProfile::baseline()).as_deref(),
+            Some("copy.a1")
+        );
+        // DTS default track: video passes, audio becomes AAC (stereo on a stereo device).
+        let dts = media(
+            Container::Mp4,
+            h264(),
+            vec![audio(1, AudioCodec::Dts, 6, true)],
+        );
+        assert_eq!(
+            plan(&dts, &DeviceProfile::baseline()).as_deref(),
+            Some("copy.a1-aac2")
+        );
+        assert_eq!(plan(&dts, &chromium()).as_deref(), Some("copy.a1-aac6"));
+        // HEVC on an H.264-only device: converted, never taller than 1080.
+        let uhd = media(
+            Container::Matroska,
+            video(VideoCodec::Hevc, 3840, 2160, 10, HdrFormat::Sdr),
+            aac(2),
+        );
+        assert_eq!(
+            plan(&uhd, &DeviceProfile::baseline()).as_deref(),
+            Some("h264-1080.a1")
+        );
+        let sd = media(
+            Container::Avi,
+            video(VideoCodec::Mpeg4, 720, 480, 8, HdrFormat::Sdr),
+            vec![audio(1, AudioCodec::Mp3, 2, true)],
+        );
+        assert_eq!(plan(&sd, &chromium()).as_deref(), Some("h264-480.a1-aac2"));
+        // No video stream: nothing to stream.
+        let mut silent = media(Container::Matroska, h264(), aac(2));
+        silent.video.clear();
+        assert!(matches!(
+            DeviceProfile::baseline().decide(&silent),
+            PlaybackDecision::Unplayable(_)
+        ));
+    }
+
+    #[test]
+    fn plan_codes_round_trip() {
+        for code in [
+            "copy.a1",
+            "copy.none",
+            "h264-1080.a2-aac2",
+            "h264-720.a0-aac6",
+            "copy.a12-aac1",
+        ] {
+            assert_eq!(
+                StreamPlan::parse(code).map(|p| p.code()).as_deref(),
+                Some(code)
+            );
+        }
+        for bad in [
+            "",
+            "copy",
+            "h264-4000.a1",
+            "h264-x.a1",
+            "copy.a1-aac9",
+            "copy.b1",
+            "copy.a-1",
+            "vp9.a1",
+        ] {
+            assert_eq!(StreamPlan::parse(bad), None, "{bad}");
         }
     }
 }

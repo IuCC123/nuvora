@@ -4,13 +4,18 @@ import type { NoticeText } from "../components/Notice";
 /** What the Play button does for a movie: the server decided, the view only renders it. */
 export type PlayState = { kind: "play"; fileId: number } | { kind: "blocked"; notice: NoticeText };
 
-const CANT_PLAY = "This browser can't play this file yet.";
-const CONVERT_HINT = "It will play once Nuvora can convert files on the fly.";
+const CANT_PLAY = "This browser can't play this file.";
+const CONVERT_HINT = "Try another browser, or replace the file with one in a common format.";
 
-export const playerFailed: NoticeText = { problem: ["This browser couldn't play this file."], hint: CONVERT_HINT };
+export const playerFailed: NoticeText = { problem: ["This browser couldn't play this file."], hint: "Go back and try again. If it keeps happening, try another browser." };
 
 /** The link named a file the movie no longer has: replaced, or removed by a scan. */
 export const fileGone: NoticeText = { problem: ["This file is no longer part of the movie."], hint: "Go back to the movie and play it from there." };
+
+/** The version plays here: as it is, or streamed through the server. */
+export function playable(version: Version): boolean {
+  return version.playback.kind === "direct_play" || version.playback.kind === "hls";
+}
 
 export function playState(versions: readonly Version[]): PlayState {
   const version = versions[0];
@@ -23,6 +28,7 @@ export function playState(versions: readonly Version[]): PlayState {
   const p = version.playback;
   switch (p.kind) {
     case "direct_play":
+    case "hls":
       return { kind: "play", fileId: version.file_id };
     case "needs_transcode":
       return { kind: "blocked", notice: { problem: p.reasons.length ? p.reasons.map(sentence) : [CANT_PLAY], hint: CONVERT_HINT } };

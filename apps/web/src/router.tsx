@@ -19,7 +19,7 @@ import { MovieScreen } from "./screens/Movie";
 import { EpisodePlayer, Player } from "./screens/Player";
 import { ShowScreen } from "./screens/Show";
 import { ErrorState, MissingEpisode, MissingLibrary, MissingMovie, MissingShow } from "./screens/ErrorState";
-import { playState } from "./lib/playState";
+import { playable, playState } from "./lib/playState";
 import { SignIn } from "./screens/SignIn";
 import { WelcomeAccount, WelcomeLibrary } from "./screens/Welcome";
 import { SettingsAccount } from "./screens/settings/Account";
@@ -244,7 +244,7 @@ const playEpisode = createRoute({
     if (item.kind !== "episode") throw notFound();
     if (deps.file !== undefined) return;
     const { position_ms, file_id } = item.watch;
-    const resumable = item.versions.some((v) => v.file_id === file_id && v.playback.kind === "direct_play");
+    const resumable = item.versions.some((v) => v.file_id === file_id && playable(v));
     const state = playState(item.versions);
     const file = resumable ? file_id! : state.kind === "play" ? state.fileId : (item.versions[0]?.file_id ?? 0);
     const t = resumable && position_ms != null ? Math.floor(position_ms / 1000) : undefined;

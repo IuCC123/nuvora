@@ -15,6 +15,7 @@
 //! | DELETE | /api/items/{id}/watched     | Mark unwatched                           |
 //! | GET    | /api/images/{id}/{size}     | Artwork, immutable                       |
 //! | GET    | /api/files/{id}/stream      | Direct play, HTTP Range                  |
+//! | GET    | /api/files/{id}/hls/...     | Remuxed or converted HLS ([`hls`])       |
 //! | GET    | /api/scan                   | Scan status                              |
 //! | POST   | /api/scan                   | Request a scan (admin; coalescing)       |
 //! | GET    | /api/openapi.json           | The spec                                 |
@@ -31,6 +32,7 @@
 mod accounts;
 mod admin;
 mod browse;
+mod hls;
 mod home;
 mod metadata;
 mod subtitles;
@@ -96,6 +98,7 @@ enum Access {
 pub struct AppState {
     pub library: Library,
     pub auth: Arc<crate::auth::Auth>,
+    pub transcoder: Arc<crate::transcode::Transcoder>,
     pub server: Arc<ServerSetup>,
 }
 
@@ -164,6 +167,9 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         ))
         .routes(routes!(get_image))
         .routes(routes!(stream_file))
+        .routes(routes!(hls::get_playlist))
+        .routes(routes!(hls::get_init))
+        .routes(routes!(hls::get_segment))
         .routes(routes!(subtitles::get_subtitle))
         .routes(routes!(subtitles::list_fonts))
         .routes(routes!(subtitles::get_font))
@@ -481,8 +487,8 @@ pub struct AudioTrack {
     pub is_default: bool,
 }
 
-/// What pressing Play does on the requesting device. Step 3 adds `hls`.
-/// Clients must treat an unknown `kind` like `needs_transcode`.
+/// What pressing Play does on the requesting device. Clients must treat an
+/// unknown `kind` like `needs_transcode`.
 #[derive(Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Playback {
@@ -490,6 +496,20 @@ pub enum Playback {
         url: String,
         mime_type: String,
     },
+    /// Plays through the server as HLS (fMP4): remuxed, with audio and/or
+    /// video converted where this device can't decode them. Append
+    /// `?session=<id>` (one id per playback, 1 to 64 of `[A-Za-z0-9_-]`) and
+    /// optionally `&start=<seconds>`.
+    Hls {
+        url: String,
+        /// Why it can't play directly, as for `needs_transcode`.
+        reasons: Vec<String>,
+        /// The picture is re-encoded (slower to start, uses the server's CPU);
+        /// false when only the container or audio changes.
+        converts_video: bool,
+        converts_audio: bool,
+    },
+    /// Nothing the server can do makes it play on this device.
     NeedsTranscode {
         /// Human-readable: `"HEVC video isn't supported on this device"`.
         reasons: Vec<String>,
@@ -986,7 +1006,19 @@ impl From<nuvora_library::Version> for Version {
                         url: format!("/api/files/{}/stream", v.file_id.raw()),
                         mime_type: info.container.mime_type().to_owned(),
                     },
-                    PlaybackDecision::NeedsTranscode(reasons) => Playback::NeedsTranscode {
+                    PlaybackDecision::Convert { plan, reasons } => Playback::Hls {
+                        url: format!(
+                            "/api/files/{}/hls/{}/main.m3u8",
+                            v.file_id.raw(),
+                            plan.code()
+                        ),
+                        reasons: reasons.iter().map(reason_text).collect(),
+                        converts_video: plan.video != nuvora_media::VideoPlan::Copy,
+                        converts_audio: plan
+                            .audio
+                            .is_some_and(|a| a.output != nuvora_media::AudioOutput::Copy),
+                    },
+                    PlaybackDecision::Unplayable(reasons) => Playback::NeedsTranscode {
                         reasons: reasons.iter().map(reason_text).collect(),
                     },
                 };

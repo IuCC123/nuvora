@@ -5,6 +5,7 @@ mod api;
 mod auth;
 mod config;
 mod net;
+mod transcode;
 mod web;
 
 use std::num::NonZeroUsize;
@@ -83,6 +84,7 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
         auth: Arc::new(auth::Auth::new(net::TrustedProxies::new(
             config.trusted_proxies,
         ))),
+        transcoder: transcode::Transcoder::new(tools.clone(), &config.data_dir),
         server: Arc::new(api::ServerSetup {
             data_dir: config.data_dir,
             bind,

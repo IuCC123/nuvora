@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime};
 
 use nuvora_media::{
     ArtworkRole, AudioCodec, AudioStream, ColorInfo, Container, DeviceProfile, HdrFormat,
-    MediaInfo, Placeholder, PlaybackDecision, SubtitleCodec, SubtitleStream, VideoCodec,
+    MediaInfo, Placeholder, PlaybackDecision, SubtitleCodec, SubtitleStream, VideoCodec, VideoPlan,
     VideoStream,
 };
 use rusqlite::Connection;
@@ -320,11 +320,15 @@ pub enum VersionMedia {
     },
 }
 
-/// Everything the HTTP layer needs to serve a direct-play stream.
+/// Everything the HTTP layer needs to stream a file: direct, or remuxed
+/// and converted.
 #[derive(Debug, Clone)]
 pub struct StreamSource {
     pub path: PathBuf,
     pub container: Container,
+    /// 32 hex chars; changes whenever the file does.
+    pub fingerprint: String,
+    pub media: MediaInfo,
 }
 
 pub(crate) fn rev(conn: &Connection) -> rusqlite::Result<CatalogRev> {
@@ -890,15 +894,21 @@ pub(crate) fn versions(
     Ok(versions)
 }
 
-/// Best first: playable before not, then height, then bitrate.
-fn version_rank(v: &Version) -> (bool, u32, u64) {
+/// Best first: direct play, then remuxed with the video untouched, then
+/// converted, then unplayable; within each, taller and then higher bitrate.
+fn version_rank(v: &Version) -> (u8, u32, u64) {
     match &v.media {
         VersionMedia::Probed { info, playback } => (
-            *playback == PlaybackDecision::DirectPlay,
+            match playback {
+                PlaybackDecision::DirectPlay => 3,
+                PlaybackDecision::Convert { plan, .. } if plan.video == VideoPlan::Copy => 2,
+                PlaybackDecision::Convert { .. } => 1,
+                PlaybackDecision::Unplayable(_) => 0,
+            },
             info.video.first().map_or(0, |s| s.height),
             info.bitrate.unwrap_or(0),
         ),
-        VersionMedia::Unreadable { .. } => (false, 0, 0),
+        VersionMedia::Unreadable { .. } => (0, 0, 0),
     }
 }
 
@@ -957,25 +967,56 @@ fn stream_into(r: &rusqlite::Row<'_>, info: &mut MediaInfo) -> rusqlite::Result<
     Ok(())
 }
 
-/// `media_file JOIN library_root`: root.path joined with rel_path.
+/// `media_file JOIN library_root`: root.path joined with rel_path, with the
+/// file's probed streams and fingerprint.
 pub(crate) fn stream_source(
     conn: &Connection,
     id: FileId,
 ) -> rusqlite::Result<Option<StreamSource>> {
     use rusqlite::OptionalExtension;
-    conn.prepare_cached(
-        "SELECT r.path, f.rel_path, f.container FROM media_file f JOIN library_root r ON r.id = f.root_id WHERE f.id = ?1",
-    )?
-    .query_row([id.0], |r| {
-        let root: String = r.get(0)?;
-        let rel: String = r.get(1)?;
-        let container: Option<String> = r.get(2)?;
-        Ok(StreamSource {
-            path: PathBuf::from(root).join(rel),
-            container: container.as_deref().map(Container::from_name).unwrap_or(Container::Other),
+    let Some(mut source) = conn
+        .prepare_cached(
+            "SELECT r.path, f.rel_path, f.container, f.fingerprint, f.duration_ms, f.bitrate \
+             FROM media_file f JOIN library_root r ON r.id = f.root_id WHERE f.id = ?1",
+        )?
+        .query_row([id.0], |r| {
+            let root: String = r.get(0)?;
+            let rel: String = r.get(1)?;
+            let container = r
+                .get::<_, Option<String>>(2)?
+                .as_deref()
+                .map(Container::from_name)
+                .unwrap_or(Container::Other);
+            let fingerprint: Vec<u8> = r.get(3)?;
+            Ok(StreamSource {
+                path: PathBuf::from(root).join(rel),
+                container,
+                fingerprint: fingerprint.iter().map(|b| format!("{b:02x}")).collect(),
+                media: MediaInfo {
+                    container,
+                    duration_ms: r.get::<_, Option<i64>>(4)?.map(|d| d as u64),
+                    bitrate: r.get::<_, Option<i64>>(5)?.map(|b| b as u64),
+                    video: vec![],
+                    audio: vec![],
+                    subtitles: vec![],
+                },
+            })
         })
-    })
-    .optional()
+        .optional()?
+    else {
+        return Ok(None);
+    };
+    let mut stmt = conn.prepare_cached(
+        "SELECT s.file_id, s.stream_index, s.kind, s.codec, s.profile, s.level, s.bit_depth, s.width, s.height, \
+         s.frame_rate, s.hdr, s.dv_profile, s.color_primaries, s.color_transfer, s.color_space, s.channels, \
+         s.channel_layout, s.sample_rate, s.language, s.title, s.is_default, s.is_forced, s.dv_compatibility \
+         FROM media_stream s WHERE s.file_id = ?1 ORDER BY s.stream_index",
+    )?;
+    let mut rows = stmt.query([id.0])?;
+    while let Some(r) = rows.next()? {
+        stream_into(r, &mut source.media)?;
+    }
+    Ok(Some(source))
 }
 
 #[cfg(test)]

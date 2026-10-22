@@ -16,7 +16,7 @@ path = "src/main.rs"
 nuvora-library = { path = "../library" }
 nuvora-media = { path = "../media" }
 axum = "0.8"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "fs", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "fs", "sync", "process", "time"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["fs", "compression-gzip"] }
 mime = "0.3"
@@ -35,6 +35,9 @@ directories = "6"
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.30", default-features = false, features = ["signal"] }
 
 [dev-dependencies]
 tempfile = "3"

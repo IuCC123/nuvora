@@ -693,8 +693,8 @@ mod tests {
         assert_eq!(
             libraries,
             json!([
-                {"id": 1, "name": "Movies", "kind": "movies", "item_count": 0},
-                {"id": library, "name": "Anime", "kind": "shows", "item_count": 2},
+                {"id": 1, "name": "Movies", "kind": "movies", "item_count": 0, "icon": null},
+                {"id": library, "name": "Anime", "kind": "shows", "item_count": 2, "icon": null},
             ])
         );
         let page = app

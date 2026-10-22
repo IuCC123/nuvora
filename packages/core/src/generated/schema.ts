@@ -286,6 +286,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/files/{id}/hls/{plan}/init.mp4": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The fMP4 init segment. */
+        get: operations["get_init"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/{id}/hls/{plan}/main.m3u8": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The media playlist for the whole file, VOD, segment URIs relative. */
+        get: operations["get_playlist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/{id}/hls/{plan}/{segment}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Media segment `{n}.m4s`, made on demand: a request past what the current
+         *     run has made restarts it there.
+         */
+        get: operations["get_segment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/files/{id}/stream": {
         parameters: {
             query?: never;
@@ -1081,13 +1135,25 @@ export interface components {
             year?: number | null;
         };
         /**
-         * @description What pressing Play does on the requesting device. Step 3 adds `hls`.
-         *     Clients must treat an unknown `kind` like `needs_transcode`.
+         * @description What pressing Play does on the requesting device. Clients must treat an
+         *     unknown `kind` like `needs_transcode`.
          */
         Playback: {
             /** @enum {string} */
             kind: "direct_play";
             mime_type: string;
+            url: string;
+        } | {
+            converts_audio: boolean;
+            /**
+             * @description The picture is re-encoded (slower to start, uses the server's CPU);
+             *     false when only the container or audio changes.
+             */
+            converts_video: boolean;
+            /** @enum {string} */
+            kind: "hls";
+            /** @description Why it can't play directly, as for `needs_transcode`. */
+            reasons: string[];
             url: string;
         } | {
             /** @enum {string} */
@@ -2437,6 +2503,173 @@ export interface operations {
                 };
                 content: {
                     "font/*": number[];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_init: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The player's id for this playback: 1 to 64 letters, digits, `-` or `_`.
+                 *     Defaults to `default`.
+                 */
+                session?: string;
+                /**
+                 * @description Playlist only: where playback starts, in seconds, so the first
+                 *     segments made are the ones the player asks for first.
+                 */
+                start?: number;
+                /**
+                 * @description Init segment only: the segment a first run starts at (written into
+                 *     the playlist).
+                 */
+                from?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+                plan: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": number[];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_playlist: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The player's id for this playback: 1 to 64 letters, digits, `-` or `_`.
+                 *     Defaults to `default`.
+                 */
+                session?: string;
+                /**
+                 * @description Playlist only: where playback starts, in seconds, so the first
+                 *     segments made are the ones the player asks for first.
+                 */
+                start?: number;
+                /**
+                 * @description Init segment only: the segment a first run starts at (written into
+                 *     the playlist).
+                 */
+                from?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+                plan: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.apple.mpegurl": string;
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_segment: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The player's id for this playback: 1 to 64 letters, digits, `-` or `_`.
+                 *     Defaults to `default`.
+                 */
+                session?: string;
+                /**
+                 * @description Playlist only: where playback starts, in seconds, so the first
+                 *     segments made are the ones the player asks for first.
+                 */
+                start?: number;
+                /**
+                 * @description Init segment only: the segment a first run starts at (written into
+                 *     the playlist).
+                 */
+                from?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+                plan: string;
+                /** @description `{n}.m4s` */
+                segment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": number[];
                 };
             };
             /** @description No valid session */

@@ -21,7 +21,7 @@ import { CastSection, DetailFacts, Overview } from "../components/Details";
 import { titleCardVars } from "../components/TitleCard";
 import { hasInteracted } from "../lib/interacted";
 import { languageName } from "../lib/languageName";
-import { playState } from "../lib/playState";
+import { playable, playState } from "../lib/playState";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useWatchedToggle } from "../lib/useWatchedToggle";
 import { PosterMarks } from "../components/PosterCard";
@@ -134,7 +134,7 @@ function Actions({ movie }: { movie: MovieDetail }) {
   if (state.kind === "play") {
     const { position_ms, file_id } = movie.watch;
     // Resume the version the position belongs to while it can still play here; otherwise the default one.
-    const resumeFile = movie.versions.some((v) => v.file_id === file_id && v.playback.kind === "direct_play") ? file_id! : state.fileId;
+    const resumeFile = movie.versions.some((v) => v.file_id === file_id && playable(v)) ? file_id! : state.fileId;
     return (
       <div className="detail-actions">
         {position_ms != null ? (

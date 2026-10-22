@@ -78,6 +78,7 @@ impl TestApp {
             auth: Arc::new(crate::auth::Auth::new(crate::net::TrustedProxies::new(
                 proxies.iter().map(|p| p.parse().unwrap()).collect(),
             ))),
+            transcoder: crate::transcode::Transcoder::new(tools.clone(), &dir.path().join("data")),
             server: Arc::new(ServerSetup {
                 data_dir: dir.path().join("data"),
                 bind: "127.0.0.1:8640".parse().unwrap(),

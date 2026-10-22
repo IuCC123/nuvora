@@ -8,6 +8,7 @@
 //! ffprobe's JSON shape and the image codecs stay private to this crate.
 
 mod artwork;
+mod hls;
 mod name;
 mod playback;
 mod probe;
@@ -20,11 +21,15 @@ pub use artwork::{
     ArtworkError, ArtworkRole, ArtworkSource, Frame, ImageSize, PIPELINE_VERSION, Placeholder,
     RenderedArtwork,
 };
+pub use hls::{HlsError, INIT_SEGMENT, Run, SEGMENT_SECONDS, Segments, keyframes, landing};
 pub use name::{
     EpisodeName, IdentityKey, MovieName, PARSE_VERSION, PathClass, ShowName, classify_path,
     fold_for_sort, is_skipped_dir,
 };
-pub use playback::{AudioSupport, DeviceProfile, Incompatibility, PlaybackDecision, VideoSupport};
+pub use playback::{
+    AudioOutput, AudioPlan, AudioSupport, DeviceProfile, Incompatibility, PlaybackDecision,
+    StreamPlan, VideoPlan, VideoSupport,
+};
 pub use probe::{
     AudioCodec, AudioStream, ColorInfo, Container, HdrFormat, MediaInfo, PROBE_VERSION, ProbeError,
     SubtitleCodec, SubtitleStream, VideoCodec, VideoStream, probe,
