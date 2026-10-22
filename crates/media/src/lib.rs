@@ -15,7 +15,7 @@ mod tools;
 pub use artwork::{
     ArtworkError, ArtworkRole, ArtworkSource, Frame, ImageSize, Placeholder, RenderedArtwork, PIPELINE_VERSION,
 };
-pub use name::{classify_path, MatchKey, MovieName, PathClass};
+pub use name::{classify_path, IdentityKey, MovieName, PathClass};
 pub use playback::{AudioSupport, DeviceProfile, Incompatibility, PlaybackDecision, VideoSupport};
 pub use probe::{
     AudioCodec, AudioStream, ColorInfo, Container, HdrFormat, MediaInfo, ProbeError, SubtitleCodec,

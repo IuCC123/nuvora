@@ -28,23 +28,27 @@ CREATE TABLE library_root (
 -- index_number). AUTOINCREMENT so a deleted id is never reused: a client cache
 -- holding a stale id can never resolve to a different movie.
 --
--- match_key groups files into one item. Step 1: normalized "title|year" from the
--- filename parser. Step 2: "tmdb:<id>" once matched. Two files with the same key
--- are two versions of one movie.
+-- identity_key groups files into one item: casefold(title)|year from the
+-- filename parser. Two files with the same key are two versions of one movie.
+-- It is built from the filename layer only and never rewritten from another
+-- source, not by a TMDB match and not by a user fix, so a re-probe re-derives
+-- the same key and can never split a matched item into a duplicate. A TMDB match
+-- writes item_metadata.provider_id on the 'tmdb' row instead. The one change is
+-- a rename whose new name parses differently (scan/write.rs `move_file`).
 --
 -- missing_since: set when the last file of the item disappears. The row (and so
 -- the id, and later the per-user watch state) survives; the home query hides it.
--- A returning file with the same match_key clears it.
+-- A returning file with the same identity_key clears it.
 CREATE TABLE item (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     library_id    INTEGER NOT NULL REFERENCES library(id) ON DELETE CASCADE,
     kind          TEXT    NOT NULL,          -- 'movie' (Step 2: 'show','season','episode')
     parent_id     INTEGER REFERENCES item(id) ON DELETE CASCADE,  -- season->show, episode->season
     index_number  INTEGER,                   -- season/episode number; NULL for movies
-    match_key     TEXT    NOT NULL,
+    identity_key  TEXT    NOT NULL,
     added_at      INTEGER NOT NULL,          -- unix ms, first time any file of this item was seen
     missing_since INTEGER,                   -- unix ms or NULL
-    UNIQUE (library_id, match_key)
+    UNIQUE (library_id, identity_key)
 ) STRICT;
 CREATE INDEX item_recent ON item (library_id, added_at DESC) WHERE missing_since IS NULL;
 CREATE INDEX item_parent ON item (parent_id) WHERE parent_id IS NOT NULL;
@@ -137,7 +141,7 @@ CREATE TABLE media_stream (
 CREATE TABLE artwork (
     item_id     INTEGER NOT NULL REFERENCES item(id) ON DELETE CASCADE,
     role        TEXT    NOT NULL,            -- 'poster' | 'backdrop'
-    source      TEXT    NOT NULL,            -- 'local' | 'frame' (later 'tmdb' | 'user')
+    source      TEXT    NOT NULL,            -- 'local' | 'frame' (backdrops only); later 'tmdb' | 'user'
     source_sig  TEXT    NOT NULL,
     hash        BLOB    NOT NULL,            -- 16 bytes, ArtworkId
     width       INTEGER NOT NULL,            -- of the large variant
@@ -157,3 +161,12 @@ WHERE a.source = (
     ORDER BY CASE b.source WHEN 'local' THEN 0 WHEN 'frame' THEN 9 ELSE 5 END
     LIMIT 1
 );
+
+-- Single row. `rev` is bumped inside every write transaction that changes what
+-- a client can see. The API sends it as the ETag of home and row pages, so an
+-- unchanged catalog answers a revalidation with 304 and no query.
+CREATE TABLE catalog (
+    id   INTEGER PRIMARY KEY CHECK (id = 1),
+    rev  INTEGER NOT NULL
+) STRICT;
+INSERT INTO catalog (id, rev) VALUES (1, 0);

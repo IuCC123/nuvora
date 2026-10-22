@@ -1,5 +1,6 @@
 //! Every catalog write the scan makes, one function per transaction. Each runs
-//! inside `Db::write`, so each is atomic; each is safe to repeat.
+//! inside `Db::write`, so each is atomic; each is safe to repeat. Each one that
+//! changes what clients see calls [`bump_rev`] in the same transaction.
 
 use nuvora_media::{ArtworkRole, MediaInfo, MovieName, ProbeError, RenderedArtwork};
 use rusqlite::{Connection, Transaction};
@@ -26,7 +27,7 @@ pub(crate) fn load_known_files(conn: &Connection, roots: &[RootId]) -> rusqlite:
 }
 
 /// Insert or update one probed file and everything derived from it:
-/// 1. find-or-create the item by `(library_id, name.match_key())`, clearing
+/// 1. find-or-create the item by `(library_id, name.identity_key())`, clearing
 ///    `missing_since` (a returning file revives its old item and id);
 /// 2. upsert the `media_file` row (by `existing` id, else by `(root, rel_path)`
 ///    so a crash-and-retry of the same insert updates instead of duplicating);
@@ -49,7 +50,7 @@ pub(crate) fn upsert_file(
 
 /// Apply a rename/move: update `root_id`, `rel_path`, `mtime_ns`; keep the id,
 /// streams and artwork. Then re-derive the item from the new name:
-/// - same match key => nothing else changes;
+/// - same identity key => nothing else changes;
 /// - new key owned by another item => re-parent the file (becomes a version
 ///   there); the old item is marked missing if now empty;
 /// - new key unowned and the file is its item's only file => re-key the item in
@@ -67,14 +68,16 @@ pub(crate) fn load_artwork_sigs(conn: &Connection) -> rusqlite::Result<Vec<(Item
 }
 
 /// Upsert one `artwork` row. Called only after the store holds `id`'s files.
+/// A poster's [`LocalImage`](super::plan::LocalImage) is passed as `WantedSource::Local`.
 pub(crate) fn set_artwork(
     tx: &Transaction<'_>,
     item: ItemId,
+    role: ArtworkRole,
     source: &WantedSource,
     id: ArtworkId,
     rendered: &RenderedArtwork,
 ) -> rusqlite::Result<()> {
-    let _ = (tx, item, source, id, rendered);
+    let _ = (tx, item, role, source, id, rendered);
     todo!()
 }
 
@@ -93,5 +96,12 @@ pub(crate) fn remove_gone(
 
 pub(crate) fn live_artwork_ids(conn: &Connection) -> rusqlite::Result<std::collections::HashSet<ArtworkId>> {
     let _ = conn;
+    todo!()
+}
+
+/// `UPDATE catalog SET rev = rev + 1`. Home and row ETags are this number, so a
+/// write that changes visible rows without bumping it would serve stale 304s.
+pub(crate) fn bump_rev(tx: &Transaction<'_>) -> rusqlite::Result<()> {
+    let _ = tx;
     todo!()
 }

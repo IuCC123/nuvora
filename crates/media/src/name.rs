@@ -43,12 +43,14 @@ pub struct MovieName {
     pub year: Option<u16>,
 }
 
-/// Grouping key for "these files are the same movie". Only constructible by
-/// [`MovieName::match_key`], so every writer normalizes identically.
+/// Grouping key for "these files are the same movie", stored as
+/// `item.identity_key`. Only constructible by [`MovieName::identity_key`], so
+/// every writer normalizes identically. Built from the filename alone and never
+/// replaced by a provider id: a later re-probe must re-derive the same key.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct MatchKey(String);
+pub struct IdentityKey(String);
 
-impl MatchKey {
+impl IdentityKey {
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -61,7 +63,7 @@ impl MovieName {
     }
 
     /// `"<casefolded alnum title>|<year or ''>"`. Diacritics folded, `&` -> `and`.
-    pub fn match_key(&self) -> MatchKey {
+    pub fn identity_key(&self) -> IdentityKey {
         todo!()
     }
 }
@@ -94,10 +96,10 @@ mod tests {
 
     #[test]
     #[ignore = "sketch: enable with the implementation"]
-    fn versions_of_one_movie_share_a_match_key() {
+    fn versions_of_one_movie_share_an_identity_key() {
         let a = MovieName::parse(Path::new("Alien (1979)/Alien (1979) - 1080p.mkv"));
         let b = MovieName::parse(Path::new("Alien.1979.2160p.UHD.HDR.mkv"));
-        assert_eq!(a.match_key(), b.match_key());
+        assert_eq!(a.identity_key(), b.identity_key());
     }
 
     const CLASSES: &[(&str, &str)] = &[

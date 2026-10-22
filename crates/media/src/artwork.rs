@@ -4,12 +4,17 @@
 //! Encode path: decode with `image`, resize with `fast_image_resize` (Lanczos3,
 //! SIMD), encode with libwebp (`webp` crate, statically built from source, so it
 //! does not depend on the user's FFmpeg build). FFmpeg is only used to grab a
-//! frame when a movie has no local artwork.
+//! backdrop frame when a movie has no local backdrop.
+//!
+//! Sources: a poster comes from local artwork only; a cropped video frame makes
+//! a poor poster. A backdrop comes from local artwork, else a frame at 10% of the
+//! runtime, and only from SDR video: this FFmpeg has no `zscale`, so an HDR frame
+//! cannot be tone-mapped and would look washed out.
 
 use std::path::Path;
 use std::time::Duration;
 
-use crate::{HdrFormat, MediaTools};
+use crate::MediaTools;
 
 /// Bump to re-render every image (new sizes, new quality). Folded into the
 /// content hash by the store, so old and new files never share a name and
@@ -18,10 +23,10 @@ pub const PIPELINE_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ArtworkRole {
-    /// 2:3. Rendered aspect is clamped to 0.6..=0.75 by centre crop, so a
-    /// frame-grab poster is a crop, not a squashed 16:9 frame.
+    /// 2:3. Rendered aspect is clamped to 0.6..=0.75 by centre crop. Local
+    /// artwork only.
     Poster,
-    /// 16:9. Clamped to 1.6..=1.9.
+    /// 16:9. Clamped to 1.6..=1.9. Local artwork, else an SDR frame grab.
     Backdrop,
 }
 
@@ -91,7 +96,7 @@ pub enum ArtworkError {
 pub enum ArtworkSource<'a> {
     /// Bytes of a local image file (JPEG, PNG or WebP).
     File(&'a [u8]),
-    /// A decoded video frame from [`MediaTools::grab_frame`].
+    /// A decoded SDR video frame from [`MediaTools::grab_frame`]. Backdrops only.
     Frame(&'a Frame),
 }
 
@@ -100,26 +105,21 @@ impl ArtworkSource<'_> {
     pub fn hash_input(&self) -> &[u8] {
         match self {
             ArtworkSource::File(b) => b,
-            ArtworkSource::Frame(f) => &f.rgb48,
+            ArtworkSource::Frame(f) => &f.rgb,
         }
     }
 }
 
-/// One frame as 16-bit RGB, still in the source transfer function.
+/// One SDR frame as 8-bit RGB.
 pub struct Frame {
     pub width: u32,
     pub height: u32,
-    /// Little-endian RGB48, `width * height * 6` bytes.
-    pub rgb48: Vec<u8>,
-    /// Transfer of the pixels. `render` tone-maps PQ/HLG to SDR (BT.2390 EETF,
-    /// BT.2020 -> BT.709 gamut, sRGB OETF) in Rust, because the installed FFmpeg
-    /// has `tonemap` but not `zscale`/`libplacebo` to linearize for it.
-    pub hdr: HdrFormat,
+    /// RGB24, `width * height * 3` bytes.
+    pub rgb: Vec<u8>,
 }
 
 impl RenderedArtwork {
-    /// CPU-bound; call from `spawn_blocking`. Decode (or tone-map a frame), clamp
-    /// aspect by centre crop, resize to each size (never upscale), encode WebP
+    /// CPU-bound; call from `spawn_blocking`. Decode, clamp aspect by centre crop, resize to each size (never upscale), encode WebP
     /// q=82 method 4, ThumbHash from a 100 px-max downscale.
     pub fn render(role: ArtworkRole, source: ArtworkSource<'_>) -> Result<RenderedArtwork, ArtworkError> {
         let _ = (role, source);
@@ -128,13 +128,12 @@ impl RenderedArtwork {
 }
 
 impl MediaTools {
-    /// Grab one frame, scaled to 1920 px wide, as raw RGB48:
-    /// `ffmpeg -ss <at> -i <path> -frames:v 1 -vf scale=1920:-2 -pix_fmt rgb48le -f rawvideo -`.
-    /// `-ss` before `-i` = keyframe seek, ~100 ms even on 4K HEVC. Callers pick
-    /// `at` = 10% of duration clamped to 30 s..=300 s and pass the stream's HDR
-    /// format from the probe.
-    pub async fn grab_frame(&self, path: &Path, at: Duration, hdr: HdrFormat) -> Result<Frame, ArtworkError> {
-        let _ = (path, at, hdr, &self.ffmpeg);
+    /// Grab one frame for a backdrop, scaled to 1920 px wide, as raw RGB24:
+    /// `ffmpeg -ss <at> -i <path> -frames:v 1 -vf scale=1920:-2 -pix_fmt rgb24 -f rawvideo -`.
+    /// `-ss` before `-i` = keyframe seek, ~100 ms even on 4K HEVC. Callers pass
+    /// `at` = 10% of the runtime, and only for SDR video.
+    pub async fn grab_frame(&self, path: &Path, at: Duration) -> Result<Frame, ArtworkError> {
+        let _ = (path, at, &self.ffmpeg);
         todo!()
     }
 }

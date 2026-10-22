@@ -20,7 +20,10 @@ use tokio::sync::watch;
 
 pub use ids::{ArtworkId, FileId, ItemId, ParseIdError};
 pub use scan::{ScanIssue, ScanPhase, ScanProgress, ScanState, ScanStatus, ScanSummary};
-pub use views::{Artwork, Card, Home, Item, ItemKind, Movie, Row, RowKind, StreamSource, Version, VersionMedia};
+pub use views::{
+    Artwork, Card, CatalogRev, Cursor, Home, InvalidCursor, Item, ItemKind, Movie, Row, RowKind, RowPage,
+    StreamSource, Version, VersionMedia, HOME_ROW_LIMIT, MAX_ROW_LIMIT,
+};
 
 /// Everything the catalog needs, already validated by the caller (the server's
 /// config loader). The catalog does not read config files or environment.
@@ -101,12 +104,35 @@ impl Library {
         self.inner.scan.subscribe()
     }
 
-    /// The home screen in one read transaction: Recently Added (newest 24) and
-    /// All Movies (every present movie, by sort title). Items whose files are all
-    /// missing are excluded. Two indexed queries, no N+1; designed for < 10 ms at
-    /// 2,000 movies so the 50 ms budget is network and JSON, not SQL.
+    /// The catalog revision as of the last committed write. No query: the writer
+    /// publishes it after each commit, so a matching `If-None-Match` costs nothing.
+    pub fn rev(&self) -> CatalogRev {
+        self.inner.db.rev()
+    }
+
+    /// The home screen in one read transaction: the first page (at most
+    /// [`HOME_ROW_LIMIT`] cards) of each [`RowKind::ALL`] row, with its total and
+    /// a cursor to the rest. Items whose files are all missing are excluded. Two
+    /// indexed keyset queries, so the cost does not grow with the library.
     pub async fn home(&self) -> Result<Home, QueryError> {
         Ok(self.inner.db.read(views::home).await?)
+    }
+
+    /// The page of `kind` after `after` (`None` = from the start), `limit` cards
+    /// clamped to `1..=MAX_ROW_LIMIT`. `after` comes from [`Cursor::parse`] with
+    /// the same `kind`, or from a previous page of this row.
+    pub async fn row(&self, kind: RowKind, after: Option<Cursor>, limit: u32) -> Result<RowPage, QueryError> {
+        debug_assert!(after.as_ref().is_none_or(|c| c.kind() == kind));
+        let limit = limit.clamp(1, MAX_ROW_LIMIT);
+        Ok(self
+            .inner
+            .db
+            .read(move |c| {
+                let rev = views::rev(c)?;
+                let (_, cards, next) = views::row_page(c, kind, after.as_ref(), limit)?;
+                Ok(RowPage { rev, cards, next })
+            })
+            .await?)
     }
 
     /// One item with every version (file) and every stream, plus a playback

@@ -10,15 +10,21 @@
 //!    (= moved or renamed; the file id and item id survive).
 //! 3. **Read**: ffprobe changed and new files, at most `probe_concurrency` at a
 //!    time; each result commits in its own transaction (`write::upsert_file`).
-//! 4. **Artwork**: per present item, pick the desired source (local file, else a
-//!    frame grab); render only when the stored `source_sig` differs.
-//! 5. **Clean up**: delete rows of gone files, mark emptied items missing,
-//!    delete artwork rows whose source vanished, GC the artwork store.
+//! 4. **Artwork**: per present item, pick the desired sources (poster: local
+//!    file only; backdrop: local file, else an SDR frame grab); render only when
+//!    the stored `source_sig` differs.
+//! 5. **Clean up**: delete rows of gone files and mark emptied items missing
+//!    (only when `plan.may_mark_missing`), delete artwork rows whose source
+//!    vanished, GC the artwork store.
 //!
 //! Invariants that make it idempotent and crash-safe:
 //! - Nothing is deleted until discovery of that root completed. An unreadable
 //!   root (NAS offline) deletes nothing; an unreadable subfolder protects every
-//!   stored file under it.
+//!   stored file under it; a readable root that walks as empty while the
+//!   database holds files for it deletes nothing (a share down behind an
+//!   automounter).
+//! - Every write that changes what clients see bumps `catalog.rev` in the
+//!   same transaction.
 //! - Every commit leaves a valid catalog. A crash mid-scan loses only work not
 //!   yet committed; the next scan finds it as changed/new/gone again and
 //!   converges. There is no "scan in progress" state on disk to recover.
@@ -154,12 +160,13 @@ async fn worker(ctx: ScanContext, mut requests: mpsc::Receiver<()>, status: watc
 ///     .map(|f| async { (f, fingerprint(f), tools.probe(path)) })
 ///     .buffer_unordered(probe_concurrency)
 ///     .for_each(|r| db.write(write::upsert_file(r)); progress.tick())
-/// wanted  = plan::wanted_artwork(&walks, db.read(write::load_artwork_state))  -- phase Artwork
-/// for job in wanted.render (buffer_unordered(cpu/2)):
+/// wanted  = plan::wanted_artwork(&walks, db.read(write::load_artwork_sigs))  -- phase Artwork
+/// for job in wanted.render (buffer_unordered(cpu/2)):           -- frame: grab_frame(at_ms), SDR only
 ///     id = ArtworkStore::id_for(role, source)
 ///     if !store.contains(id) { spawn_blocking(render); store.put(id, ..) }  -- files before row
 ///     db.write(write::set_artwork(item, role, source, sig, id, ..))
-/// db.write(write::remove_gone(plan.gone, wanted.stale_artwork, now))       -- phase CleaningUp
+/// gone    = if plan.may_mark_missing { plan.gone } else { [] }
+/// db.write(write::remove_gone(gone, wanted.stale_artwork, now))            -- phase CleaningUp
 /// store.retain(db.read(write::live_artwork_ids))
 /// ```
 async fn run(ctx: &ScanContext, status: &watch::Sender<ScanStatus>) -> ScanSummary {
