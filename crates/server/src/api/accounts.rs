@@ -9,14 +9,20 @@
 //! | POST   | /api/auth/logout  | session |
 //! | PATCH  | /api/auth/me      | session |
 
-#![allow(dead_code)]
-
 use axum::Json;
-use axum::http::StatusCode;
+use axum::extract::State;
+use axum::http::header::{SET_COOKIE, USER_AGENT};
+use axum::http::{HeaderMap, StatusCode, request::Parts};
+use axum::response::{IntoResponse, Response};
+use nuvora_library::{AccountError, NewUser, UserChanges};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use super::{ApiError, ErrorBody, JsonBody};
+use super::{ApiError, AppState, ErrorBody, ErrorCode, JsonBody};
+use crate::auth::{self, SESSION_TTL, SignedIn};
+
+/// Shown until the admin names the server.
+const DEFAULT_SERVER_NAME: &str = "Nuvora";
 
 #[derive(Serialize, ToSchema)]
 pub struct Health {
@@ -92,8 +98,17 @@ pub(super) async fn health() -> Json<Health> {
 
 /// Never 401: without a valid session `user` is `None`.
 #[utoipa::path(get, path = "/api/auth/state", responses((status = 200, body = AuthState)))]
-pub(super) async fn auth_state() -> Result<Json<AuthState>, ApiError> {
-    Err(ApiError::not_implemented())
+pub(super) async fn auth_state(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<AuthState>, ApiError> {
+    let lib = &state.library;
+    let session = auth::current_session(&state, &headers).await?;
+    Ok(Json(AuthState {
+        setup_required: lib.setup_required().await.map_err(ApiError::internal)?,
+        user: session.map(|s| User::from(s.user)),
+        server_name: server_name(lib).await?,
+    }))
 }
 
 /// Creates the first admin and signs them in (sets the session cookie). 409
@@ -108,8 +123,26 @@ pub(super) async fn auth_state() -> Result<Json<AuthState>, ApiError> {
         (status = 409, body = ErrorBody),
     ),
 )]
-pub(super) async fn setup(JsonBody(_): JsonBody<SetupRequest>) -> Result<Json<User>, ApiError> {
-    Err(ApiError::not_implemented())
+pub(super) async fn setup(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    JsonBody(body): JsonBody<SetupRequest>,
+) -> Result<Response, ApiError> {
+    let lib = &state.library;
+    if !lib.setup_required().await.map_err(ApiError::internal)? {
+        return Err(account_error(AccountError::SetupDone));
+    }
+    let new = NewUser {
+        username: valid_username(&body.username)?,
+        display_name: valid_display_name(&body.display_name)?,
+        password_hash: auth::hash_password(valid_password("password", body.password)?).await?,
+        role: nuvora_library::Role::Admin,
+    };
+    let user = lib
+        .create_first_admin(new, state.auth.now_ms())
+        .await
+        .map_err(account_error)?;
+    sign_in(&state, user, &headers).await
 }
 
 /// Sets the session cookie. Wrong username, wrong password and disabled
@@ -125,14 +158,52 @@ pub(super) async fn setup(JsonBody(_): JsonBody<SetupRequest>) -> Result<Json<Us
         (status = 429, body = ErrorBody),
     ),
 )]
-pub(super) async fn login(JsonBody(_): JsonBody<LoginRequest>) -> Result<Json<User>, ApiError> {
-    Err(ApiError::not_implemented())
+pub(super) async fn login(
+    State(state): State<AppState>,
+    parts: Parts,
+    JsonBody(body): JsonBody<LoginRequest>,
+) -> Result<Response, ApiError> {
+    let username = body.username.trim();
+    let keys = auth::limiter_keys(username, &parts);
+    if let Some(retry_after) = state.auth.blocked_for(&keys) {
+        return Err(ApiError::rate_limited(retry_after));
+    }
+    let found = state
+        .library
+        .credentials(username.to_owned())
+        .await
+        .map_err(ApiError::internal)?;
+    let (user, hash) = match found {
+        Some(c) => (Some(c.user), Some(c.password_hash)),
+        None => (None, None),
+    };
+    let password_ok = auth::verify_password(body.password, hash).await;
+    match user {
+        Some(user) if password_ok && !user.disabled => {
+            state.auth.record_success(&keys[..1]);
+            sign_in(&state, user, &parts.headers).await
+        }
+        _ => {
+            state.auth.record_failure(&keys);
+            Err(ApiError::bad_credentials())
+        }
+    }
 }
 
 /// Ends this session and clears the cookie.
 #[utoipa::path(post, path = "/api/auth/logout", responses((status = 204)))]
-pub(super) async fn logout() -> Result<StatusCode, ApiError> {
-    Err(ApiError::not_implemented())
+pub(super) async fn logout(
+    State(state): State<AppState>,
+    signed_in: SignedIn,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    state
+        .library
+        .delete_session(signed_in.token)
+        .await
+        .map_err(ApiError::internal)?;
+    let cookie = auth::session_cookie(None, &headers);
+    Ok((StatusCode::NO_CONTENT, [(SET_COOKIE, cookie)]).into_response())
 }
 
 #[utoipa::path(
@@ -142,7 +213,502 @@ pub(super) async fn logout() -> Result<StatusCode, ApiError> {
     responses((status = 200, body = User), (status = 400, body = ErrorBody)),
 )]
 pub(super) async fn update_me(
-    JsonBody(_): JsonBody<UpdateMeRequest>,
+    State(state): State<AppState>,
+    signed_in: SignedIn,
+    JsonBody(body): JsonBody<UpdateMeRequest>,
 ) -> Result<Json<User>, ApiError> {
-    Err(ApiError::not_implemented())
+    let lib = &state.library;
+    let me = signed_in.user.id;
+    let mut changes = UserChanges {
+        display_name: body
+            .display_name
+            .as_deref()
+            .map(valid_display_name)
+            .transpose()?,
+        ..UserChanges::default()
+    };
+    if let Some(new_password) = body.new_password {
+        let new_password = valid_password("new_password", new_password)?;
+        let current = body.current_password.unwrap_or_default();
+        let hash = lib.password_hash(me).await.map_err(ApiError::internal)?;
+        if !auth::verify_password(current, hash).await {
+            return Err(ApiError::validation(
+                "current_password",
+                "That isn't your current password",
+            ));
+        }
+        changes.password_hash = Some(auth::hash_password(new_password).await?);
+    }
+    let user = lib
+        .update_user(me, me, changes, Some(signed_in.token), state.auth.now_ms())
+        .await
+        .map_err(account_error)?;
+    Ok(Json(User::from(user)))
+}
+
+/// Starts a session for `user`: the `User` body plus the session cookie.
+async fn sign_in(
+    state: &AppState,
+    user: nuvora_library::User,
+    headers: &HeaderMap,
+) -> Result<Response, ApiError> {
+    let (token, hash) = auth::new_token();
+    let now = state.auth.now_ms();
+    let user_agent = headers
+        .get(USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(|ua| ua.chars().take(256).collect());
+    state
+        .library
+        .create_session(
+            user.id,
+            hash,
+            now,
+            now + SESSION_TTL.as_millis() as i64,
+            user_agent,
+        )
+        .await
+        .map_err(ApiError::internal)?;
+    let cookie = auth::session_cookie(Some(&token), headers);
+    Ok(([(SET_COOKIE, cookie)], Json(User::from(user))).into_response())
+}
+
+pub(super) async fn server_name(lib: &nuvora_library::Library) -> Result<String, ApiError> {
+    Ok(lib
+        .server_name()
+        .await
+        .map_err(ApiError::internal)?
+        .unwrap_or_else(|| DEFAULT_SERVER_NAME.to_owned()))
+}
+
+pub(super) fn account_error(e: AccountError) -> ApiError {
+    match e {
+        AccountError::SetupDone => {
+            ApiError::conflict(ErrorCode::SetupDone, "This server is already set up")
+        }
+        AccountError::UsernameTaken => {
+            let mut error = ApiError::conflict(ErrorCode::UsernameTaken, "That username is taken");
+            error.body.field = Some("username".to_owned());
+            error
+        }
+        AccountError::LastAdmin => ApiError::conflict(
+            ErrorCode::LastAdmin,
+            "There must always be at least one enabled admin",
+        ),
+        AccountError::OwnAccount => ApiError::new(
+            StatusCode::BAD_REQUEST,
+            ErrorCode::Validation,
+            "You can't disable or delete your own account",
+        ),
+        AccountError::NotFound => ApiError::not_found(),
+        AccountError::Query(e) => ApiError::internal(e),
+    }
+}
+
+/// 1 to 32 letters, digits, `.`, `_` or `-`, after trimming.
+pub(super) fn valid_username(raw: &str) -> Result<String, ApiError> {
+    let name = raw.trim();
+    let ok = (1..=32).contains(&name.chars().count())
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    if !ok {
+        return Err(ApiError::validation(
+            "username",
+            "Use 1 to 32 letters, numbers, dots, dashes or underscores",
+        ));
+    }
+    Ok(name.to_owned())
+}
+
+pub(super) fn valid_display_name(raw: &str) -> Result<String, ApiError> {
+    let name = raw.trim();
+    if !(1..=64).contains(&name.chars().count()) || name.chars().any(char::is_control) {
+        return Err(ApiError::validation(
+            "display_name",
+            "Use 1 to 64 characters",
+        ));
+    }
+    Ok(name.to_owned())
+}
+
+/// At least 8 characters. The upper bound keeps hashing cheap to refuse.
+pub(super) fn valid_password(field: &str, password: String) -> Result<String, ApiError> {
+    if !(8..=256).contains(&password.chars().count()) {
+        return Err(ApiError::validation(field, "Use at least 8 characters"));
+    }
+    Ok(password)
+}
+
+impl From<nuvora_library::User> for User {
+    fn from(u: nuvora_library::User) -> Self {
+        User {
+            id: u.id.raw(),
+            username: u.username,
+            display_name: u.display_name,
+            role: u.role.into(),
+        }
+    }
+}
+
+impl From<nuvora_library::Role> for Role {
+    fn from(r: nuvora_library::Role) -> Self {
+        match r {
+            nuvora_library::Role::Admin => Role::Admin,
+            nuvora_library::Role::Member => Role::Member,
+        }
+    }
+}
+
+impl From<Role> for nuvora_library::Role {
+    fn from(r: Role) -> Self {
+        match r {
+            Role::Admin => nuvora_library::Role::Admin,
+            Role::Member => nuvora_library::Role::Member,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use axum::body::Body;
+    use axum::http::header::{
+        AUTHORIZATION, CONTENT_TYPE, COOKIE, ORIGIN, RETRY_AFTER, SET_COOKIE,
+    };
+    use axum::http::{Request, StatusCode};
+    use serde_json::json;
+
+    use super::super::test_app::{ADMIN_PASSWORD, TestApp};
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn setup_works_once() {
+        let app = TestApp::new().await;
+        let state = app.call("GET", "/api/auth/state", None, None).await.json();
+        assert_eq!(
+            state,
+            json!({"setup_required": true, "user": null, "server_name": "Nuvora"})
+        );
+
+        let short = app
+            .call(
+                "POST",
+                "/api/setup",
+                None,
+                Some(json!({"username": "admin", "display_name": "Admin", "password": "short"})),
+            )
+            .await;
+        assert_eq!(short.status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            short.json(),
+            json!({"code": "validation", "message": "Use at least 8 characters", "field": "password"})
+        );
+
+        let cookie = app.setup_admin().await;
+        let state = app
+            .call("GET", "/api/auth/state", Some(&cookie), None)
+            .await
+            .json();
+        assert_eq!(
+            state,
+            json!({
+                "setup_required": false,
+                "user": {"id": 1, "username": "admin", "display_name": "Admin", "role": "admin"},
+                "server_name": "Nuvora",
+            })
+        );
+
+        let again = app
+            .call(
+                "POST",
+                "/api/setup",
+                None,
+                Some(
+                    json!({"username": "mallory", "display_name": "M", "password": "password123"}),
+                ),
+            )
+            .await;
+        assert_eq!(again.status, StatusCode::CONFLICT);
+        assert_eq!(again.json()["code"], "setup_done");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn concurrent_setups_make_exactly_one_admin() {
+        let app = std::sync::Arc::new(TestApp::new().await);
+        let attempts = (0..8).map(|i| {
+            let app = app.clone();
+            tokio::spawn(async move {
+                app.call(
+                    "POST",
+                    "/api/setup",
+                    None,
+                    Some(json!({"username": format!("admin{i}"), "display_name": "A", "password": "password123"})),
+                )
+                .await
+                .status
+            })
+        });
+        let mut statuses = Vec::new();
+        for attempt in attempts {
+            statuses.push(attempt.await.unwrap());
+        }
+        statuses.sort();
+        assert_eq!(
+            statuses,
+            [vec![StatusCode::OK], vec![StatusCode::CONFLICT; 7]].concat()
+        );
+        let users = app.state.library.users().await.unwrap();
+        assert_eq!(users.len(), 1);
+        assert_eq!(users[0].role, nuvora_library::Role::Admin);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn login_succeeds_and_fails_the_same_way_for_any_wrong_input() {
+        let app = TestApp::new().await;
+        app.setup_admin().await;
+        for (username, password) in [("admin", "wrong password"), ("nobody", ADMIN_PASSWORD)] {
+            let reply = app.login(username, password).await;
+            assert_eq!(reply.status, StatusCode::UNAUTHORIZED);
+            assert_eq!(
+                reply.json(),
+                json!({"code": "bad_credentials", "message": "Wrong username or password", "field": null})
+            );
+            assert!(reply.headers.get(SET_COOKIE).is_none());
+        }
+
+        let reply = app.login(" ADMIN ", ADMIN_PASSWORD).await;
+        assert_eq!(reply.status, StatusCode::OK);
+        assert_eq!(reply.json()["username"], "admin");
+        let set_cookie = reply.headers.get(SET_COOKIE).unwrap().to_str().unwrap();
+        assert!(set_cookie.starts_with("nuvora_session="), "{set_cookie}");
+        assert!(
+            set_cookie.ends_with("; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000"),
+            "{set_cookie}"
+        );
+        assert_eq!(
+            app.get("/api/home", &reply.cookie()).await.status,
+            StatusCode::OK
+        );
+
+        let https = app
+            .send(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/login")
+                    .header(CONTENT_TYPE, "application/json")
+                    .header("x-forwarded-proto", "https")
+                    .body(Body::from(
+                        json!({"username": "admin", "password": ADMIN_PASSWORD}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await;
+        assert!(
+            https
+                .headers
+                .get(SET_COOKIE)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .ends_with("; Secure")
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn five_failures_lock_the_username_for_fifteen_minutes() {
+        let app = TestApp::new().await;
+        app.setup_admin().await;
+        for _ in 0..5 {
+            assert_eq!(
+                app.login("admin", "wrong password").await.status,
+                StatusCode::UNAUTHORIZED
+            );
+        }
+        let locked = app.login("admin", ADMIN_PASSWORD).await;
+        assert_eq!(locked.status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(locked.json()["code"], "rate_limited");
+        assert_eq!(locked.headers.get(RETRY_AFTER).unwrap(), "900");
+
+        app.state.auth.advance(Duration::from_secs(15 * 60));
+        assert_eq!(
+            app.login("admin", ADMIN_PASSWORD).await.status,
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn sessions_slide_and_expire_after_thirty_idle_days() {
+        let app = TestApp::new().await;
+        let cookie = app.setup_admin().await;
+        let day = Duration::from_secs(24 * 3600);
+
+        let fresh = app.get("/api/home", &cookie).await;
+        assert_eq!(fresh.status, StatusCode::OK);
+        assert!(fresh.headers.get(SET_COOKIE).is_none(), "not refreshed yet");
+
+        app.state.auth.advance(2 * day);
+        let slid = app.get("/api/home", &cookie).await;
+        assert_eq!(slid.status, StatusCode::OK);
+        assert_eq!(slid.cookie(), cookie, "same token, new Max-Age");
+
+        app.state.auth.advance(29 * day);
+        assert_eq!(
+            app.get("/api/home", &cookie).await.status,
+            StatusCode::OK,
+            "31 days after sign in, 29 after the last refresh"
+        );
+
+        app.state.auth.advance(31 * day);
+        let expired = app.get("/api/home", &cookie).await;
+        assert_eq!(expired.status, StatusCode::UNAUTHORIZED);
+        assert_eq!(expired.json()["code"], "unauthorized");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn logout_ends_the_session() {
+        let app = TestApp::new().await;
+        let cookie = app.setup_admin().await;
+        let reply = app
+            .call("POST", "/api/auth/logout", Some(&cookie), None)
+            .await;
+        assert_eq!(reply.status, StatusCode::NO_CONTENT);
+        assert!(
+            reply
+                .headers
+                .get(SET_COOKIE)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .contains("Max-Age=0")
+        );
+        assert_eq!(
+            app.get("/api/home", &cookie).await.status,
+            StatusCode::UNAUTHORIZED
+        );
+        let state = app
+            .call("GET", "/api/auth/state", Some(&cookie), None)
+            .await
+            .json();
+        assert_eq!(state["user"], json!(null));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn every_catalog_route_needs_a_session() {
+        let app = TestApp::new().await;
+        let cookie = app.setup_admin().await;
+        for uri in [
+            "/api/home",
+            "/api/rows/all_movies",
+            "/api/items/1",
+            "/api/images/000102030405060708090a0b0c0d0e0f/small",
+            "/api/files/1/stream",
+            "/api/scan",
+            "/api/admin/users",
+        ] {
+            let reply = app.call("GET", uri, None, None).await;
+            assert_eq!(reply.status, StatusCode::UNAUTHORIZED, "{uri}");
+            assert_eq!(reply.json()["code"], "unauthorized", "{uri}");
+            let reply = app.get(uri, "nuvora_session=forged").await;
+            assert_eq!(reply.status, StatusCode::UNAUTHORIZED, "{uri}");
+        }
+
+        let token = cookie.strip_prefix("nuvora_session=").unwrap();
+        let bearer = app
+            .send(
+                Request::builder()
+                    .uri("/api/home")
+                    .header(AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(
+            bearer.status,
+            StatusCode::OK,
+            "bearer works like the cookie"
+        );
+        assert_eq!(
+            app.call("GET", "/api/health", None, None).await.json(),
+            json!({"status": "ok", "version": env!("CARGO_PKG_VERSION")})
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn changes_must_be_json_from_this_origin() {
+        let app = TestApp::new().await;
+        let cookie = app.setup_admin().await;
+        let form = app
+            .send(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/logout")
+                    .header(COOKIE, &cookie)
+                    .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(form.status, StatusCode::FORBIDDEN);
+        assert_eq!(form.json()["code"], "forbidden");
+
+        let cross_site = |origin: &'static str| {
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/logout")
+                .header("host", "nuvora.local:8640")
+                .header(ORIGIN, origin)
+                .header(COOKIE, &cookie)
+                .header(CONTENT_TYPE, "application/json")
+                .body(Body::empty())
+                .unwrap()
+        };
+        let evil = app.send(cross_site("https://evil.example")).await;
+        assert_eq!(evil.status, StatusCode::FORBIDDEN);
+        assert_eq!(app.get("/api/home", &cookie).await.status, StatusCode::OK);
+
+        let same = app.send(cross_site("http://nuvora.local:8640")).await;
+        assert_eq!(same.status, StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_password_change_keeps_this_session_and_ends_the_others() {
+        let app = TestApp::new().await;
+        let here = app.setup_admin().await;
+        let elsewhere = app.login("admin", ADMIN_PASSWORD).await.cookie();
+        let wrong = app
+            .call(
+                "PATCH",
+                "/api/auth/me",
+                Some(&here),
+                Some(json!({"current_password": "nope nope", "new_password": "new password"})),
+            )
+            .await;
+        assert_eq!(wrong.status, StatusCode::BAD_REQUEST);
+        assert_eq!(wrong.json()["field"], "current_password");
+
+        let reply = app
+            .call(
+                "PATCH",
+                "/api/auth/me",
+                Some(&here),
+                Some(json!({
+                    "display_name": "  The Admin ",
+                    "current_password": ADMIN_PASSWORD,
+                    "new_password": "new password",
+                })),
+            )
+            .await;
+        assert_eq!(reply.status, StatusCode::OK);
+        assert_eq!(reply.json()["display_name"], "The Admin");
+        assert_eq!(app.get("/api/home", &here).await.status, StatusCode::OK);
+        assert_eq!(
+            app.get("/api/home", &elsewhere).await.status,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            app.login("admin", "new password").await.status,
+            StatusCode::OK
+        );
+    }
 }

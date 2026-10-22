@@ -1,10 +1,16 @@
 //! Configuration: `nuvora.toml` plus CLI overrides, validated into the types
 //! the catalog takes. The only place that reads files, flags or env for config.
+//! Every flag also reads an environment variable: `NUVORA_CONFIG`,
+//! `NUVORA_BIND`, `NUVORA_DATA_DIR`, and `NUVORA_MOVIES` (a path list,
+//! `:`-separated, `;` on Windows).
+//!
+//! The config file and `--movies` only add libraries and folders that do not
+//! exist yet; after that the admin panel owns them.
 //!
 //! ```toml
 //! # ~/.config/nuvora/nuvora.toml (Linux), ~/Library/Application Support/Nuvora/nuvora.toml (macOS),
 //! # %APPDATA%\Nuvora\nuvora.toml (Windows). All keys optional.
-//! bind = "127.0.0.1:8640"          # loopback by default: Step 1 has no auth
+//! bind = "0.0.0.0:8640"            # every interface, so phones and TVs can connect
 //! data_dir = "/var/lib/nuvora"     # default: the platform data dir
 //! ffmpeg = "/usr/bin/ffmpeg"       # default: PATH
 //! ffprobe = "/usr/bin/ffprobe"
@@ -23,21 +29,28 @@ use nuvora_library::{LibraryKind, LibrarySpec};
 use serde::Deserialize;
 
 pub const DEFAULT_BIND: SocketAddr =
-    SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), 8640);
+    SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::UNSPECIFIED), 8640);
+const PATH_LIST_SEPARATOR: char = if cfg!(windows) { ';' } else { ':' };
 const MOVIES_KEY: &str = "movies";
 
 #[derive(clap::Args, Debug, Default)]
 pub struct ServeArgs {
     /// Config file (default: the platform config dir's nuvora.toml, if present).
-    #[arg(long)]
+    #[arg(long, env = "NUVORA_CONFIG")]
     pub config: Option<PathBuf>,
-    #[arg(long)]
+    /// Listen address (default: 0.0.0.0:8640).
+    #[arg(long, env = "NUVORA_BIND")]
     pub bind: Option<SocketAddr>,
-    #[arg(long)]
+    #[arg(long, env = "NUVORA_DATA_DIR")]
     pub data_dir: Option<PathBuf>,
     /// Add a movie folder without a config file: `nuvora --movies ~/Movies`.
     /// Folders join the library with key "movies" (created if absent).
-    #[arg(long = "movies", value_name = "DIR")]
+    #[arg(
+        long = "movies",
+        value_name = "DIR",
+        env = "NUVORA_MOVIES",
+        value_delimiter = PATH_LIST_SEPARATOR
+    )]
     pub movies: Vec<PathBuf>,
 }
 
@@ -95,8 +108,7 @@ struct FileLibrary {
     paths: Vec<PathBuf>,
 }
 
-/// File, then flags on top. Canonicalizes library paths, rejects duplicates,
-/// logs a warning when `bind` is not a loopback address.
+/// File, then flags on top. Canonicalizes library paths, rejects duplicates.
 pub fn load(args: &ServeArgs) -> Result<Config, ConfigError> {
     let dirs = directories::ProjectDirs::from("", "", "Nuvora");
     let path = args.config.clone().or_else(|| {
@@ -165,11 +177,6 @@ pub fn load(args: &ServeArgs) -> Result<Config, ConfigError> {
     }
 
     let bind = args.bind.or(file.bind).unwrap_or(DEFAULT_BIND);
-    if !bind.ip().is_loopback() {
-        tracing::warn!(
-            "binding to {bind}: Step 1 has no authentication, so anyone who can reach this address can browse and play the library"
-        );
-    }
     let data_dir = args
         .data_dir
         .clone()
@@ -252,6 +259,34 @@ mod tests {
             [a.canonicalize().unwrap(), b.canonicalize().unwrap()],
             "flag folders join, deduplicated"
         );
+    }
+
+    #[test]
+    fn every_flag_reads_an_environment_variable() {
+        use clap::{CommandFactory, Parser};
+        let command = crate::Cli::command();
+        let envs: Vec<_> = command
+            .get_arguments()
+            .filter_map(|a| a.get_env()?.to_str())
+            .collect();
+        assert_eq!(
+            envs,
+            [
+                "NUVORA_CONFIG",
+                "NUVORA_BIND",
+                "NUVORA_DATA_DIR",
+                "NUVORA_MOVIES"
+            ]
+        );
+        if cfg!(unix) {
+            let cli =
+                crate::Cli::try_parse_from(["nuvora", "--movies", "/media/a:/media/b"]).unwrap();
+            assert_eq!(
+                cli.serve.movies,
+                [PathBuf::from("/media/a"), PathBuf::from("/media/b")],
+                "a path list splits like NUVORA_MOVIES does"
+            );
+        }
     }
 
     #[test]

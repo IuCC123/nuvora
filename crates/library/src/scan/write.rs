@@ -22,22 +22,13 @@ pub(crate) struct RootRow {
     pub path: std::path::PathBuf,
 }
 
-/// Make the `library` and `library_root` tables match the configuration.
-/// Libraries upsert by `key`; roots insert by path. A root that is no longer
-/// configured (or belongs to a library that is no longer configured) is
-/// removed with its files, and the items it emptied are marked missing, so
-/// they return with their ids if it is configured again.
-pub(crate) fn sync_libraries(
-    tx: &Transaction<'_>,
-    specs: &[LibrarySpec],
-    now_ms: i64,
-) -> rusqlite::Result<()> {
-    let mut changed = false;
-    let mut keep_roots = Vec::new();
+/// Add the configured libraries and roots that do not exist yet. Libraries
+/// match by `key`; a root is skipped when any library already has its path.
+/// Nothing is updated or removed: the admin panel owns a library once it exists.
+pub(crate) fn add_libraries(tx: &Transaction<'_>, specs: &[LibrarySpec]) -> rusqlite::Result<()> {
     for spec in specs {
         tx.execute(
-            "INSERT INTO library (key, name, kind) VALUES (?1, ?2, ?3) \
-             ON CONFLICT(key) DO UPDATE SET name = excluded.name, kind = excluded.kind",
+            "INSERT INTO library (key, name, kind) VALUES (?1, ?2, ?3) ON CONFLICT(key) DO NOTHING",
             params![spec.key, spec.name, "movies"],
         )?;
         let library_id: i64 =
@@ -45,38 +36,12 @@ pub(crate) fn sync_libraries(
                 r.get(0)
             })?;
         for root in &spec.roots {
-            let path = root.to_string_lossy();
-            let existing: Option<i64> = tx
-                .query_row(
-                    "SELECT id FROM library_root WHERE library_id = ?1 AND path = ?2",
-                    params![library_id, path],
-                    |r| r.get(0),
-                )
-                .optional()?;
-            let id = match existing {
-                Some(id) => id,
-                None => {
-                    tx.execute(
-                        "INSERT INTO library_root (library_id, path) VALUES (?1, ?2)",
-                        params![library_id, path],
-                    )?;
-                    tx.last_insert_rowid()
-                }
-            };
-            keep_roots.push(id);
+            tx.execute(
+                "INSERT INTO library_root (library_id, path) SELECT ?1, ?2 \
+                 WHERE NOT EXISTS (SELECT 1 FROM library_root WHERE path = ?2)",
+                params![library_id, root.to_string_lossy()],
+            )?;
         }
-    }
-    let all_roots: Vec<i64> = tx
-        .prepare("SELECT id FROM library_root")?
-        .query_map([], |r| r.get(0))?
-        .collect::<rusqlite::Result<_>>()?;
-    for id in all_roots.into_iter().filter(|id| !keep_roots.contains(id)) {
-        tx.execute("DELETE FROM library_root WHERE id = ?1", [id])?;
-        changed = true;
-    }
-    if changed {
-        mark_empty_items_missing(tx, now_ms)?;
-        bump_rev(tx)?;
     }
     Ok(())
 }
@@ -380,7 +345,10 @@ fn mark_item_missing_if_empty(
     Ok(())
 }
 
-fn mark_empty_items_missing(tx: &Transaction<'_>, now_ms: i64) -> rusqlite::Result<usize> {
+pub(crate) fn mark_empty_items_missing(
+    tx: &Transaction<'_>,
+    now_ms: i64,
+) -> rusqlite::Result<usize> {
     tx.execute(
         "UPDATE item SET missing_since = ?1 WHERE missing_since IS NULL \
          AND NOT EXISTS (SELECT 1 FROM media_file f WHERE f.item_id = item.id)",

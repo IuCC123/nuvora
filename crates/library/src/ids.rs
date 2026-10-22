@@ -10,6 +10,12 @@ pub struct ItemId(pub(crate) i64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FileId(pub(crate) i64);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct UserId(pub(crate) i64);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct LibraryId(pub(crate) i64);
+
 /// Content address of one rendered artwork: the first 16 bytes of
 /// blake3(PIPELINE_VERSION || role || source bytes). Same source => same id, so
 /// re-rendering is a no-op and URLs are immutable. Rendered as 32 hex chars.
@@ -33,6 +39,24 @@ impl ItemId {
 impl FileId {
     pub fn from_raw(raw: i64) -> FileId {
         FileId(raw)
+    }
+    pub fn raw(self) -> i64 {
+        self.0
+    }
+}
+
+impl UserId {
+    pub fn from_raw(raw: i64) -> UserId {
+        UserId(raw)
+    }
+    pub fn raw(self) -> i64 {
+        self.0
+    }
+}
+
+impl LibraryId {
+    pub fn from_raw(raw: i64) -> LibraryId {
+        LibraryId(raw)
     }
     pub fn raw(self) -> i64 {
         self.0

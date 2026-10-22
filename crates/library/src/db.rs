@@ -16,7 +16,10 @@ use tokio::sync::Semaphore;
 use crate::CatalogRev;
 
 /// Migrations in order. `PRAGMA user_version` = number applied.
-const MIGRATIONS: &[&str] = &[include_str!("../migrations/0001_init.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("../migrations/0001_init.sql"),
+    include_str!("../migrations/0002_accounts.sql"),
+];
 
 #[derive(Debug, thiserror::Error)]
 pub enum DbError {
@@ -218,7 +221,10 @@ mod tests {
             })
             .await
             .unwrap();
-        assert_eq!(tables, 9, "7 catalog tables + sqlite_sequence");
+        assert_eq!(
+            tables, 12,
+            "7 catalog tables + user, session, setting + sqlite_sequence"
+        );
     }
 
     #[tokio::test]
