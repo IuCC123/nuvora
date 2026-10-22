@@ -157,10 +157,12 @@ impl Library {
             .await?
     }
 
-    /// Renames a library and/or replaces its folders. A removed folder takes
-    /// its files out of the catalog; items it emptied are marked missing, so
-    /// they keep their ids if the folder comes back. Returns whether the
-    /// folders changed (the caller then requests a scan).
+    /// Renames a library and/or replaces its folders. Nothing changes when a
+    /// folder is rejected. Swapping exactly one folder for another repoints
+    /// it, keeping its files (a share remounted elsewhere). Otherwise a
+    /// removed folder takes its files out of the catalog; items it emptied
+    /// are marked missing, so they keep their ids if the folder comes back.
+    /// Returns whether the folders changed (the caller then requests a scan).
     pub async fn update_library(
         &self,
         id: LibraryId,
@@ -174,6 +176,11 @@ impl Library {
                 let Some(before) = load(tx, id.0)? else {
                     return Ok(Err(LibraryError::NotFound));
                 };
+                if let Some(roots) = &roots
+                    && let Some(path) = root_in_use(tx, id.0, roots)?
+                {
+                    return Ok(Err(LibraryError::PathInUse(path)));
+                }
                 if let Some(name) = &name {
                     tx.execute(
                         "UPDATE library SET name = ?1 WHERE id = ?2",
@@ -182,25 +189,32 @@ impl Library {
                 }
                 let mut changed = false;
                 if let Some(roots) = &roots {
-                    if let Some(path) = root_in_use(tx, id.0, roots)? {
-                        return Ok(Err(LibraryError::PathInUse(path)));
-                    }
-                    for gone in before.roots.iter().filter(|r| !roots.contains(r)) {
+                    let gone: Vec<&PathBuf> =
+                        before.roots.iter().filter(|r| !roots.contains(r)).collect();
+                    let new: Vec<&PathBuf> =
+                        roots.iter().filter(|r| !before.roots.contains(r)).collect();
+                    changed = !gone.is_empty() || !new.is_empty();
+                    if let ([from], [to]) = (gone.as_slice(), new.as_slice()) {
                         tx.execute(
-                            "DELETE FROM library_root WHERE library_id = ?1 AND path = ?2",
-                            params![id.0, gone.to_string_lossy()],
+                            "UPDATE library_root SET path = ?3 WHERE library_id = ?1 AND path = ?2",
+                            params![id.0, from.to_string_lossy(), to.to_string_lossy()],
                         )?;
-                        changed = true;
-                    }
-                    for new in roots.iter().filter(|r| !before.roots.contains(r)) {
-                        tx.execute(
-                            "INSERT INTO library_root (library_id, path) VALUES (?1, ?2)",
-                            params![id.0, new.to_string_lossy()],
-                        )?;
-                        changed = true;
-                    }
-                    if changed {
-                        mark_empty_items_missing(tx, now_ms)?;
+                    } else {
+                        for gone in gone {
+                            tx.execute(
+                                "DELETE FROM library_root WHERE library_id = ?1 AND path = ?2",
+                                params![id.0, gone.to_string_lossy()],
+                            )?;
+                        }
+                        for new in new {
+                            tx.execute(
+                                "INSERT INTO library_root (library_id, path) VALUES (?1, ?2)",
+                                params![id.0, new.to_string_lossy()],
+                            )?;
+                        }
+                        if changed {
+                            mark_empty_items_missing(tx, now_ms)?;
+                        }
                     }
                 }
                 if changed || name.is_some() {

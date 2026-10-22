@@ -654,6 +654,63 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn a_rejected_folder_change_keeps_the_old_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b, data) = (
+            dir.path().join("a"),
+            dir.path().join("b"),
+            dir.path().join("data"),
+        );
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        let lib = open(&a, &data).await;
+        let movies = lib.libraries().await.unwrap().remove(0);
+        lib.create_library("Other".into(), LibraryKind::Movies, vec![b.clone()])
+            .await
+            .unwrap();
+        let rejected = lib
+            .update_library(movies.id, Some("Films".into()), Some(vec![b.clone()]), 0)
+            .await;
+        assert!(matches!(rejected, Err(LibraryError::PathInUse(p)) if p == b));
+        let after = lib.library(movies.id).await.unwrap().unwrap();
+        assert_eq!((after.name.as_str(), after.roots), ("Movies", vec![a]));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn swapping_one_folder_for_another_keeps_its_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b, data) = (
+            dir.path().join("a"),
+            dir.path().join("b"),
+            dir.path().join("data"),
+        );
+        sdr_movie(&a.join("Heat (1995)/Heat (1995).mp4"));
+        let lib = open(&a, &data).await;
+        scan(&lib).await;
+        let before = find(&lib, "Heat").await;
+
+        std::fs::rename(&a, &b).unwrap();
+        let movies = lib.libraries().await.unwrap().remove(0);
+        let (info, changed) = lib
+            .update_library(movies.id, None, Some(vec![b.clone()]), 0)
+            .await
+            .unwrap();
+        assert!(changed);
+        assert_eq!(info.roots, [b]);
+        let summary = scan(&lib).await;
+        assert_eq!(
+            (summary.added, summary.removed, summary.unchanged),
+            (0, 0, 1),
+            "{summary:?}"
+        );
+        let after = find(&lib, "Heat").await;
+        assert_eq!(
+            (after.id, after.versions[0].file_id),
+            (before.id, before.versions[0].file_id)
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn scan_requests_coalesce_into_one_follow_up() {
         let dir = tempfile::tempdir().unwrap();
         let (root, data) = (dir.path().join("Movies"), dir.path().join("data"));
