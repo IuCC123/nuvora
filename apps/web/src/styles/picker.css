@@ -41,6 +41,8 @@
   display: flex;
   align-items: center;
   margin: 0;
+  padding: 0;
+  list-style: none;
   white-space: nowrap;
   font-size: var(--nv-type-small-size);
 }
@@ -72,7 +74,7 @@
 }
 
 .picker-body {
-  height: 248px;
+  height: 212px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -159,4 +161,49 @@
   white-space: nowrap;
   color: var(--nv-color-text-secondary);
   font-size: var(--nv-type-small-size);
+}
+
+/* The chosen folders above the picker */
+.folders {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.folder {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 4px 0 12px;
+  border: 1px solid var(--nv-color-hairline);
+  border-radius: var(--nv-radius-md);
+  background: var(--nv-color-surface);
+}
+
+.folder > svg {
+  flex: none;
+  color: var(--nv-color-text-secondary);
+}
+
+.folder-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-missing {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  color: var(--nv-color-accent);
+  font-size: var(--nv-type-small-size);
+}
+
+.folder-add {
+  align-self: flex-start;
 }

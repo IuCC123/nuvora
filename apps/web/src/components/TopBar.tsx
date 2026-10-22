@@ -4,6 +4,8 @@ import { Link } from "@tanstack/react-router";
 import { isScanRunning, queryKeys, type ScanStatus } from "@nuvora/core";
 import { queries } from "../nuvora";
 import { useStartScan } from "../lib/useStartScan";
+import { useUser } from "../lib/session";
+import { AccountMenu } from "./AccountMenu";
 import { MarkIcon, RefreshIcon, SpinIcon } from "./Icon";
 
 const PHASE_LABEL: Record<Extract<ScanStatus, { state: "running" }>["phase"], string> = {
@@ -15,6 +17,7 @@ const PHASE_LABEL: Record<Extract<ScanStatus, { state: "running" }>["phase"], st
 
 export function TopBar() {
   const { status, startScan, starting } = useScan();
+  const admin = useUser()?.role === "admin";
   return (
     <header className="topbar">
       <Link to="/" className="wordmark" aria-label="Nuvora, Home">
@@ -45,9 +48,12 @@ export function TopBar() {
           )}
         </div>
       )}
-      <button type="button" className="icon-btn" onClick={startScan} aria-busy={starting} aria-label="Scan library" title="Scan library">
-        <RefreshIcon />
-      </button>
+      {admin && (
+        <button type="button" className="icon-btn" onClick={startScan} aria-busy={starting} aria-label="Scan library" title="Scan library">
+          <RefreshIcon />
+        </button>
+      )}
+      <AccountMenu />
     </header>
   );
 }

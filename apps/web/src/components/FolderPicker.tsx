@@ -1,14 +1,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { describeError, folderCrumbs, type QueryDef } from "@nuvora/core";
+import { describeError, folderCrumbs } from "@nuvora/core";
+import { queries } from "../nuvora";
 import { ChevronRightIcon, FolderIcon, ParentFolderIcon } from "./Icon";
 import "../styles/picker.css";
-
-export interface DirListing {
-  path: string;
-  parent: string | null;
-  dirs: { name: string; path: string }[];
-}
 
 /**
  * Browse the server's folders and pick one. Inline, under the field it fills,
@@ -17,18 +12,16 @@ export interface DirListing {
  */
 export function FolderPicker({
   start,
-  load,
   onChoose,
   onCancel,
 }: {
   /** The folder to open at; `null` opens the filesystem roots. */
   start: string | null;
-  load: (path: string | null) => QueryDef<DirListing>;
   onChoose: (path: string) => void;
   onCancel: () => void;
 }) {
   const [path, setPath] = useState(start);
-  const listing = useQuery({ ...load(path), placeholderData: keepPreviousData });
+  const listing = useQuery({ ...queries.adminFs(path), placeholderData: keepPreviousData });
   const data = listing.data;
   const settled = data && !listing.isPlaceholderData ? data : undefined;
   const pickerRoot = useRef<HTMLDivElement>(null);
@@ -49,8 +42,8 @@ export function FolderPicker({
     setPath(next);
   };
   const up = () => {
-    if (!data || (data.parent === null && path === null)) return;
-    open(data.parent, data.path);
+    if (!data || (data.parent == null && path === null)) return;
+    open(data.parent ?? null, data.path);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLUListElement>) => {
@@ -73,7 +66,7 @@ export function FolderPicker({
   };
 
   const crumbs = folderCrumbs(data?.path ?? "");
-  const canGoUp = data != null && !(data.parent === null && path === null);
+  const canGoUp = data != null && !(data.parent == null && path === null);
 
   return (
     <div className="picker" role="group" aria-label="Choose a folder" ref={pickerRoot}>

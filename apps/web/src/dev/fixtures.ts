@@ -1,3 +1,4 @@
+import { accountRoute, signedIn, type Reply } from "./fixtureAccounts";
 import type { FetchLike, HomeResponse, HttpMethod, ItemDetail, PosterCard, RowPage, ScanStatus, Version } from "@nuvora/core";
 
 /**
@@ -142,13 +143,25 @@ function scanStatus(): ScanStatus {
 }
 
 export const fixtureFetch: FetchLike = async (url, init) => {
-  const path = new URL(url, location.origin).pathname;
+  const { pathname, searchParams } = new URL(url, location.origin);
   await new Promise((r) => setTimeout(r, 60));
-  const body = route(init.method, path);
-  return body === undefined
-    ? { ok: false, status: 404, json: async () => ({ error: "not found" }) }
-    : { ok: true, status: 200, json: async () => body };
+  const body: unknown = init.body ? JSON.parse(init.body) : undefined;
+  const reply = accountRoute(init.method, pathname, searchParams, body) ?? catalogRoute(init.method, pathname);
+  return {
+    ok: reply.status < 300,
+    status: reply.status,
+    json: async () => {
+      if (reply.body === undefined) throw new SyntaxError("Unexpected end of JSON input");
+      return reply.body;
+    },
+  };
 };
+
+function catalogRoute(method: HttpMethod, path: string): Reply {
+  if (!signedIn()) return { status: 401, body: { code: "unauthorized", message: "Sign in to continue.", field: null } };
+  const body = route(method, path);
+  return body === undefined ? { status: 404, body: { code: "not_found", message: "Not found", field: null } } : { status: 200, body };
+}
 
 function route(method: HttpMethod, path: string): unknown {
   if (path === "/api/home") return home;
