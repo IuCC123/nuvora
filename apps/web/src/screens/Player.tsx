@@ -199,7 +199,7 @@ function PlayerView({ itemId, fileId, title, year, src, startAt, notice, onBack,
   const remaining = Math.max(0, media.duration - media.time);
   const playing = !media.paused;
   const level = media.muted || media.volume === 0 ? "muted" : media.volume < 0.5 ? "low" : "high";
-  const pipSupported = typeof document !== "undefined" && document.pictureInPictureEnabled;
+  const pipSupported = document.pictureInPictureEnabled;
 
   return (
     <div
