@@ -10,6 +10,7 @@ import { Volume } from "../components/player/Volume";
 import { playerFailed, playState } from "../lib/playState";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useMediaState } from "../lib/useMediaState";
+import { useProgressReporting } from "../lib/useProgressReporting";
 import { loadVolume, saveVolume } from "../lib/volumeMemory";
 import "../styles/player.css";
 
@@ -43,6 +44,8 @@ export function Player() {
 
   return (
     <PlayerView
+      itemId={id}
+      fileId={file}
       title={movie?.title}
       year={movie?.year}
       src={src}
@@ -55,6 +58,8 @@ export function Player() {
 }
 
 interface PlayerViewProps {
+  itemId: number;
+  fileId: number;
   title: string | undefined;
   year: number | null | undefined;
   src: string | undefined;
@@ -67,7 +72,7 @@ interface PlayerViewProps {
 
 type PulseKind = "play" | "pause" | "back" | "forward" | "volume";
 
-function PlayerView({ title, year, src, startAt, notice, onBack, onFailed }: PlayerViewProps) {
+function PlayerView({ itemId, fileId, title, year, src, startAt, notice, onBack, onFailed }: PlayerViewProps) {
   const root = useRef<HTMLDivElement>(null);
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   const media = useMediaState(video);
@@ -79,6 +84,7 @@ function PlayerView({ title, year, src, startAt, notice, onBack, onFailed }: Pla
   const { awake, wake, sleep } = useAwake(AUTO_HIDE_MS);
   const buffering = useHeldFor(media.starved && !!src, SPINNER_DELAY_MS);
   const lastPointer = useRef("mouse");
+  useProgressReporting(src ? video : null, itemId, fileId);
 
   const known = Number.isFinite(media.duration) && media.duration > 0;
   const visible = !!notice || awake || media.paused || held.focus || held.hover || held.drag;
