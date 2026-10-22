@@ -29,8 +29,21 @@ export type {
   HomeRow,
   Image,
   ImageSize,
+  Episode,
+  EpisodeDetail,
+  EpisodeRef,
+  FsInspect,
+  IndexGroup,
   ItemDetail,
+  ItemKind,
+  LibraryIndex,
+  LibraryKind,
+  LibraryPage,
+  LibrarySummary,
   MovieDetail,
+  SeasonDetail,
+  SeasonSummary,
+  ShowDetail,
   NuvoraClient,
   Playback,
   PosterCard,
@@ -41,7 +54,7 @@ export type {
   Version,
   WatchState,
 } from "./client";
-export { createQueries, findCard, isScanRunning, queryKeys, rowCards, watchStateKeys } from "./queries";
+export { createQueries, findCard, isScanRunning, LIBRARY_PAGE_SIZE, queryKeys, rowCards, watchStateKeys } from "./queries";
 export type { InfiniteQueryDef, Queries, QueryDef } from "./queries";
 export { placeholderDataUrl } from "./images";
 export { titleCardLook } from "./titleCard";
@@ -72,6 +85,7 @@ export type { FolderCrumb } from "./folders";
 export { createProgressReporter, PROGRESS_INTERVAL_MS, PROGRESS_SETTLE_MS } from "./progress";
 export type { PlaybackPosition, ProgressReporter, ProgressReporterOptions, Timers } from "./progress";
 export {
+  canGroup,
   DEFAULT_ORDER,
   DEFAULT_VIEW,
   FILTER_LABELS,
@@ -80,6 +94,7 @@ export {
   isFiltered,
   LIBRARY_SORTS,
   libraryQuery,
+  MIN_GROUPED_CARDS,
   librarySearch,
   libraryViewStorageKey,
   ORDER_LABELS,
@@ -96,3 +111,5 @@ export {
 export type { LibrarySearch, LibrarySort, LibraryView, Resolution, SortOrder, WatchFilter } from "./library";
 export { anchorsOf, cardsByOffset, groupOffsets, JUMP_LETTERS, layoutGrid, nextAnchor, offsetsInView, offsetTop, stepOffset } from "./grid";
 export type { Anchor, GridGroup, GridLayout, GridMetrics, GridPage, GridSection } from "./grid";
+export { episodeHeading, hasOwnTitle, initialSeason, plural, showCounts, showPlay, UP_NEXT_SECONDS, upNextCountdown } from "./shows";
+export type { ShowPlay } from "./shows";

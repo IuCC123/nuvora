@@ -8,7 +8,20 @@ export type RowKind = Schemas["RowKind"];
 export type RowPage = Schemas["RowPage"];
 export type PosterCard = Schemas["PosterCard"];
 export type ItemDetail = Schemas["ItemDetail"];
+export type ItemKind = Schemas["ItemKind"];
 export type MovieDetail = Schemas["MovieDetail"];
+export type ShowDetail = Schemas["ShowDetail"];
+export type SeasonSummary = Schemas["SeasonSummary"];
+export type SeasonDetail = Schemas["SeasonDetail"];
+export type EpisodeDetail = Schemas["EpisodeDetail"];
+export type EpisodeRef = Schemas["EpisodeRef"];
+export type Episode = Schemas["Episode"];
+export type LibrarySummary = Schemas["LibrarySummary"];
+export type LibraryKind = Schemas["LibraryKind"];
+export type LibraryPage = Schemas["LibraryPage"];
+export type LibraryIndex = Schemas["LibraryIndex"];
+export type IndexGroup = Schemas["IndexGroup"];
+export type FsInspect = Schemas["FsInspect"];
 export type Version = Schemas["Version"];
 export type Playback = Schemas["Playback"];
 export type Image = Schemas["Image"];
@@ -55,10 +68,18 @@ export interface ClientOptions {
  */
 export interface NuvoraClient {
   home(signal?: AbortSignalLike): Promise<HomeResponse>;
-  /** The page of a home row after `after` (a `next` from `home()` or a previous page). */
-  row(kind: RowKind, after: string, signal?: AbortSignalLike): Promise<RowPage>;
+  /** The page of a home row after `after` (a `next` from `home()` or a previous page). A `library` row also names its library. */
+  row(kind: RowKind, after: string, signal?: AbortSignalLike, library?: number): Promise<RowPage>;
   /** Rejects with `ApiError(404)` when the item does not exist. */
   item(id: number, signal?: AbortSignalLike): Promise<ItemDetail>;
+  /** A season's episodes in order. 404 unless `seasonId` is a season. */
+  episodes(seasonId: number, signal?: AbortSignalLike): Promise<Episode[]>;
+  /** Every library, for the nav rail and the library page header. */
+  libraries(signal?: AbortSignalLike): Promise<LibrarySummary[]>;
+  /** One page of a library grid. `query` comes from `libraryQuery`; `after` from a page's `next` or a group's `after`. */
+  libraryItems(id: number, query: Record<string, string>, after: string | null, limit: number, signal?: AbortSignalLike): Promise<LibraryPage>;
+  /** The grid's group headers for the same query: letters, decades or months. */
+  libraryIndex(id: number, query: Record<string, string>, signal?: AbortSignalLike): Promise<LibraryIndex>;
   scanStatus(signal?: AbortSignalLike): Promise<ScanStatus>;
   /** Idempotent; returns the status after queuing. */
   startScan(): Promise<ScanStatus>;
@@ -97,6 +118,8 @@ export interface AdminClient {
   scanLibrary(id: number): Promise<ScanStatus>;
   /** A folder's subfolders; `null` lists the filesystem roots. */
   fs(path: string | null, signal?: AbortSignalLike): Promise<FsListing>;
+  /** Counts a folder's video files and how many look like episodes, to suggest a library type. */
+  inspect(path: string, signal?: AbortSignalLike): Promise<FsInspect>;
   users(signal?: AbortSignalLike): Promise<AdminUser[]>;
   createUser(body: CreateUserRequest): Promise<AdminUser>;
   /** 409 `last_admin` when the change would leave no enabled admin. */
@@ -155,8 +178,14 @@ export function createClient(options: ClientOptions): NuvoraClient {
 
   return {
     home: (signal) => get<HomeResponse>("/api/home", {}, signal),
-    row: (kind, after, signal) => get<RowPage>("/api/rows/{row}", { row: kind }, signal, { after }),
+    row: (kind, after, signal, library) =>
+      get<RowPage>("/api/rows/{row}", { row: kind }, signal, library === undefined ? { after } : { after, library: String(library) }),
     item: (id, signal) => get<ItemDetail>("/api/items/{id}", { id }, signal),
+    episodes: (id, signal) => get<Episode[]>("/api/items/{id}/episodes", { id }, signal),
+    libraries: (signal) => get<LibrarySummary[]>("/api/libraries", {}, signal),
+    libraryItems: (id, query, after, limit, signal) =>
+      get<LibraryPage>("/api/libraries/{id}/items", { id }, signal, { ...query, ...(after !== null && { after }), limit: String(limit) }),
+    libraryIndex: (id, query, signal) => get<LibraryIndex>("/api/libraries/{id}/index", { id }, signal, query),
     scanStatus: (signal) => get<ScanStatus>("/api/scan", {}, signal),
     startScan: () => post<ScanStatus>("/api/scan"),
     authState: (signal) => get<AuthState>("/api/auth/state", {}, signal),
@@ -174,6 +203,7 @@ export function createClient(options: ClientOptions): NuvoraClient {
       deleteLibrary: (id) => remove("/api/admin/libraries/{id}", { id }),
       scanLibrary: (id) => post<ScanStatus>("/api/admin/libraries/{id}/scan", { id }),
       fs: (path, signal) => get<FsListing>("/api/admin/fs", {}, signal, path === null ? undefined : { path }),
+      inspect: (path, signal) => get<FsInspect>("/api/admin/fs/inspect", {}, signal, { path }),
       users: (signal) => get<AdminUser[]>("/api/admin/users", {}, signal),
       createUser: (body) => post<AdminUser>("/api/admin/users", {}, body),
       updateUser: (id, body) => patch<AdminUser>("/api/admin/users/{id}", { id }, body),

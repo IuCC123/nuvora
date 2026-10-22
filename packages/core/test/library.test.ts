@@ -25,10 +25,12 @@ test("a new sort starts in its natural direction and keeps the filters", () => {
   expect(withSort(view, "title").order).toBe("asc");
 });
 
-test("groups show only for sorts that have them", () => {
-  expect(showsGroups({ ...DEFAULT_VIEW, sort: "runtime" })).toBe(false);
-  expect(showsGroups({ ...DEFAULT_VIEW, sort: "year" })).toBe(true);
-  expect(showsGroups({ ...DEFAULT_VIEW, group: false })).toBe(false);
+test("groups show for sorts that have them, when there are enough cards to need them", () => {
+  expect(showsGroups({ ...DEFAULT_VIEW, sort: "runtime" }, 500)).toBe(false);
+  expect(showsGroups({ ...DEFAULT_VIEW, sort: "year" }, 500)).toBe(true);
+  expect(showsGroups({ ...DEFAULT_VIEW, group: false }, 500)).toBe(false);
+  expect(showsGroups(DEFAULT_VIEW, 24)).toBe(false);
+  expect(showsGroups(DEFAULT_VIEW, 25)).toBe(true);
 });
 
 test("resolution and HDR reach the server only for movie libraries", () => {

@@ -63,9 +63,20 @@ export function hasGroups(sort: LibrarySort): boolean {
   return sort === "title" || sort === "year" || sort === "added";
 }
 
-/** Group headers show only when the sort has groups and the viewer left them on. */
-export function showsGroups(view: LibraryView): boolean {
-  return view.group && hasGroups(view.sort);
+/**
+ * Below this many cards a library reads best as one grid: a header per letter
+ * over two or three posters is noise. The Group toggle and the jump bar hide too.
+ */
+export const MIN_GROUPED_CARDS = 25;
+
+/** Group headers show when the sort has groups, the viewer left them on, and there are enough cards to need them. */
+export function showsGroups(view: LibraryView, total: number): boolean {
+  return view.group && canGroup(view.sort, total);
+}
+
+/** Whether grouping is offered at all: the sort has groups and the grid is big enough. */
+export function canGroup(sort: LibrarySort, total: number): boolean {
+  return hasGroups(sort) && total >= MIN_GROUPED_CARDS;
 }
 
 /** Any filter narrowing the grid, so an empty result can offer to clear them. */
