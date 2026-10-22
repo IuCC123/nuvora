@@ -312,5 +312,29 @@ mod tests {
         let zero = app.get(&format!("{base}0.m4s?session=t2"), &admin).await;
         assert_eq!(zero.status, StatusCode::OK);
         assert!(zero.body.windows(4).any(|w| w == b"moof"));
+        // ExoPlayer refuses a fragment that starts before zero; the AAC
+        // encoder's lead-in must not put the first audio there.
+        let starts = fragment_starts(&zero.body);
+        assert_eq!(starts.len(), 2, "a video and an audio fragment");
+        assert!(starts.iter().all(|t| *t >= 0), "{starts:?}");
+    }
+
+    /// Every `tfdt` (fragment start, in its track's timescale) in a segment.
+    fn fragment_starts(segment: &[u8]) -> Vec<i64> {
+        let mut out = Vec::new();
+        let mut at = 0;
+        while let Some(found) = segment[at..].windows(4).position(|w| w == b"tfdt") {
+            let box_start = at + found + 4;
+            let value = if segment[box_start] == 1 {
+                i64::from_be_bytes(segment[box_start + 4..box_start + 12].try_into().unwrap())
+            } else {
+                i64::from(i32::from_be_bytes(
+                    segment[box_start + 4..box_start + 8].try_into().unwrap(),
+                ))
+            };
+            out.push(value);
+            at = box_start;
+        }
+        out
     }
 }

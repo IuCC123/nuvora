@@ -322,6 +322,12 @@ impl Run<'_> {
                     &channels.to_string(),
                     "-b:a",
                     &format!("{bitrate}k"),
+                    // The encoder's 1024-sample lead-in would stamp the first
+                    // frame before the start (a negative time at 0, which
+                    // ExoPlayer rejects); 21 ms later is inaudible and the same
+                    // in every run.
+                    "-af",
+                    "asetpts=PTS+1024/SR/TB",
                 ]);
             }
         }
