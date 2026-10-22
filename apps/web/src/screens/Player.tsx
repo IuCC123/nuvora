@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useCanGoBack, useNavigate, useParams, useRouter, useSearch } from "@tanstack/react-router";
 import { formatClock } from "@nuvora/core";
 import { client, queries } from "../nuvora";
 import { ArrowLeftIcon, Back10Icon, Forward10Icon, FullscreenIcon, PauseIcon, PipIcon, PlayIcon, SpinIcon, VolumeIcon } from "../components/Icon";
@@ -32,11 +32,18 @@ export function Player() {
   const { id } = useParams({ from: "/movie/$id/play" });
   const { file, t } = useSearch({ from: "/movie/$id/play" });
   const navigate = useNavigate();
+  const router = useRouter();
+  const canGoBack = useCanGoBack();
   const { data: movie } = useQuery(queries.item(id));
   const [failed, setFailed] = useState(false);
   useDocumentTitle(movie?.title);
 
-  const back = useCallback(() => void navigate({ to: "/movie/$id", params: { id } }), [navigate, id]);
+  // Only the detail page links here, so stepping back returns to it without a new history entry.
+  // A player opened from a pasted link has nothing behind it and swaps itself for the detail page.
+  const back = useCallback(
+    () => (canGoBack ? router.history.back() : void navigate({ to: "/movie/$id", params: { id }, replace: true })),
+    [canGoBack, router, navigate, id],
+  );
   const version = movie?.versions.find((v) => v.file_id === file);
   const decided = movie ? playState(version ? [version] : []) : undefined;
   const notice = failed ? playerFailed : decided?.kind === "blocked" ? decided.notice : undefined;
