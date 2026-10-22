@@ -33,7 +33,8 @@ ENV HOME=/data
 USER nuvora
 VOLUME /data
 EXPOSE 8640
+# No curl in the image: bash speaks just enough HTTP to read the status line.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
-    CMD bash -c ':</dev/tcp/127.0.0.1/8640' || exit 1
+    CMD bash -c 'exec 3<>/dev/tcp/127.0.0.1/8640 && printf "GET /api/health HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3 && head -n 1 <&3 | grep -q " 200 "' || exit 1
 ENTRYPOINT ["tini", "--", "nuvora"]
 CMD ["--bind", "0.0.0.0:8640", "--data-dir", "/data"]

@@ -124,17 +124,19 @@ lan_ip() {
   printf '%s' "${ip:-localhost}"
 }
 
-answers() {
+healthy() {
   if command -v curl >/dev/null 2>&1; then
-    curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$PORT/"
+    curl -fs -o /dev/null --max-time 2 "http://127.0.0.1:$PORT/api/health"
   else
-    (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null
+    (exec 3<>"/dev/tcp/127.0.0.1/$PORT" \
+      && printf 'GET /api/health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 \
+      && head -n 1 <&3 | grep -q ' 200 ') 2>/dev/null
   fi
 }
 
-echo "Waiting for port $PORT"
+echo "Waiting for Nuvora on port $PORT"
 for _ in $(seq 1 60); do
-  if answers; then
+  if healthy; then
     printf 'Nuvora is running at http://%s:%s\n' "$(lan_ip)" "$PORT"
     exit 0
   fi
@@ -142,4 +144,4 @@ for _ in $(seq 1 60); do
 done
 
 docker compose --project-directory "$DIR" logs --tail 20 nuvora >&2 || true
-die "nothing answered on port $PORT after 60s; logs above, or run: docker compose --project-directory $DIR logs nuvora"
+die "Nuvora was not healthy on port $PORT after 60s; logs above, or run: docker compose --project-directory $DIR logs nuvora"
