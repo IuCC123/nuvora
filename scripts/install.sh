@@ -15,7 +15,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/install.sh [--media PATH] [--port PORT] [--dir DIR] [--yes]
 
-  --media PATH  folder with your movies (mounted read-only)
+  --media PATH  folder with your media, shown as /media in the setup folder picker (read-only)
   --port PORT   port to serve on (default 8640)
   --dir DIR     install directory (default ~/nuvora)
   --yes         never prompt; fail if a value is missing
@@ -108,7 +108,7 @@ services:
       - ${NUVORA_MEDIA:?}:/media:ro
     environment:
       TZ: ${TZ:-UTC}
-    command: ["--bind", "0.0.0.0:8640", "--data-dir", "/data", "--movies", "/media"]
+    command: ["--bind", "0.0.0.0:8640", "--data-dir", "/data"]
     restart: unless-stopped
 EOF
 

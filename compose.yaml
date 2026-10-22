@@ -10,5 +10,5 @@ services:
       - ${NUVORA_MEDIA:?set NUVORA_MEDIA to your movies folder}:/media:ro
     environment:
       TZ: ${TZ:-UTC}
-    command: ["--bind", "0.0.0.0:8640", "--data-dir", "/data", "--movies", "/media"]
+    command: ["--bind", "0.0.0.0:8640", "--data-dir", "/data"]
     restart: unless-stopped
