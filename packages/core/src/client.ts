@@ -31,6 +31,8 @@ export type UpdateUserRequest = Schemas["UpdateUserRequest"];
 export type ServerInfo = Schemas["ServerInfo"];
 export type UpdateServerRequest = Schemas["UpdateServerRequest"];
 export type ErrorBody = Schemas["ErrorBody"];
+export type ProgressRequest = Schemas["ProgressRequest"];
+export type WatchState = Schemas["WatchState"];
 
 export interface ClientOptions {
   /** Origin of the Nuvora server, e.g. `""` (same origin, web) or `"http://192.168.1.10:8640"` (TV). */
@@ -69,6 +71,13 @@ export interface NuvoraClient {
   logout(): Promise<void>;
   /** The signed-in user's own name and password. A new password needs the current one. */
   updateMe(body: UpdateMeRequest): Promise<User>;
+  /**
+   * Where playback is; the server decides what it means (see `createProgressReporter`).
+   * `keepalive` lets the request finish after the page closes.
+   */
+  reportProgress(id: number, body: ProgressRequest, options?: { keepalive?: boolean }): Promise<void>;
+  markWatched(id: number): Promise<void>;
+  markUnwatched(id: number): Promise<void>;
   /** Admin role only; anyone else gets 403. */
   admin: AdminClient;
   /** Absolute URL of an artwork size. Immutable: safe to cache forever. */
@@ -114,6 +123,7 @@ export function createClient(options: ClientOptions): NuvoraClient {
     signal?: AbortSignalLike,
     query?: Record<string, string>,
     body?: unknown,
+    keepalive?: boolean,
   ): Promise<T> {
     const url = options.baseUrl + fill(path, params) + queryString(query);
     const init = {
@@ -121,6 +131,7 @@ export function createClient(options: ClientOptions): NuvoraClient {
       headers: method === "GET" ? headers : { ...headers, "content-type": "application/json" },
       ...(body !== undefined && { body: JSON.stringify(body) }),
       ...(signal && { signal }),
+      ...(keepalive && { keepalive }),
     };
     const res = await options.fetch(url, init);
     if (!res.ok) {
@@ -138,6 +149,8 @@ export function createClient(options: ClientOptions): NuvoraClient {
     call<T>("GET", path, params, signal, query);
   const post = <T>(path: Path<"POST">, params: Params = {}, body?: unknown) => call<T>("POST", path, params, undefined, undefined, body);
   const patch = <T>(path: Path<"PATCH">, params: Params, body: unknown) => call<T>("PATCH", path, params, undefined, undefined, body);
+  const put = (path: Path<"PUT">, params: Params, body?: unknown, keepalive?: boolean) =>
+    call<void>("PUT", path, params, undefined, undefined, body, keepalive);
   const remove = (path: Path<"DELETE">, params: Params) => call<void>("DELETE", path, params);
 
   return {
@@ -151,6 +164,9 @@ export function createClient(options: ClientOptions): NuvoraClient {
     login: (body) => post<User>("/api/auth/login", {}, body),
     logout: () => post<void>("/api/auth/logout"),
     updateMe: (body) => patch<User>("/api/auth/me", {}, body),
+    reportProgress: (id, body, opts) => put("/api/items/{id}/progress", { id }, body, opts?.keepalive),
+    markWatched: (id) => put("/api/items/{id}/watched", { id }),
+    markUnwatched: (id) => remove("/api/items/{id}/watched", { id }),
     admin: {
       libraries: (signal) => get<AdminLibrary[]>("/api/admin/libraries", {}, signal),
       createLibrary: (body) => post<AdminLibrary>("/api/admin/libraries", {}, body),

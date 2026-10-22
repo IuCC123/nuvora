@@ -5,6 +5,7 @@ import {
   ApiError,
   fileFacts,
   findCard,
+  formatClock,
   formatRuntime,
   versionChips,
   type Image,
@@ -13,12 +14,14 @@ import {
 } from "@nuvora/core";
 import { queries, queryClient } from "../nuvora";
 import { Artwork } from "../components/Artwork";
-import { PlayIcon } from "../components/Icon";
+import { CheckIcon, PlayIcon, RestartIcon } from "../components/Icon";
 import { Notice } from "../components/Notice";
 import { TitleCard, titleCardVars } from "../components/TitleCard";
 import { languageName } from "../lib/languageName";
 import { playState } from "../lib/playState";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { useWatchedToggle } from "../lib/useWatchedToggle";
+import { PosterMarks } from "../components/PosterCard";
 import { ErrorState } from "./ErrorState";
 import "../styles/movie.css";
 
@@ -64,6 +67,7 @@ export function MovieScreen() {
         <div className="detail-content">
           <div className="detail-poster">
             {head.poster ? <Artwork image={head.poster} size="large" alt="" eager /> : <TitleCard title={head.title} year={head.year} large />}
+            {movie && <PosterMarks progress={progressOf(movie)} watched={movie.watch.watched} />}
           </div>
           <div className="detail-info">
             <h1>{head.title}</h1>
@@ -107,6 +111,13 @@ function Meta({ head, movie }: { head: Head; movie: MovieDetail | undefined }) {
   );
 }
 
+/** How far into the movie its progress is, 0 to 1, from the resume point and the version's length. */
+function progressOf(movie: MovieDetail): number | null {
+  const { position_ms, file_id } = movie.watch;
+  const duration = movie.versions.find((v) => v.file_id === file_id)?.media?.duration_ms ?? movie.runtime_ms;
+  return position_ms != null && duration ? Math.min(1, position_ms / duration) : null;
+}
+
 function Actions({ movie }: { movie: MovieDetail }) {
   const state = playState(movie.versions);
   const play = useRef<HTMLAnchorElement>(null);
@@ -115,12 +126,30 @@ function Actions({ movie }: { movie: MovieDetail }) {
     if (document.activeElement === document.body) play.current?.focus({ preventScroll: true });
   }, []);
   if (state.kind === "play") {
+    const { position_ms, file_id } = movie.watch;
+    // Resume the version the position belongs to while it can still play here; otherwise the default one.
+    const resumeFile = movie.versions.some((v) => v.file_id === file_id && v.playback.kind === "direct_play") ? file_id! : state.fileId;
     return (
       <div className="detail-actions">
-        <Link ref={play} to="/movie/$id/play" params={{ id: movie.id }} search={{ file: state.fileId }} className="btn btn-primary">
-          <PlayIcon />
-          Play
-        </Link>
+        {position_ms != null ? (
+          <>
+            <Link ref={play} to="/movie/$id/play" params={{ id: movie.id }} search={{ file: resumeFile, t: Math.floor(position_ms / 1000) }} className="btn btn-primary">
+              <PlayIcon />
+              Resume
+              <span className="btn-aside">from {formatClock(position_ms)}</span>
+            </Link>
+            <Link to="/movie/$id/play" params={{ id: movie.id }} search={{ file: state.fileId }} className="btn btn-secondary">
+              <RestartIcon />
+              Start over
+            </Link>
+          </>
+        ) : (
+          <Link ref={play} to="/movie/$id/play" params={{ id: movie.id }} search={{ file: state.fileId }} className="btn btn-primary">
+            <PlayIcon />
+            Play
+          </Link>
+        )}
+        <WatchedToggle movie={movie} />
       </div>
     );
   }
@@ -131,9 +160,21 @@ function Actions({ movie }: { movie: MovieDetail }) {
           <PlayIcon />
           Play
         </button>
+        <WatchedToggle movie={movie} />
       </div>
       <Notice id="play-notice" text={state.notice} />
     </>
+  );
+}
+
+function WatchedToggle({ movie }: { movie: MovieDetail }) {
+  const toggle = useWatchedToggle(movie.id);
+  const watched = movie.watch.watched;
+  return (
+    <button type="button" className="btn btn-secondary btn-watched" data-watched={watched} onClick={() => toggle.mutate(!watched)}>
+      <CheckIcon size={18} />
+      {watched ? "Mark as unwatched" : "Mark as watched"}
+    </button>
   );
 }
 

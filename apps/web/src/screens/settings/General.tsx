@@ -11,7 +11,7 @@ export function SettingsGeneral() {
   return (
     <SettingsPage title="General" lede="This server's name, and what it runs on.">
       {server.isPending ? (
-        <div className="facts-skeleton" aria-busy="true" aria-label="Loading server details" />
+        <div className="server-facts-skeleton" aria-busy="true" aria-label="Loading server details" />
       ) : server.isError ? (
         <LoadError error={server.error} retry={() => void server.refetch()} />
       ) : (
@@ -69,13 +69,13 @@ function About({ server }: { server: ServerInfo }) {
   return (
     <section className="settings-section" aria-labelledby="about-server">
       <h2 id="about-server">About this server</h2>
-      <dl className="facts">
+      <dl className="server-facts">
         {facts.map(([term, value, detail]) => (
           <div key={term}>
             <dt>{term}</dt>
             <dd>
               {value}
-              {detail && <span className="facts-detail">{detail}</span>}
+              {detail && <span className="server-facts-detail">{detail}</span>}
             </dd>
           </div>
         ))}

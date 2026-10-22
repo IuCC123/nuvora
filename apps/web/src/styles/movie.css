@@ -51,6 +51,22 @@
   padding: 44px var(--nv-layout-gutter) var(--nv-space-7);
 }
 
+.detail-poster {
+  position: relative;
+  align-self: start;
+}
+
+.detail-poster .poster-progress {
+  height: 4px;
+}
+
+.detail-poster .poster-watched {
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+}
+
 .detail-poster > .artwork,
 .detail-poster > .title-card {
   border-radius: var(--nv-radius-sm);
@@ -118,9 +134,21 @@
 
 .detail-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   min-height: 44px;
   margin-top: 26px;
+}
+
+.btn-aside {
+  margin-left: -2px;
+  color: color-mix(in srgb, var(--nv-color-accent-text) 70%, var(--nv-color-accent));
+  font-weight: var(--nv-font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.btn-watched[data-watched="true"] svg {
+  color: var(--nv-color-accent);
 }
 
 .facts {

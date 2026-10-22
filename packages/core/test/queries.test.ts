@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createClient, createQueries, rowCards, type HomeRow, type RowPage } from "../src";
 
-const card = (id: number) => ({ id, kind: "movie" as const, title: `Movie ${id}` });
+const card = (id: number) => ({ id, kind: "movie" as const, title: `Movie ${id}`, watched: false });
 const row: HomeRow = { kind: "all_movies", title: "All Movies", total: 5, items: [card(1), card(2)], next: "c2" };
 
 test("rowCards appends loaded pages and follows the last cursor", () => {

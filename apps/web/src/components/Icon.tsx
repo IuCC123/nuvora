@@ -182,3 +182,81 @@ export function CheckIcon(p: IconProps) {
     </svg>
   );
 }
+
+export function PauseIcon({ size = 18, ...rest }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden focusable={false} {...rest}>
+      <rect x="5.5" y="4" width="4.5" height="16" rx="1.2" fill="currentColor" />
+      <rect x="14" y="4" width="4.5" height="16" rx="1.2" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function ArrowLeftIcon(p: IconProps) {
+  return (
+    <svg {...stroke({ size: 22, strokeWidth: 2, ...p })}>
+      <path d="m12 19-7-7 7-7M19 12H5" />
+    </svg>
+  );
+}
+
+/** A circular arrow with "10" inside: back when `forward` is false. */
+function Skip10({ forward, ...p }: IconProps & { forward: boolean }) {
+  return (
+    <svg {...stroke({ size: 28, strokeWidth: 1.9, ...p })}>
+      <g transform={forward ? "matrix(-1 0 0 1 24 0)" : undefined}>
+        <path d="M4.2 8.5A8.8 8.8 0 1 1 3.4 13" />
+        <path d="M3.6 3.8v4.9h4.9" />
+      </g>
+      <text x="12.4" y="15.6" textAnchor="middle" fontSize="7.4" fontWeight="700" fill="currentColor" stroke="none" style={{ fontVariantNumeric: "tabular-nums" }}>
+        10
+      </text>
+    </svg>
+  );
+}
+
+export const Back10Icon = (p: IconProps) => <Skip10 forward={false} {...p} />;
+export const Forward10Icon = (p: IconProps) => <Skip10 forward {...p} />;
+
+/** Speaker with 0, 1 or 2 waves, or crossed out when muted. */
+export function VolumeIcon({ level, ...p }: IconProps & { level: "muted" | "low" | "high" }) {
+  return (
+    <svg {...stroke({ size: 22, ...p })}>
+      <path d="M11 4.7a.7.7 0 0 0-1.2-.5L6.4 7.6A1.4 1.4 0 0 1 5.4 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.4a1.4 1.4 0 0 1 1 .4l3.4 3.4a.7.7 0 0 0 1.2-.5z" fill="currentColor" />
+      {level === "muted" ? (
+        <path d="m16 9 6 6M22 9l-6 6" />
+      ) : (
+        <>
+          <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+          {level === "high" && <path d="M18.7 5.3a9.5 9.5 0 0 1 0 13.4" />}
+        </>
+      )}
+    </svg>
+  );
+}
+
+export function PipIcon(p: IconProps) {
+  return (
+    <svg {...stroke({ size: 22, ...p })}>
+      <path d="M21 10V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5" />
+      <rect x="13" y="13" width="9" height="7" rx="1.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function FullscreenIcon({ exit, ...p }: IconProps & { exit: boolean }) {
+  return (
+    <svg {...stroke({ size: 22, strokeWidth: 2, ...p })}>
+      <path d={exit ? "M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3" : "M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"} />
+    </svg>
+  );
+}
+
+export function RestartIcon(p: IconProps) {
+  return (
+    <svg {...stroke({ size: 18, strokeWidth: 2, ...p })}>
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+    </svg>
+  );
+}

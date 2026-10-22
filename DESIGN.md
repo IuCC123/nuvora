@@ -195,6 +195,14 @@ Technical badges (1080p, HEVC, HDR10, 5.1) are 11px semibold text, 22px tall, in
 
 Nav items are 40px rows with an icon and a label. The active item uses `surface-raised` with an amber icon. There is no colored side border.
 
+### Watch marks
+
+An in-progress poster carries a 3px amber bar along its bottom edge over a dark track, with a 1px dark seam so it reads over warm artwork. A watched poster carries a 22px canvas disc in the top-right corner with an amber check. Unwatched posters carry nothing. The detail poster uses the same marks at 4px and 28px.
+
+### Player
+
+The player fills the window with `video` black. A top bar holds the back arrow, title and year. A bottom bar holds the timeline (elapsed, scrubber, remaining) and three clusters: volume on the left, back 10 s, play and forward 10 s in the center, and picture-in-picture and full screen on the right. Each bar sits on its own black gradient scrim, and the bars fade together: 160 ms in, 400 ms out with a 6px drift. Buttons are white glyphs with a soft white disc on hover and a tooltip naming the action and its key. The scrubber is 4px, 6px on hover, with amber for played, translucent white for buffered, and an amber thumb on hover. Volume fills in white, because amber is reserved for progress and focus.
+
 ### Title card (signature component)
 
 A movie without poster artwork gets a title card, never a cropped video frame. It is a deep two-stop gradient picked from twelve cinematic palettes by a hash of the title (`titleCardLook` in `@nuvora/core`, so every client picks the same one), with a soft light bloom, a vignette, and fine film grain. The title is set bottom-left in uppercase condensed Archivo 800 in `title-card-ink`, with the year below it in tabular Inter. The same palette tints the ambient wash on the detail page, so the card and the page belong together.

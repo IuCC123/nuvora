@@ -170,6 +170,43 @@
   transform: none;
 }
 
+/* Watch marks: a 3px amber bar while in progress, a check once watched. Unwatched posters carry nothing. */
+
+.poster-progress {
+  position: absolute;
+  z-index: 1;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  border-radius: 0 0 var(--nv-radius-sm) var(--nv-radius-sm);
+  background: rgba(0, 0, 0, 0.6);
+  /* A dark seam above the bar, so amber still reads over warm artwork. */
+  box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.55);
+}
+
+.poster-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--nv-color-accent);
+  transform-origin: left;
+}
+
+.poster-watched {
+  position: absolute;
+  z-index: 1;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--nv-color-canvas) 84%, transparent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  color: var(--nv-color-accent);
+}
+
 .poster-caption {
   display: block;
   margin-top: 10px;

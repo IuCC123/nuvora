@@ -24,7 +24,7 @@ import { SettingsUsers } from "./screens/settings/Users";
  *   /signin?redirect=<path>     Sign in
  *   /                           Home
  *   /movie/$id                  Movie detail
- *   /movie/$id/play?file=<id>   Player (reads the cached detail; no new request)
+ *   /movie/$id/play?file=<id>&t=<s>  Player (reads the cached detail; no new request), from second `t`
  *   /settings/<section>         general, libraries, users (admins), account
  */
 const root = createRootRoute({ component: Outlet });
@@ -137,7 +137,10 @@ const play = createRoute({
   getParentRoute: () => root,
   path: "/movie/$id/play",
   params: { parse: (p) => ({ id: Number(p.id) }), stringify: (p) => ({ id: String(p.id) }) },
-  validateSearch: (s: Record<string, unknown>) => ({ file: Number(s.file) }),
+  validateSearch: (s: Record<string, unknown>): { file: number; t?: number } => {
+    const t = Number(s.t);
+    return Number.isFinite(t) && t > 0 ? { file: Number(s.file), t: Math.floor(t) } : { file: Number(s.file) };
+  },
   beforeLoad: requireUser,
   loader: ({ params }) => queryClient.ensureQueryData(queries.item(params.id)),
   component: Player,

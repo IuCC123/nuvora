@@ -1,11 +1,12 @@
 import { accountRoute, signedIn, type Reply } from "./fixtureAccounts";
+import { continueWatching, watchRoute, watchState, withWatch } from "./fixtureWatch";
 import type { FetchLike, HomeResponse, HttpMethod, ItemDetail, PosterCard, RowPage, ScanStatus, Version } from "@nuvora/core";
 
 /**
  * Dev-only transport (`VITE_FIXTURES=1`): answers the JSON endpoints from the
  * literals below, typed against the generated schema, so contract drift fails
  * the typecheck. Images and the stream are served by the fixture plugin in
- * `vite.config.ts`.
+ * `vite.config.ts`. Watch state follows the server's rules (`fixtureWatch.ts`).
  *
  * Sample content: Blender Studio open movie titles and years. Runtimes, sizes,
  * codecs and the gradient artwork are invented.
@@ -35,20 +36,25 @@ const backdrops: Record<number, NonNullable<ItemDetail["backdrop"]>> = {
   2: { id: "5a1d0c0ffee000000000000000000002", aspect_ratio: 16 / 9, placeholder: "U7YNLIZAh3iJd4eHiIi/dvhrhw==" },
 };
 
-const cards: PosterCard[] = movies.map(([id, title, year]) => ({ id, kind: "movie", title, year, poster: posters[id] ?? null }));
-const byId = (id: number): PosterCard => cards.find((c) => c.id === id)!;
+const cards = (): PosterCard[] => movies.map(([id, title, year]) => withWatch({ id, kind: "movie", title, year, poster: posters[id] ?? null, watched: false }));
+const byId = (id: number): PosterCard => cards().find((c) => c.id === id)!;
 
-const recent = [14, 13, 12, 5, 11, 9, 4].map(byId);
 const ALL_FIRST_PAGE = 8;
 
-const home = {
-  rows: [
-    { kind: "recently_added", title: "Recently Added", total: recent.length, items: recent, next: null },
-    { kind: "all_movies", title: "All Movies", total: cards.length, items: cards.slice(0, ALL_FIRST_PAGE), next: "after-8" },
-  ],
-} satisfies HomeResponse;
+function home(): HomeResponse {
+  const recent = [14, 13, 12, 5, 11, 9, 4].map(byId);
+  const resume = continueWatching().map(byId);
+  const all = cards();
+  return {
+    rows: [
+      ...(resume.length ? [{ kind: "continue_watching" as const, title: "Continue Watching", total: resume.length, items: resume, next: null }] : []),
+      { kind: "recently_added", title: "Recently Added", total: recent.length, items: recent, next: null },
+      { kind: "all_movies", title: "All Movies", total: all.length, items: all.slice(0, ALL_FIRST_PAGE), next: "after-8" },
+    ],
+  };
+}
 
-const allMoviesPage2 = { items: cards.slice(ALL_FIRST_PAGE), next: null } satisfies RowPage;
+const allMoviesPage2 = (): RowPage => ({ items: cards().slice(ALL_FIRST_PAGE), next: null });
 
 const directPlay = (id: number): Version["playback"] => ({ kind: "direct_play", url: `/api/files/${id}/stream`, mime_type: "video/mp4" });
 
@@ -125,6 +131,7 @@ function item(id: number): ItemDetail | undefined {
     poster: posters[id] ?? null,
     backdrop: backdrops[id] ?? null,
     versions,
+    watch: watchState(id),
   };
 }
 
@@ -146,7 +153,7 @@ export const fixtureFetch: FetchLike = async (url, init) => {
   const { pathname, searchParams } = new URL(url, location.origin);
   await new Promise((r) => setTimeout(r, 60));
   const body: unknown = init.body ? JSON.parse(init.body) : undefined;
-  const reply = accountRoute(init.method, pathname, searchParams, body) ?? catalogRoute(init.method, pathname);
+  const reply = accountRoute(init.method, pathname, searchParams, body) ?? catalogRoute(init.method, pathname, body);
   return {
     ok: reply.status < 300,
     status: reply.status,
@@ -157,15 +164,17 @@ export const fixtureFetch: FetchLike = async (url, init) => {
   };
 };
 
-function catalogRoute(method: HttpMethod, path: string): Reply {
+function catalogRoute(method: HttpMethod, path: string, request: unknown): Reply {
   if (!signedIn()) return { status: 401, body: { code: "unauthorized", message: "Sign in to continue.", field: null } };
+  const watch = watchRoute(method, path, request, (id) => item(id)?.versions.map((v) => v.file_id));
+  if (watch) return watch;
   const body = route(method, path);
   return body === undefined ? { status: 404, body: { code: "not_found", message: "Not found", field: null } } : { status: 200, body };
 }
 
 function route(method: HttpMethod, path: string): unknown {
-  if (path === "/api/home") return home;
-  if (path === "/api/rows/all_movies") return allMoviesPage2;
+  if (path === "/api/home") return home();
+  if (path === "/api/rows/all_movies") return allMoviesPage2();
   if (path === "/api/scan" && method === "POST") {
     if (scanStatus().state === "idle") Object.assign(scan, { startedAt: Date.now(), from: 0 });
     return scanStatus();

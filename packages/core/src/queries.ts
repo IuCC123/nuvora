@@ -52,6 +52,11 @@ export const queryKeys = {
   adminServer: ["admin", "server"] as const,
 };
 
+/** Everything that shows one user's watch state for an item: refresh these after a report or a mark. */
+export function watchStateKeys(id: number): (readonly unknown[])[] {
+  return [queryKeys.home, queryKeys.rows, queryKeys.item(id)];
+}
+
 export interface Queries {
   /** Fresh for 30 s; then revalidated in the background (ETag => 304 on the wire). */
   home(): QueryDef<HomeResponse>;
