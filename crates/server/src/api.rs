@@ -1438,16 +1438,15 @@ mod tests {
             "{\"code\":\"not_found\",\"message\":\"Not found\",\"field\":null}"
         );
         let reply = app.get("/movie/1", &cookie).await;
-        assert_eq!(
-            reply.status,
-            StatusCode::SERVICE_UNAVAILABLE,
-            "web app not built in this checkout"
-        );
-        assert!(
-            String::from_utf8(reply.body)
-                .unwrap()
-                .contains("bun run build")
-        );
+        let body = String::from_utf8(reply.body).unwrap();
+        // The embedded dist depends on whether `bun run build` ran before this test binary compiled.
+        match reply.status {
+            StatusCode::OK => {
+                assert!(body.starts_with("<!doctype html>"))
+            }
+            StatusCode::SERVICE_UNAVAILABLE => assert!(body.contains("bun run build")),
+            other => panic!("client route answered {other}"),
+        }
         let reply = app.call("GET", "/api/openapi.json", None, None).await;
         assert_eq!(reply.status, StatusCode::OK);
         reply.json();
