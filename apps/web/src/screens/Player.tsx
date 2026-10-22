@@ -85,6 +85,7 @@ function PlayerView({ itemId, fileId, title, year, src, startAt, notice, onBack,
   const buffering = useHeldFor(media.starved && !!src, SPINNER_DELAY_MS);
   const lastPointer = useRef("mouse");
   useProgressReporting(src ? video : null, itemId, fileId);
+  useReleaseStream(video);
 
   const known = Number.isFinite(media.duration) && media.duration > 0;
   const visible = !!notice || awake || media.paused || held.focus || held.hover || held.drag;
@@ -365,6 +366,23 @@ function ControlButton({ label, tip, onClick, big, pressed, children }: ControlB
       {children}
     </button>
   );
+}
+
+/**
+ * A `<video>` taken out of the page keeps its stream open until it is garbage
+ * collected. Emptying it on the way out closes the connection now. Called after
+ * `useProgressReporting`, so its cleanup runs second and the last report still
+ * reads the real position.
+ */
+function useReleaseStream(video: HTMLVideoElement | null) {
+  useEffect(() => {
+    if (!video) return;
+    return () => {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    };
+  }, [video]);
 }
 
 /** True until `ms` pass without a `wake()`. */
