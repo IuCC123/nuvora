@@ -1,0 +1,156 @@
+/* Fields and form messages: `surface` inputs with 6px corners, labels above, messages below. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.field > label,
+.field-label {
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+/* 16px text: iOS zooms into anything smaller when it takes focus. */
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--nv-color-hairline);
+  border-radius: var(--nv-radius-md);
+  background: var(--nv-color-surface);
+  color: var(--nv-color-text-primary);
+  font: inherit;
+  font-size: var(--nv-type-body-large-size);
+  transition: border-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.input::placeholder {
+  color: var(--nv-color-text-muted);
+}
+
+.input:hover {
+  border-color: color-mix(in srgb, var(--nv-color-text-muted) 45%, var(--nv-color-hairline));
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--nv-color-focus-ring);
+  outline-offset: -1px;
+  border-radius: var(--nv-radius-md);
+  border-color: transparent;
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--nv-color-danger);
+}
+
+.input:disabled {
+  color: var(--nv-color-text-muted);
+  background: var(--nv-color-canvas);
+}
+
+.select {
+  appearance: none;
+  padding-right: 40px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a6a8ab' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+}
+
+.field-hint,
+.field-error {
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+}
+
+.field-hint {
+  color: var(--nv-color-text-muted);
+}
+
+.field-error {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  color: var(--nv-color-danger);
+}
+
+.field-error svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.form-error {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 14px;
+  border-radius: var(--nv-radius-md);
+  background: color-mix(in srgb, var(--nv-color-danger) 12%, var(--nv-color-surface));
+  border: 1px solid color-mix(in srgb, var(--nv-color-danger) 35%, transparent);
+  color: var(--nv-color-text-primary);
+}
+
+.form-error svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--nv-color-danger);
+}
+
+.btn-block {
+  justify-content: center;
+  width: 100%;
+  padding: 0 22px;
+}
+
+.btn-danger {
+  padding: 0 18px;
+  background: var(--nv-color-danger);
+  color: var(--nv-color-accent-text);
+}
+
+.btn-danger:hover {
+  background: color-mix(in srgb, var(--nv-color-danger) 88%, white);
+}
+
+.btn-quiet {
+  padding: 0 14px;
+  color: var(--nv-color-text-secondary);
+}
+
+.btn-quiet:hover {
+  background: var(--nv-color-surface-raised);
+  color: var(--nv-color-text-primary);
+}
+
+.btn:disabled:not(.btn-primary) {
+  color: var(--nv-color-text-muted);
+  background: var(--nv-color-surface-raised);
+}
+
+.btn[aria-busy="true"] {
+  cursor: progress;
+}
+
+.btn-small {
+  height: 34px;
+  padding: 0 12px;
+  gap: 6px;
+  font-size: var(--nv-type-body-size);
+}

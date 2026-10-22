@@ -6,6 +6,7 @@ import {
   checkUsername,
   createClient,
   describeError,
+  folderCrumbs,
   formatLastSeen,
   formatUptime,
   initials,
@@ -126,4 +127,21 @@ test("initials, uptime and last seen", () => {
   expect(formatLastSeen(now - 30 * 3_600_000, now)).toBe("Yesterday");
   expect(formatLastSeen(now - 4 * 86_400_000, now)).toBe("4 days ago");
   expect(formatLastSeen(Date.UTC(2026, 2, 3, 12), now)).toBe("3 Mar 2026");
+});
+
+test("folderCrumbs walks from the root to the folder", () => {
+  expect(folderCrumbs("/media/Movies")).toEqual([
+    { name: "/", path: "/" },
+    { name: "media", path: "/media" },
+    { name: "Movies", path: "/media/Movies" },
+  ]);
+  expect(folderCrumbs("/")).toEqual([{ name: "/", path: "/" }]);
+  expect(folderCrumbs("/media/Movies/")).toHaveLength(3);
+  expect(folderCrumbs("D:\\Films\\4K")).toEqual([
+    { name: "D:", path: "D:\\" },
+    { name: "Films", path: "D:\\Films" },
+    { name: "4K", path: "D:\\Films\\4K" },
+  ]);
+  expect(folderCrumbs("C:\\")).toEqual([{ name: "C:", path: "C:\\" }]);
+  expect(folderCrumbs("")).toEqual([]);
 });
