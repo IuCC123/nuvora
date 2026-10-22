@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { checkRequired, describeError, isScanRunning, queryKeys, type AdminLibrary } from "@nuvora/core";
+import { checkRequired, describeError, isScanRunning, plural, queryKeys, type AdminLibrary, type LibraryKind } from "@nuvora/core";
 import { client, queries } from "../../nuvora";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { FormError, TextField } from "../../components/Field";
 import { FolderList } from "../../components/FolderList";
-import { AlertIcon, FilmIcon, PlusIcon, RefreshIcon } from "../../components/Icon";
+import { AlertIcon, PlusIcon, RefreshIcon } from "../../components/Icon";
+import { LIBRARY_TYPES, LibraryTypeIcon, TypePicker, TypeSuggestion } from "../../components/LibraryType";
 import { serverError } from "../../lib/serverError";
 import { useForm } from "../../lib/useForm";
 import { LoadError, SettingsPage, SkeletonRows } from "./SettingsPage";
+
 
 /** Which library is open for editing: none, a new one, or one by id. */
 type Editing = null | "new" | number;
@@ -21,7 +23,7 @@ export function SettingsLibraries() {
   return (
     <SettingsPage
       title="Libraries"
-      lede="The folders Nuvora scans for movies. Everyone who can sign in sees every library."
+      lede="The folders Nuvora scans for movies and shows. Everyone who can sign in sees every library."
       action={
         editing !== "new" &&
         libraries.data?.length !== 0 && (
@@ -41,7 +43,7 @@ export function SettingsLibraries() {
         editing !== "new" && (
           <div className="settings-empty">
             <h2>No libraries yet</h2>
-            <p>Add a folder of movie files, and Nuvora brings them in.</p>
+            <p>Add a folder of movies or TV shows, and Nuvora brings them in.</p>
             <button type="button" className="btn btn-primary" onClick={() => setEditing("new")}>
               <PlusIcon size={16} />
               Add library
@@ -75,11 +77,11 @@ function LibraryRow({ library, onEdit, onRemove }: { library: AdminLibrary; onEd
   });
   return (
     <li className="settings-row library-row">
-      <FilmIcon className="library-icon" />
+      <LibraryTypeIcon kind={library.kind} />
       <div className="library-main">
         <p className="library-name">
           {library.name}
-          <span className="library-count">{movieCount(library.item_count)}</span>
+          <span className="library-count">{itemCount(library)}</span>
         </p>
         <ul role="list" className="library-paths">
           {library.paths.map((path) => (
@@ -92,7 +94,7 @@ function LibraryRow({ library, onEdit, onRemove }: { library: AdminLibrary; onEd
         {library.missing_paths.length > 0 && (
           <p className="library-warning">
             Nuvora can't read {library.missing_paths.length === 1 ? "this folder" : "these folders"} right now. Check that the drive or
-            share is connected. Its movies stay listed until it's back.
+            share is connected. Its {LIBRARY_TYPES[library.kind].noun}s stay listed until it's back.
           </p>
         )}
         {scan.isError && <p className="library-warning">{describeError(scan.error)}</p>}
@@ -119,37 +121,58 @@ function LibraryRow({ library, onEdit, onRemove }: { library: AdminLibrary; onEd
   );
 }
 
-function movieCount(n: number): string {
-  return `${n.toLocaleString()} ${n === 1 ? "movie" : "movies"}`;
+function itemCount(library: Pick<AdminLibrary, "kind" | "item_count">): string {
+  return plural(library.item_count, LIBRARY_TYPES[library.kind].noun);
+}
+
+interface LibraryChanges {
+  name: string;
+  paths: string[];
+  kind: LibraryKind;
 }
 
 function LibraryEditor({ library, onDone }: { library: AdminLibrary | null; onDone: () => void }) {
   const qc = useQueryClient();
   const save = useMutation({
-    mutationFn: (v: { name: string; paths: string[] }) =>
-      library ? client.admin.updateLibrary(library.id, v) : client.admin.createLibrary({ ...v, kind: "movies" }),
+    mutationFn: ({ kind, ...v }: LibraryChanges) =>
+      library ? client.admin.updateLibrary(library.id, { ...v, ...(kind !== library.kind && { kind }) }) : client.admin.createLibrary({ ...v, kind }),
     onSuccess: async () => {
-      await Promise.all([qc.invalidateQueries({ queryKey: queryKeys.adminLibraries }), qc.invalidateQueries({ queryKey: queryKeys.scan })]);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: queryKeys.adminLibraries }),
+        qc.invalidateQueries({ queryKey: queryKeys.scan }),
+        qc.invalidateQueries({ queryKey: queryKeys.libraries }),
+        qc.invalidateQueries({ queryKey: queryKeys.library }),
+        qc.invalidateQueries({ queryKey: queryKeys.home }),
+      ]);
       onDone();
     },
   });
   const form = useForm(
-    { name: library?.name ?? "", paths: (library?.paths ?? []) as readonly string[] },
-    (v) => ({ name: checkRequired(v.name, "a name for the library"), paths: v.paths.length ? null : "Choose at least one folder." }),
+    { name: library?.name ?? LIBRARY_TYPES.movies.label, paths: (library?.paths ?? []) as readonly string[], kind: library?.kind ?? ("movies" as LibraryKind) },
+    (v) => ({ name: checkRequired(v.name, "a name for the library"), paths: v.paths.length ? null : "Choose at least one folder.", kind: null }),
     save.reset,
   );
-  const failed = serverError(save.error, ["name", "paths"]);
+  // A type change rebuilds the library, so it waits for a confirmation.
+  const [confirming, setConfirming] = useState<LibraryChanges | null>(null);
+  const failed = serverError(save.error, ["name", "paths", "kind"]);
   const title = library ? `Edit ${library.name}` : "Add a library";
+  const chooseKind = (kind: LibraryKind) => {
+    // A new library still named after its type follows the type.
+    if (!library && form.values.name.trim() === LIBRARY_TYPES[form.values.kind].label) form.set("name", LIBRARY_TYPES[kind].label);
+    form.set("kind", kind);
+  };
+  const submit = (v: LibraryChanges) => (library && v.kind !== library.kind ? setConfirming(v) : save.mutate(v));
   return (
     <form
       className="form editor"
       noValidate
       aria-label={title}
-      onSubmit={form.submit((v) => save.mutate({ name: v.name.trim(), paths: [...v.paths] }))}
-      onKeyDown={(e) => e.key === "Escape" && !save.isPending && onDone()}
+      onSubmit={form.submit((v) => submit({ name: v.name.trim(), paths: [...v.paths], kind: v.kind }))}
+      onKeyDown={(e) => e.key === "Escape" && !save.isPending && !confirming && onDone()}
     >
       <h2 className="editor-title">{title}</h2>
-      <TextField label="Name" placeholder="Movies" autoFocus {...form.field("name")} error={form.error("name") ?? failed.field.name} />
+      <TypePicker value={form.values.kind} onChange={chooseKind} />
+      <TextField label="Name" placeholder={LIBRARY_TYPES[form.values.kind].label} autoFocus {...form.field("name")} error={form.error("name") ?? failed.field.name} />
       <FolderList
         label="Folders"
         paths={form.values.paths}
@@ -158,7 +181,11 @@ function LibraryEditor({ library, onDone }: { library: AdminLibrary | null; onDo
         error={form.error("paths") ?? failed.field.paths}
         openPicker={!library}
       />
-      {library && form.values.paths.some((p) => !library.paths.includes(p)) && (
+      {!library && <TypeSuggestion paths={form.values.paths} kind={form.values.kind} onUse={chooseKind} />}
+      {library && form.values.kind !== library.kind && (
+        <p className="field-hint">Changing the type rebuilds this library's items and resets watch progress in it.</p>
+      )}
+      {library && form.values.kind === library.kind && form.values.paths.some((p) => !library.paths.includes(p)) && (
         <p className="field-hint">Saving scans the new folders.</p>
       )}
       <FormError message={failed.form} />
@@ -170,6 +197,21 @@ function LibraryEditor({ library, onDone }: { library: AdminLibrary | null; onDo
           Cancel
         </button>
       </div>
+      {library && confirming && (
+        <ConfirmDialog
+          title={`Change ${library.name} to ${LIBRARY_TYPES[confirming.kind].label}?`}
+          confirmLabel="Change type"
+          pending={save.isPending}
+          error={save.isError ? describeError(save.error) : null}
+          onConfirm={() => save.mutate(confirming, { onSettled: () => setConfirming(null) })}
+          onCancel={() => setConfirming(null)}
+        >
+          <p>Items in this library are rebuilt; watch progress in it is reset.</p>
+          <p>
+            The next scan sorts its files as {confirming.kind === "shows" ? "episodes, grouped into shows and seasons" : "movies, one per file"}.
+          </p>
+        </ConfirmDialog>
+      )}
     </form>
   );
 }
@@ -194,7 +236,7 @@ function RemoveLibrary({ library, onClose }: { library: AdminLibrary; onClose: (
       onCancel={onClose}
     >
       <p>
-        <strong>{movieCount(library.item_count)}</strong> leave Nuvora for everyone, along with their artwork.
+        <strong>{itemCount(library)}</strong> leave Nuvora for everyone, along with their artwork.
       </p>
       <p>The files stay on disk. Adding the folder again brings them back.</p>
     </ConfirmDialog>

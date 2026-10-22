@@ -166,6 +166,13 @@
   color: var(--nv-color-text-muted);
 }
 
+.rail-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .rail-count {
   margin-left: auto;
   font-size: var(--nv-type-caption-size);

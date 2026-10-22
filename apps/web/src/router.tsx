@@ -9,14 +9,17 @@ import {
   type ErrorComponentProps,
   type ParsedLocation,
 } from "@tanstack/react-router";
-import { ApiError, safeRedirect, type User } from "@nuvora/core";
+import { ApiError, librarySearch, parseLibraryView, safeRedirect, type User } from "@nuvora/core";
 import { onUnauthorized, queries, queryClient } from "./nuvora";
 import { forgetResponses, setSessionUser } from "./lib/session";
 import { Shell } from "./components/Shell";
 import { Home } from "./screens/Home";
+import { LibraryScreen } from "./screens/Library";
 import { MovieScreen } from "./screens/Movie";
-import { Player } from "./screens/Player";
-import { ErrorState, MissingMovie } from "./screens/ErrorState";
+import { EpisodePlayer, Player } from "./screens/Player";
+import { ShowScreen } from "./screens/Show";
+import { ErrorState, MissingEpisode, MissingLibrary, MissingMovie, MissingShow } from "./screens/ErrorState";
+import { playState } from "./lib/playState";
 import { SignIn } from "./screens/SignIn";
 import { WelcomeAccount, WelcomeLibrary } from "./screens/Welcome";
 import { SettingsAccount } from "./screens/settings/Account";
@@ -35,6 +38,9 @@ import { SettingsUsers } from "./screens/settings/Users";
  *   /                           Home
  *   /movie/$id                  Movie detail
  *   /movie/$id/play?file=<id>&t=<s>  Player (reads the cached detail; no new request), from second `t`
+ *   /show/$id?season=<n>        Show: seasons and episodes, season `n` open
+ *   /library/$id?sort=&order=&filter=&res=&hdr=&group=  Library grid (view also kept per device)
+ *   /episode/$id/play?file=&t=  Player for an episode; without `file` it resumes where the viewer stopped
  *   /settings/<section>         general, libraries, users (admins), account
  */
 const root = createRootRoute({ component: Outlet });
@@ -72,6 +78,11 @@ const movieParams = {
   stringify: (p: { id: number }) => ({ id: String(p.id) }),
 };
 
+function playSearch(s: Record<string, unknown>): { t?: number | undefined } {
+  const t = Math.floor(Number(s.t));
+  return { t: Number.isFinite(t) && t > 0 ? t : undefined };
+}
+
 const welcome = createRoute({
   getParentRoute: () => root,
   path: "/welcome",
@@ -101,7 +112,14 @@ const signin = createRoute({
   component: SignIn,
 });
 
-const shell = createRoute({ getParentRoute: () => root, id: "shell", beforeLoad: requireUser, component: Shell });
+// The nav rail lists the libraries; its request starts with the screen's, so the rail paints with the page.
+const shell = createRoute({
+  getParentRoute: () => root,
+  id: "shell",
+  beforeLoad: requireUser,
+  loader: () => void queryClient.prefetchQuery(queries.libraries()),
+  component: Shell,
+});
 
 const home = createRoute({
   getParentRoute: () => shell,
@@ -120,6 +138,35 @@ const movie = createRoute({
   // in when the item arrives (see `findCard`).
   loader: ({ params }) => void queryClient.prefetchQuery(queries.item(params.id)),
   component: MovieScreen,
+});
+
+const show = createRoute({
+  getParentRoute: () => shell,
+  path: "/show/$id",
+  params: movieParams,
+  validateSearch: (s: Record<string, unknown>): { season?: number | undefined } => {
+    const season = Number(s.season);
+    return { season: Number.isSafeInteger(season) && season >= 0 ? season : undefined };
+  },
+  notFoundComponent: MissingShow,
+  loader: ({ params }) => void queryClient.prefetchQuery(queries.item(params.id)),
+  component: ShowScreen,
+});
+
+const library = createRoute({
+  getParentRoute: () => shell,
+  path: "/library/$id",
+  params: movieParams,
+  // Parsed and written back, so a hand-edited URL settles on valid values and defaults drop out.
+  validateSearch: (s: Record<string, unknown>) => librarySearch(parseLibraryView(s)),
+  notFoundComponent: MissingLibrary,
+  // The library's type decides which filters exist, so the list (small, shared with the rail) comes first.
+  loader: async ({ params }) => {
+    const libraries = await queryClient.ensureQueryData(queries.libraries());
+    if (!libraries.some((l) => l.id === params.id)) throw notFound();
+  },
+  component: LibraryScreen,
+  errorComponent: Unreachable,
 });
 
 const settings = createRoute({ getParentRoute: () => shell, path: "/settings", component: Outlet });
@@ -163,10 +210,7 @@ const play = createRoute({
   path: "/movie/$id/play",
   params: movieParams,
   // The router lays this over the raw search, so a rejected `t` has to be overwritten, not just left out.
-  validateSearch: (s: Record<string, unknown>): { file: number; t?: number | undefined } => {
-    const t = Math.floor(Number(s.t));
-    return { file: Number(s.file), t: Number.isFinite(t) && t > 0 ? t : undefined };
-  },
+  validateSearch: (s: Record<string, unknown>): { file: number; t?: number | undefined } => ({ file: Number(s.file), ...playSearch(s) }),
   beforeLoad: requireUser,
   loader: ({ params }) =>
     queryClient.ensureQueryData(queries.item(params.id)).catch((error: unknown) => {
@@ -177,13 +221,48 @@ const play = createRoute({
   errorComponent: Unreachable,
 });
 
+/**
+ * An episode plays from a card or button that knows only its id. Without a
+ * `file`, the loader picks one the way the show page would (the version the
+ * viewer stopped in, else the first playable) and redirects with it and the
+ * resume point, so a reload resumes like any movie link.
+ */
+const playEpisode = createRoute({
+  getParentRoute: () => root,
+  path: "/episode/$id/play",
+  params: movieParams,
+  validateSearch: (s: Record<string, unknown>): { file?: number | undefined; t?: number | undefined } => {
+    const file = Number(s.file);
+    return { file: Number.isSafeInteger(file) && file > 0 ? file : undefined, ...playSearch(s) };
+  },
+  beforeLoad: requireUser,
+  loaderDeps: ({ search }) => ({ file: search.file }),
+  loader: async ({ params, deps }) => {
+    const item = await queryClient.ensureQueryData(queries.item(params.id)).catch((error: unknown) => {
+      throw error instanceof ApiError && error.status === 404 ? notFound() : error;
+    });
+    if (item.kind !== "episode") throw notFound();
+    if (deps.file !== undefined) return;
+    const { position_ms, file_id } = item.watch;
+    const resumable = item.versions.some((v) => v.file_id === file_id && v.playback.kind === "direct_play");
+    const state = playState(item.versions);
+    const file = resumable ? file_id! : state.kind === "play" ? state.fileId : (item.versions[0]?.file_id ?? 0);
+    const t = resumable && position_ms != null ? Math.floor(position_ms / 1000) : undefined;
+    throw redirect({ to: "/episode/$id/play", params: { id: params.id }, search: { file, t }, replace: true });
+  },
+  component: EpisodePlayer,
+  notFoundComponent: MissingEpisode,
+  errorComponent: Unreachable,
+});
+
 export const router = createRouter({
   routeTree: root.addChildren([
     welcome,
     welcomeLibrary,
     signin,
-    shell.addChildren([home, movie, settings.addChildren([settingsIndex, settingsGeneral, settingsLibraries, settingsUsers, settingsAccount])]),
+    shell.addChildren([home, movie, show, library, settings.addChildren([settingsIndex, settingsGeneral, settingsLibraries, settingsUsers, settingsAccount])]),
     play,
+    playEpisode,
   ]),
   defaultPreload: "intent",
   defaultPreloadStaleTime: 0, // TanStack Query owns freshness

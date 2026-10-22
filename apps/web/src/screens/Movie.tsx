@@ -4,7 +4,6 @@ import { Link, useParams } from "@tanstack/react-router";
 import {
   ApiError,
   fileFacts,
-  findCard,
   formatClock,
   formatRuntime,
   versionChips,
@@ -12,7 +11,8 @@ import {
   type MovieDetail,
   type Version,
 } from "@nuvora/core";
-import { queries, queryClient } from "../nuvora";
+import { queries } from "../nuvora";
+import { cachedCard } from "../lib/cachedCard";
 import { Artwork } from "../components/Artwork";
 import { CheckIcon, PlayIcon, RestartIcon } from "../components/Icon";
 import { Notice } from "../components/Notice";
@@ -42,7 +42,7 @@ interface Head {
 export function MovieScreen() {
   const { id } = useParams({ from: "/shell/movie/$id" });
   const item = useQuery(queries.item(id));
-  const card = findCard(queryClient.getQueryData(queries.home().queryKey), id);
+  const card = cachedCard(id, "movie");
   const movie = item.data?.kind === "movie" ? item.data : undefined;
   useDocumentTitle(movie?.title ?? card?.title);
 

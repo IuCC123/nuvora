@@ -22,7 +22,7 @@ test("rowPages requests the row after each cursor", async () => {
     },
   });
   const def = createQueries(client).rowPages("all_movies", "c2");
-  expect(def.queryKey).toEqual(["row", "all_movies", "c2"]);
+  expect(def.queryKey).toEqual(["row", "all_movies", null, "c2"]);
   const page = await def.queryFn({ signal: { aborted: false }, pageParam: def.initialPageParam });
   expect(urls).toEqual(["http://nas:8640/api/rows/all_movies?after=c2"]);
   expect(def.getNextPageParam(page)).toBe("c9");
@@ -44,4 +44,28 @@ test("the folder picker's query asks for the roots without a path and a folder w
   await queries.adminFs("/media/Movies & TV").queryFn({ signal: { aborted: false } });
   expect(urls).toEqual(["/api/admin/fs", "/api/admin/fs?path=%2Fmedia%2FMovies%20%26%20TV"]);
   expect(queries.adminFs(null).queryKey).toEqual(["admin", "fs", null]);
+});
+
+test("a library row pages with its library, and a grid page sends the view and cursor", async () => {
+  const urls: string[] = [];
+  const client = createClient({
+    baseUrl: "",
+    device: { containers: [], video: [], audio: [] },
+    fetch: async (url) => {
+      urls.push(url);
+      return { ok: true, status: 200, json: async () => ({ items: [], next: null, total: 0 }) };
+    },
+  });
+  const queries = createQueries(client);
+  const row = queries.rowPages("library", "c40", 3);
+  await row.queryFn({ signal: { aborted: false }, pageParam: row.initialPageParam });
+  const page = queries.libraryPage(3, { sort: "year", order: "desc", filter: "all" }, "g1990");
+  await page.queryFn({ signal: { aborted: false } });
+  const first = queries.libraryPage(3, { sort: "title", order: "asc", filter: "all" }, null);
+  await first.queryFn({ signal: { aborted: false } });
+  expect(urls).toEqual([
+    "/api/rows/library?after=c40&library=3",
+    "/api/libraries/3/items?sort=year&order=desc&filter=all&after=g1990&limit=60",
+    "/api/libraries/3/items?sort=title&order=asc&filter=all&limit=60",
+  ]);
 });

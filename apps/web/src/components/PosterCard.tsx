@@ -4,25 +4,64 @@ import { Artwork } from "./Artwork";
 import { CheckIcon, PlayIcon } from "./Icon";
 import { TitleCard } from "./TitleCard";
 
-/** A poster that links to its detail screen. Hover/focus preloads the item (router `defaultPreload: "intent"`). */
+/**
+ * A poster that links to what it shows: a movie's or a show's page. An episode
+ * card (Continue Watching) plays the episode from its poster, and its title
+ * opens the show. Hover/focus preloads the target (router `defaultPreload: "intent"`).
+ */
 export function PosterCardView({ card }: { card: PosterCard }) {
   const marks = card.progress != null ? `${Math.max(1, Math.round(card.progress * 100))}% watched` : card.watched ? "Watched" : null;
-  return (
-    <Link to="/movie/$id" params={{ id: card.id }} className="poster-card">
-      <span className="poster-frame">
-        {card.poster ? <Artwork image={card.poster} size="small" alt="" /> : <TitleCard title={card.title} year={card.year} />}
-        <PosterMarks progress={card.progress ?? null} watched={card.watched} />
-        <span className="poster-hover" aria-hidden>
-          <span className="poster-hover-play">
-            <PlayIcon size={22} />
-          </span>
+  const second = card.subtitle ?? (card.year != null ? String(card.year) : " ");
+  const frame = (
+    <span className="poster-frame">
+      {card.poster ? <Artwork image={card.poster} size="small" alt="" /> : <TitleCard title={card.title} year={card.year} />}
+      <PosterMarks progress={card.progress ?? null} watched={card.watched} />
+      {card.kind === "show" && !card.watched && card.unwatched_count != null && card.unwatched_count > 0 && (
+        <span className="poster-count" aria-hidden>
+          {card.unwatched_count}
+        </span>
+      )}
+      <span className="poster-hover" aria-hidden>
+        <span className="poster-hover-play">
+          <PlayIcon size={22} />
         </span>
       </span>
-      <span className="poster-caption">
-        <span className="poster-title">{card.title}</span>
-        <span className="poster-year">{card.year ?? " "}</span>
-        {marks && <span className="sr-only">{marks}</span>}
-      </span>
+    </span>
+  );
+
+  if (card.kind === "episode" && card.show_id != null) {
+    return (
+      <div className="poster-card-split">
+        <Link to="/episode/$id/play" params={{ id: card.id }} search={{}} className="poster-card" aria-label={[`Play ${card.title}`, card.subtitle, marks].filter(Boolean).join(", ")}>
+          {frame}
+        </Link>
+        <span className="poster-caption">
+          <Link to="/show/$id" params={{ id: card.show_id }} className="poster-title poster-title-link">
+            {card.title}
+          </Link>
+          <span className="poster-year">{second}</span>
+        </span>
+      </div>
+    );
+  }
+
+  const unwatched = card.kind === "show" && card.unwatched_count ? `${card.unwatched_count} unwatched` : null;
+  const caption = (
+    <span className="poster-caption">
+      <span className="poster-title">{card.title}</span>
+      <span className="poster-year">{second}</span>
+      {(marks ?? unwatched) && <span className="sr-only">{marks ?? unwatched}</span>}
+    </span>
+  );
+  return card.kind === "show" ? (
+    <Link to="/show/$id" params={{ id: card.id }} className="poster-card">
+      {frame}
+      {caption}
+    </Link>
+  ) : (
+    <Link to="/movie/$id" params={{ id: card.id }} className="poster-card">
+      {frame}
+      {caption}
     </Link>
   );
 }

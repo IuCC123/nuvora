@@ -6,6 +6,18 @@ export function MissingMovie() {
   return <ErrorState title="This movie isn't in your library" detail="It may have been removed by the last scan." home />;
 }
 
+export function MissingShow() {
+  return <ErrorState title="This show isn't in your library" detail="It may have been removed by the last scan." home />;
+}
+
+export function MissingEpisode() {
+  return <ErrorState title="This episode isn't in your library" detail="It may have been removed by the last scan." home />;
+}
+
+export function MissingLibrary() {
+  return <ErrorState title="This library doesn't exist" detail="An admin may have removed it." home />;
+}
+
 /** A screen that couldn't load: what happened, and the one action that helps. */
 export function ErrorState({ title, detail, retry, home }: { title: string; detail: string; retry?: () => void; home?: boolean }) {
   return (

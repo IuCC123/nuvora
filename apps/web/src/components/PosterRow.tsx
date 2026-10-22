@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { rowCards, type HomeRow } from "@nuvora/core";
 import { queries } from "../nuvora";
 import { ChevronLeftIcon, ChevronRightIcon } from "./Icon";
@@ -14,10 +15,11 @@ const MAX_PENDING_CARDS = 6;
  * is a link in tab order, and Left/Right move focus within the row.
  */
 export function PosterRow({ row }: { row: HomeRow }) {
-  const headingId = `row-${row.kind}`;
+  const library = row.kind === "library" ? (row.library_id ?? undefined) : undefined;
+  const headingId = library === undefined ? `row-${row.kind}` : `row-library-${library}`;
   const strip = useRef<HTMLUListElement>(null);
   const [armed, setArmed] = useState(false);
-  const pages = useInfiniteQuery({ ...queries.rowPages(row.kind, row.next ?? ""), enabled: armed && row.next != null });
+  const pages = useInfiniteQuery({ ...queries.rowPages(row.kind, row.next ?? "", library), enabled: armed && row.next != null });
   const { cards, hasMore } = rowCards(row, pages.data?.pages);
   const failed = pages.isError && !pages.isFetching;
   const pending = hasMore && !failed ? Math.min(MAX_PENDING_CARDS, Math.max(1, row.total - cards.length)) : 0;
@@ -34,9 +36,22 @@ export function PosterRow({ row }: { row: HomeRow }) {
   return (
     <section className="row" aria-labelledby={`${headingId}-title`} id={headingId}>
       <div className="row-head">
-        <h2 id={`${headingId}-title`}>{row.title}</h2>
-        {row.kind === "all_movies" && <span className="row-count">{row.total}</span>}
+        <h2 id={`${headingId}-title`}>
+          {library === undefined ? (
+            row.title
+          ) : (
+            <Link to="/library/$id" params={{ id: library }} className="row-title-link">
+              {row.title}
+            </Link>
+          )}
+        </h2>
+        {(row.kind === "all_movies" || library !== undefined) && <span className="row-count">{row.total.toLocaleString()}</span>}
         <div className="row-arrows">
+          {library !== undefined && (
+            <Link to="/library/$id" params={{ id: library }} className="row-see-all" aria-label={`See all of ${row.title}`}>
+              See all
+            </Link>
+          )}
           <button type="button" className="round-btn" disabled={atStart} onClick={() => page(strip.current, -1)} aria-label={`Scroll ${row.title} back`}>
             <ChevronLeftIcon />
           </button>

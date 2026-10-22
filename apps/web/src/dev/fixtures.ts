@@ -1,4 +1,5 @@
 import { accountRoute, hasLibraries, signedIn, signedInAsAdmin, type Reply } from "./fixtureAccounts";
+import { catalogEpisodes, catalogFiles, catalogItem, homeRows, libraryRoute } from "./fixtureLibrary";
 import { continueWatching, watchRoute, watchState, withWatch } from "./fixtureWatch";
 import type { FetchLike, FontAttachment, HomeResponse, HttpMethod, ItemDetail, PosterCard, RowPage, ScanStatus, Version } from "@nuvora/core";
 
@@ -7,6 +8,9 @@ import type { FetchLike, FontAttachment, HomeResponse, HttpMethod, ItemDetail, P
  * literals below, typed against the generated schema, so contract drift fails
  * the typecheck. Images and the stream are served by the fixture plugin in
  * `vite.config.ts`. Watch state follows the server's rules (`fixtureWatch.ts`).
+ *
+ * A scripted check can count requests by setting `window.nuvoraFixtureRequests = []`
+ * before the app loads; every path and query is pushed onto it.
  *
  * A scripted check can make requests fail: `sessionStorage["nuvora-fixtures-fail"]`
  * holds a pattern, optionally after a status (`"401 ^/api/auth/logout$"`), and every
@@ -45,7 +49,8 @@ const backdrops: Record<number, NonNullable<ItemDetail["backdrop"]>> = {
   2: { id: "5a1d0c0ffee000000000000000000002", aspect_ratio: 16 / 9, placeholder: "U7YNLIZAh3iJd4eHiIi/dvhrhw==" },
 };
 
-const cards = (): PosterCard[] => movies.map(([id, title, year]) => withWatch({ id, kind: "movie", title, year, poster: posters[id] ?? null, watched: false }));
+export const blenderCards = (): PosterCard[] => movies.map(([id, title, year]) => withWatch({ id, kind: "movie", title, year, poster: posters[id] ?? null, watched: false }));
+const cards = blenderCards;
 const byId = (id: number): PosterCard => cards().find((c) => c.id === id)!;
 
 const ALL_FIRST_PAGE = 8;
@@ -53,15 +58,12 @@ const ALL_FIRST_PAGE = 8;
 function home(): HomeResponse {
   if (!hasLibraries()) return { rows: [] };
   const recent = [14, 13, 12, 5, 11, 9, 4].map(byId);
-  const resume = continueWatching().map(byId);
-  const all = cards();
-  return {
-    rows: [
-      ...(resume.length ? [{ kind: "continue_watching" as const, title: "Continue Watching", total: resume.length, items: resume, next: null }] : []),
-      { kind: "recently_added", title: "Recently Added", total: recent.length, items: recent, next: null },
-      { kind: "all_movies", title: "All Movies", total: all.length, items: all.slice(0, ALL_FIRST_PAGE), next: "after-8" },
-    ],
-  };
+  const movie = (id: number) => cards().find((c) => c.id === id) ?? movieCard(catalogItem(id));
+  return { rows: homeRows(recent, movie) };
+}
+
+function movieCard(item: ItemDetail | undefined): PosterCard | undefined {
+  return item?.kind === "movie" ? withWatch({ id: item.id, kind: "movie", title: item.title, year: item.year, poster: item.poster, watched: false }) : undefined;
 }
 
 const ROW_PAGE = 3;
@@ -160,7 +162,7 @@ function fonts(fileId: number): FontAttachment[] | undefined {
   return [{ index: 5, file_name: "Archivo-Bold.ttf", mime_type: "font/ttf", size_bytes: 40_748, url: `/api/files/${fileId}/fonts/5` }];
 }
 
-function item(id: number): ItemDetail | undefined {
+export function blenderItem(id: number): ItemDetail | undefined {
   const movie = id === EPISODE[0] ? EPISODE : movies.find(([m]) => m === id);
   if (!movie) return undefined;
   const [, title, year] = movie;
@@ -196,6 +198,7 @@ function scanStatus(): ScanStatus {
 
 export const fixtureFetch: FetchLike = async (url, init) => {
   const { pathname, searchParams } = new URL(url, location.origin);
+  (window as { nuvoraFixtureRequests?: string[] }).nuvoraFixtureRequests?.push(`${init.method} ${pathname}${searchParams.size ? `?${searchParams}` : ""}`);
   await new Promise((r) => setTimeout(r, 60));
   const body: unknown = init.body ? JSON.parse(init.body) : undefined;
   const [, status = "503", pattern] = /^(?:(\d{3}) )?(.+)$/.exec(sessionStorage.getItem("nuvora-fixtures-fail") ?? "") ?? [];
@@ -217,13 +220,20 @@ export const fixtureFetch: FetchLike = async (url, init) => {
 
 function catalogRoute(method: HttpMethod, path: string, query: URLSearchParams, request: unknown): Reply {
   if (!signedIn()) return { status: 401, body: { code: "unauthorized", message: "Sign in to continue.", field: null } };
-  const watch = watchRoute(method, path, request, (id) => item(id)?.versions.map((v) => v.file_id));
+  const watch = watchRoute(method, path, request, (id) => versionsOf(id) ?? catalogFiles(id), catalogEpisodes);
   if (watch) return watch;
+  const library = libraryRoute(path, query);
+  if (library) return library;
   if (path === "/api/scan" && method === "POST" && !signedInAsAdmin()) {
     return { status: 403, body: { code: "forbidden", message: "Only an admin can do that.", field: null } };
   }
   const body = route(method, path, query);
   return body === undefined ? { status: 404, body: { code: "not_found", message: "Not found", field: null } } : { status: 200, body };
+}
+
+function versionsOf(id: number): number[] | undefined {
+  const movie = blenderItem(id);
+  return movie?.kind === "movie" ? movie.versions.map((v) => v.file_id) : undefined;
 }
 
 function route(method: HttpMethod, path: string, query: URLSearchParams): unknown {
@@ -237,6 +247,6 @@ function route(method: HttpMethod, path: string, query: URLSearchParams): unknow
   const fontsMatch = /^\/api\/files\/(\d+)\/fonts$/.exec(path);
   if (fontsMatch) return fonts(Number(fontsMatch[1]));
   const itemMatch = /^\/api\/items\/(\d+)$/.exec(path);
-  if (itemMatch) return item(Number(itemMatch[1]));
+  if (itemMatch) return blenderItem(Number(itemMatch[1])) ?? catalogItem(Number(itemMatch[1]));
   return undefined;
 }

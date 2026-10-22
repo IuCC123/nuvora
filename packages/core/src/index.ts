@@ -29,8 +29,21 @@ export type {
   HomeRow,
   Image,
   ImageSize,
+  Episode,
+  EpisodeDetail,
+  EpisodeRef,
+  FsInspect,
+  IndexGroup,
   ItemDetail,
+  ItemKind,
+  LibraryIndex,
+  LibraryKind,
+  LibraryPage,
+  LibrarySummary,
   MovieDetail,
+  SeasonDetail,
+  SeasonSummary,
+  ShowDetail,
   NuvoraClient,
   Playback,
   PosterCard,
@@ -46,7 +59,7 @@ export type {
   SubtitleMode,
   SubtitleTrack,
 } from "./client";
-export { createQueries, findCard, isScanRunning, queryKeys, rowCards, watchStateKeys } from "./queries";
+export { createQueries, findCard, isScanRunning, LIBRARY_PAGE_SIZE, queryKeys, rowCards, watchStateKeys } from "./queries";
 export type { InfiniteQueryDef, Queries, QueryDef } from "./queries";
 export { placeholderDataUrl } from "./images";
 export { titleCardLook } from "./titleCard";
@@ -82,3 +95,32 @@ export { findLanguage, LANGUAGES, languageCode, languageName } from "./languages
 export type { Language } from "./languages";
 export { activeCues, parseVtt } from "./vtt";
 export type { Cue, CueRun } from "./vtt";
+export {
+  canGroup,
+  DEFAULT_ORDER,
+  DEFAULT_VIEW,
+  FILTER_LABELS,
+  hasGroups,
+  hasViewParams,
+  isFiltered,
+  LIBRARY_SORTS,
+  libraryQuery,
+  MIN_GROUPED_CARDS,
+  librarySearch,
+  libraryViewStorageKey,
+  ORDER_LABELS,
+  parseLibraryView,
+  RESOLUTION_LABELS,
+  RESOLUTIONS,
+  sameView,
+  showsGroups,
+  SORT_LABELS,
+  SORT_ORDERS,
+  WATCH_FILTERS,
+  withSort,
+} from "./library";
+export type { LibrarySearch, LibrarySort, LibraryView, Resolution, SortOrder, WatchFilter } from "./library";
+export { anchorsOf, cardsByOffset, groupOffsets, JUMP_LETTERS, layoutGrid, nextAnchor, offsetsInView, offsetTop, stepOffset } from "./grid";
+export type { Anchor, GridGroup, GridLayout, GridMetrics, GridPage, GridSection } from "./grid";
+export { episodeHeading, hasOwnTitle, initialSeason, plural, showCounts, showPlay, UP_NEXT_SECONDS, upNextCountdown } from "./shows";
+export type { ShowPlay } from "./shows";

@@ -5,6 +5,7 @@ import type {
   CreateLibraryRequest,
   CreateUserRequest,
   ErrorBody,
+  FsInspect,
   FsListing,
   HttpMethod,
   LoginRequest,
@@ -71,6 +72,8 @@ function scenario(name: string): State {
   const libraries: AdminLibrary[] = [
     { id: 1, name: "Movies", kind: "movies", paths: ["/media/Movies"], item_count: 14, missing_paths: [] },
     { id: 2, name: "4K Movies", kind: "movies", paths: ["/mnt/nas/Films 4K"], item_count: 3, missing_paths: ["/mnt/nas/Films 4K"] },
+    { id: 3, name: "TV Shows", kind: "shows", paths: ["/media/TV Shows"], item_count: 3, missing_paths: [] },
+    { id: 4, name: "Film Archive", kind: "movies", paths: ["/mnt/nas/Films"], item_count: 592, missing_paths: [] },
   ];
   const base = { serverName: "Rivera Home", nextId: 10, failedLogins: 0 };
   switch (name) {
@@ -110,7 +113,8 @@ const FOLDERS: Record<string, string[]> = {
   "/home/jamie": ["Downloads", "Videos"],
   "/home/jamie/Downloads": [],
   "/home/jamie/Videos": ["Holidays", "Phone"],
-  "/media": ["Concerts", "Documentaries", "Home Videos", "Kids", "Movies", "Music", "TV Shows"],
+  "/media": ["Anime", "Concerts", "Documentaries", "Home Videos", "Kids", "Movies", "Music", "TV Shows"],
+  "/media/Anime": ["Harbor Lights", "The Long Field"],
   "/media/Movies": ["Big Buck Bunny (2008)", "Sintel (2010)", "Spring (2019)", "Tears of Steel (2012)"],
   "/media/Kids": [],
   "/media/Documentaries": ["Nature", "Space"],
@@ -131,6 +135,24 @@ function listFolder(path: string | null): Reply {
   const parent = at === "/" ? null : at.slice(0, at.lastIndexOf("/")) || "/";
   const join = (name: string) => (at === "/" ? `/${name}` : `${at}/${name}`);
   return ok({ path: at, parent, dirs: dirs.map((name) => ({ name, path: join(name) })) } satisfies FsListing);
+}
+
+/** What `/api/admin/fs/inspect` finds under a folder: video files, and how many are named like episodes. */
+const VIDEOS: Record<string, [videos: number, episodeLike: number]> = {
+  "/media/Anime": [74, 74],
+  "/media/TV Shows": [164, 158],
+  "/media/Movies": [14, 0],
+  "/media/Documentaries": [22, 3],
+  "/media/Home Videos": [312, 0],
+  "/mnt/nas/Films": [592, 0],
+};
+
+function inspect(path: string | null): Reply {
+  if (!path || !FOLDERS[path.replace(/\/+$/, "") || "/"]) return fail(400, "validation", "Nuvora can't read that folder.", "path");
+  const [video_files, episode_like] = Object.entries(VIDEOS)
+    .filter(([p]) => p === path || p.startsWith(`${path}/`))
+    .reduce(([v, e], [, [dv, de]]) => [v + dv, e + de], [0, 0]);
+  return ok({ video_files, episode_like, suggested_kind: episode_like * 2 > video_files ? "shows" : "movies", truncated: false } satisfies FsInspect);
 }
 
 const ok = (body?: unknown): Reply => (body === undefined ? { status: 204 } : { status: 200, body });
@@ -155,6 +177,10 @@ const enabledAdmins = () => state.users.filter((u) => u.role === "admin" && !u.d
 export function expireSession() {
   state.session = null;
   save();
+}
+
+export function libraries(): readonly AdminLibrary[] {
+  return state.libraries;
 }
 
 export function hasLibraries(): boolean {
@@ -246,6 +272,7 @@ function updateMe(user: StoredUser, req: UpdateMeRequest): Reply {
 
 function adminRoute(self: StoredUser, method: HttpMethod, path: string, query: URLSearchParams, body: unknown): Reply | undefined {
   if (path === "/api/admin/fs") return listFolder(query.get("path"));
+  if (path === "/api/admin/fs/inspect") return inspect(query.get("path"));
   if (path === "/api/admin/server") {
     if (method === "PATCH") state.serverName = (body as UpdateServerRequest).server_name.trim();
     return ok({
@@ -284,6 +311,7 @@ function adminRoute(self: StoredUser, method: HttpMethod, path: string, query: U
       library.missing_paths = library.missing_paths.filter((p) => req.paths!.includes(p));
     }
     if (req.name != null) library.name = req.name.trim();
+    if (req.kind != null && req.kind !== library.kind) Object.assign(library, { kind: req.kind, item_count: 0 });
     return ok(library);
   }
   if (path === "/api/admin/users") {

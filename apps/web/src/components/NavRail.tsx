@@ -2,20 +2,16 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { queries } from "../nuvora";
 import { useUser } from "../lib/session";
-import { FilmIcon, FolderIcon, HouseIcon, ServerIcon, UserIcon, UsersIcon } from "./Icon";
+import { FilmIcon, FolderIcon, HouseIcon, ServerIcon, TvIcon, UserIcon, UsersIcon } from "./Icon";
 
-/**
- * Home, then the libraries. Step 1 has one library and no library screen yet,
- * so Movies opens Home at its All Movies row and is current on movie pages.
- */
+/** Home, then one entry per library with its type's icon, each opening the library page. */
 export function NavRail() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   return pathname.startsWith("/settings") ? <SettingsRail pathname={pathname} /> : <LibraryRail pathname={pathname} />;
 }
 
 function LibraryRail({ pathname }: { pathname: string }) {
-  const { data: home } = useQuery(queries.home());
-  const movies = home?.rows.find((r) => r.kind === "all_movies")?.total;
+  const { data: libraries } = useQuery(queries.libraries());
   return (
     <nav className="rail" aria-label="Main">
       <Link to="/" className="rail-item" aria-current={pathname === "/" ? "page" : undefined}>
@@ -26,18 +22,23 @@ function LibraryRail({ pathname }: { pathname: string }) {
         Libraries
       </p>
       <ul role="list" aria-labelledby="rail-libraries">
-        <li>
-          <Link
-            to="/"
-            hash="row-all_movies"
-            className="rail-item"
-            aria-current={pathname.startsWith("/movie/") ? "page" : undefined}
-          >
-            <FilmIcon />
-            <span className="rail-label">Movies</span>
-            {movies != null && <span className="rail-count">{movies}</span>}
-          </Link>
-        </li>
+        {libraries?.map((library) => {
+          const Icon = library.kind === "shows" ? TvIcon : FilmIcon;
+          return (
+            <li key={library.id}>
+              <Link
+                to="/library/$id"
+                params={{ id: library.id }}
+                className="rail-item"
+                aria-current={pathname === `/library/${library.id}` ? "page" : undefined}
+              >
+                <Icon />
+                <span className="rail-label">{library.name}</span>
+                <span className="rail-count">{library.item_count.toLocaleString()}</span>
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );

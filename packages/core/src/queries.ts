@@ -2,10 +2,15 @@ import type {
   AdminLibrary,
   AdminUser,
   AuthState,
+  Episode,
+  FsInspect,
   FsListing,
   HomeResponse,
   HomeRow,
   ItemDetail,
+  LibraryIndex,
+  LibraryPage,
+  LibrarySummary,
   NuvoraClient,
   PosterCard,
   RowKind,
@@ -41,6 +46,11 @@ export const queryKeys = {
   /** Prefix of every row page query; invalidate it together with `home`. */
   rows: ["row"] as const,
   item: (id: number) => ["item", id] as const,
+  /** Prefix of every season's episode list. */
+  episodes: ["episodes"] as const,
+  libraries: ["libraries"] as const,
+  /** Prefix of every library grid page and index; invalidate it when watch state or the catalog changes. */
+  library: ["library"] as const,
   scan: ["scan"] as const,
   /** Who is signed in. Set it from the login, setup and logout responses instead of refetching. */
   auth: ["auth"] as const,
@@ -48,14 +58,29 @@ export const queryKeys = {
   admin: ["admin"] as const,
   adminLibraries: ["admin", "libraries"] as const,
   adminFs: (path: string | null) => ["admin", "fs", path] as const,
+  adminInspect: (path: string) => ["admin", "inspect", path] as const,
   adminUsers: ["admin", "users"] as const,
   adminServer: ["admin", "server"] as const,
 };
 
-/** Everything that shows one user's watch state for an item: refresh these after a report or a mark. */
-export function watchStateKeys(id: number): (readonly unknown[])[] {
-  return [queryKeys.home, queryKeys.rows, queryKeys.item(id)];
+/**
+ * Everything that shows one user's watch state for an item: refresh these
+ * after a report or a mark. An episode's state also shows on its show (pass
+ * `showId`), its season's list and the library grid's show card.
+ */
+export function watchStateKeys(id: number, showId?: number): (readonly unknown[])[] {
+  return [
+    queryKeys.home,
+    queryKeys.rows,
+    queryKeys.item(id),
+    queryKeys.episodes,
+    queryKeys.library,
+    ...(showId === undefined ? [] : [queryKeys.item(showId)]),
+  ];
 }
+
+/** Library grid cards per request. Enough for two screens on a wide window, small enough to arrive at once. */
+export const LIBRARY_PAGE_SIZE = 60;
 
 export interface Queries {
   /** Fresh for 30 s; then revalidated in the background (ETag => 304 on the wire). */
@@ -67,7 +92,14 @@ export interface Queries {
    * `next`). Keyed by that cursor, so a refreshed home with a new first page
    * starts paging again instead of appending stale pages.
    */
-  rowPages(kind: RowKind, after: string): InfiniteQueryDef<RowPage, string>;
+  rowPages(kind: RowKind, after: string, library?: number): InfiniteQueryDef<RowPage, string>;
+  /** A season's episodes, with watch state and a playback decision each. */
+  episodes(seasonId: number): QueryDef<Episode[]>;
+  libraries(): QueryDef<LibrarySummary[]>;
+  /** `query` is `libraryQuery(view, movies)`, so equal views share one cache entry. */
+  libraryIndex(id: number, query: Record<string, string>): QueryDef<LibraryIndex>;
+  /** One grid page from a cursor (`null`: the start). */
+  libraryPage(id: number, query: Record<string, string>, after: string | null): QueryDef<LibraryPage>;
   /** Apps poll this while `isScanRunning`. */
   scanStatus(): QueryDef<ScanStatus>;
   /** Read before any screen decides where to go: welcome, sign in, or the app. */
@@ -75,6 +107,8 @@ export interface Queries {
   adminLibraries(): QueryDef<AdminLibrary[]>;
   /** One folder in the folder picker; `null` is the filesystem roots. */
   adminFs(path: string | null): QueryDef<FsListing>;
+  /** The library type a folder looks like, for the add dialog's suggestion. */
+  adminInspect(path: string): QueryDef<FsInspect>;
   adminUsers(): QueryDef<AdminUser[]>;
   adminServer(): QueryDef<ServerInfo>;
 }
@@ -86,17 +120,30 @@ export function createQueries(client: NuvoraClient): Queries {
   return {
     home: () => ({ queryKey: queryKeys.home, queryFn: ({ signal }) => client.home(signal), staleTime: 30_000 }),
     item: (id) => ({ queryKey: queryKeys.item(id), queryFn: ({ signal }) => client.item(id, signal), staleTime: 30_000 }),
-    rowPages: (kind, after) => ({
-      queryKey: [...queryKeys.rows, kind, after],
-      queryFn: ({ signal, pageParam }) => client.row(kind, pageParam, signal),
+    rowPages: (kind, after, library) => ({
+      queryKey: [...queryKeys.rows, kind, library ?? null, after],
+      queryFn: ({ signal, pageParam }) => client.row(kind, pageParam, signal, library),
       initialPageParam: after,
       getNextPageParam: (last) => last.next ?? undefined,
+      staleTime: 30_000,
+    }),
+    episodes: (id) => ({ queryKey: [...queryKeys.episodes, id], queryFn: ({ signal }) => client.episodes(id, signal), staleTime: 30_000 }),
+    libraries: () => ({ queryKey: queryKeys.libraries, queryFn: ({ signal }) => client.libraries(signal), staleTime: 60_000 }),
+    libraryIndex: (id, query) => ({
+      queryKey: [...queryKeys.library, id, "index", query],
+      queryFn: ({ signal }) => client.libraryIndex(id, query, signal),
+      staleTime: 30_000,
+    }),
+    libraryPage: (id, query, after) => ({
+      queryKey: [...queryKeys.library, id, "page", query, after],
+      queryFn: ({ signal }) => client.libraryItems(id, query, after, LIBRARY_PAGE_SIZE, signal),
       staleTime: 30_000,
     }),
     scanStatus: () => ({ queryKey: queryKeys.scan, queryFn: ({ signal }) => client.scanStatus(signal), staleTime: 0 }),
     authState: () => ({ queryKey: queryKeys.auth, queryFn: ({ signal }) => client.authState(signal), staleTime: 60_000 }),
     adminLibraries: () => ({ queryKey: queryKeys.adminLibraries, queryFn: ({ signal }) => client.admin.libraries(signal), staleTime: ADMIN_FRESH }),
     adminFs: (path) => ({ queryKey: queryKeys.adminFs(path), queryFn: ({ signal }) => client.admin.fs(path, signal), staleTime: 30_000 }),
+    adminInspect: (path) => ({ queryKey: queryKeys.adminInspect(path), queryFn: ({ signal }) => client.admin.inspect(path, signal), staleTime: 30_000 }),
     adminUsers: () => ({ queryKey: queryKeys.adminUsers, queryFn: ({ signal }) => client.admin.users(signal), staleTime: ADMIN_FRESH }),
     adminServer: () => ({ queryKey: queryKeys.adminServer, queryFn: ({ signal }) => client.admin.server(signal), staleTime: ADMIN_FRESH }),
   };

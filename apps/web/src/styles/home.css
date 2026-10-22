@@ -36,7 +36,34 @@
 .row-arrows {
   margin-left: auto;
   display: flex;
+  align-items: center;
   gap: 8px;
+}
+
+.row-title-link {
+  border-radius: var(--nv-radius-sm);
+  transition: color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.row-title-link:hover {
+  color: var(--nv-color-accent-hover);
+}
+
+.row-see-all {
+  margin-right: 8px;
+  padding: 6px 10px;
+  border-radius: var(--nv-radius-md);
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  font-weight: var(--nv-font-weight-semibold);
+  transition:
+    background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.row-see-all:hover {
+  background: var(--nv-color-surface);
+  color: var(--nv-color-text-primary);
 }
 
 .round-btn {
@@ -219,9 +246,43 @@
   color: var(--nv-color-accent);
 }
 
+/* A show's unwatched episodes, in the corner a watched check would take. */
+.poster-count {
+  position: absolute;
+  z-index: 1;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: var(--nv-radius-pill);
+  background: color-mix(in srgb, var(--nv-color-canvas) 84%, transparent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  font-size: var(--nv-type-caption-size);
+  line-height: 1;
+  font-weight: var(--nv-font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
 .poster-caption {
   display: block;
   margin-top: 10px;
+}
+
+.poster-title-link {
+  width: fit-content;
+  max-width: 100%;
+  border-radius: var(--nv-radius-sm);
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.poster-title-link:hover {
+  text-decoration-color: var(--nv-color-text-muted);
 }
 
 .poster-title,
