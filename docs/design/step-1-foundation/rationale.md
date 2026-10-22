@@ -76,7 +76,7 @@ let status = lib.request_scan();                               // idempotent, co
 
 - **`item`.** One table for everything browsable, with columns `kind`, `parent_id` and `index_number`. Step 1 writes only `movie`. Shows, seasons and episodes are new rows and new Rust enum variants, not new tables. `kind` has no CHECK list: the Rust enum is the only list and parses at the row boundary.
 - **`media_file`.** One row per file, and each file is a version of an item. Files group into an item by `item.identity_key`, which is `casefold(title)|year` from the filename parser. So `Alien (1979) - 1080p.mkv` and `Alien.1979.2160p.mkv` become two versions of one movie with no extra machinery.
-- **Identity rule.** `identity_key` is built from the filename layer only and is never rewritten, not by TMDB matching and not by a user fix. A TMDB match in Step 2 writes `item_metadata.provider_id` on the `tmdb` row instead. This is what stops a re-probe or a rename from re-deriving a different key and creating a duplicate of a matched item. The cost is that two differently named files of one movie stay two items until Step 2 adds an explicit merge.
+- **Identity rule.** `identity_key` is built from the filename layer only. TMDB matching and user fixes never rewrite it. The one case that does is a rename detected by fingerprint to a title no other item uses: the scanner re-keys the item in place from the new filename, so the item id survives. A TMDB match in Step 2 writes `item_metadata.provider_id` on the `tmdb` row instead. This is what stops a re-probe or a rename from re-deriving a different key and creating a duplicate of a matched item. The cost is that two differently named files of one movie stay two items until Step 2 adds an explicit merge.
 - **`media_stream`.** Every stream of every file, normalized, so Step 4 filters such as "4K HDR" are plain SQL.
 - **Metadata layers.** Metadata lives in `item_metadata`, keyed `(item_id, source)`. Step 1 writes `filename`. Step 2 adds `tmdb` rows, plus sparse `user` rows that hold fixed fields and a pinned provider id. Precedence lives in one place, the `item_display` view, so re-matching TMDB rewrites only its own layer and never clobbers a user's fix. Artwork follows the same pattern: `artwork` rows are keyed `(item, role, source)`, and the `item_artwork` view picks one.
 - **Libraries.** `library` rows are keyed by a stable config `key`. Each library has `library_root` rows. Files store `rel_path` relative to their root, so a remounted share changes one row.
@@ -88,7 +88,7 @@ let status = lib.request_scan();                               // idempotent, co
 The workspace has three crates and two packages. See `module-map.md`.
 
 - **`nuvora-media`** knows things and holds no state: names, ffprobe, artwork rendering, playability. ffprobe JSON is private (`probe::raw`).
-- **`nuvora-library`** is the only owner of persistent state: the database, the scanner and the artwork store. Its public surface is `Library` with seven methods, plus domain read models. SQL, rows, the pool and the scanner are private modules, so the server cannot write to the catalog except through the scanner (per boundary-discipline).
+- **`nuvora-library`** is the only owner of persistent state: the database, the scanner and the artwork store. Its public surface is `Library` (`open`, `request_scan`, `scan_status`, `watch_scan`, `rev`, `home`, `row`, `item`, `stream_source`, `artwork_path`), plus domain read models. SQL, rows, the pool and the scanner are private modules, so the server cannot write to the catalog except through the scanner (per boundary-discipline).
 - **`nuvora-server`** owns config, HTTP, and the wire types. The wire types live only in `api.rs` and are mapped from the read models. They add policy the domain does not have: URLs, display strings, and the playback decision rendered for humans.
 
 ### 3. Database
@@ -103,7 +103,7 @@ The scan has five phases (see `scan/mod.rs`): Discover, Plan, Read, Artwork and 
 
 - **Change detection.** A file is unchanged when `(root, rel_path)` matches and `(size, mtime_ns)` is equal. An unchanged rescan does one walk, two SELECTs and zero writes. The target is under 2 s, and the walk sets the limit.
 - **Renames and moves.** A file that vanished is paired with a new file of equal size and an equal fingerprint, where the fingerprint is blake3 of size, the first 64 KiB and the last 64 KiB. Only equal-size pairs are fingerprinted. The file id survives the move. The item id survives too unless the new name is another existing movie, in which case the file becomes a version of that movie.
-- **Idempotency and crash safety.** Every commit leaves a valid catalog. There is no "scan in progress" state on disk. Deletions happen only for files that are missing from a completely walked root. An unreadable root or subfolder (an offline NAS) deletes nothing. A readable root that walks as empty while the database holds files for it also deletes nothing, because that is what an automounter mount point looks like when the share is down (`Plan.may_mark_missing`, tested by `empty_walk_of_populated_root_blocks_missing_marks`). A crash loses only uncommitted work, and the next scan rediscovers it. Two consecutive scans converge, and the second does nothing.
+- **Idempotency and crash safety.** Every commit leaves a valid catalog. There is no "scan in progress" state on disk. Deletions happen only for files that are missing from a completely walked root. An unreadable root or subfolder (an offline NAS) deletes nothing. A readable root that walks as empty while the database holds files for it also deletes nothing, because that is what an automounter mount point looks like when the share is down (`may_mark_missing`, tested by `empty_walk_of_populated_root_blocks_missing_marks`). The guard is per root: an offline root blocks removals only for files under that root, and the other roots are cleaned up normally. A crash loses only uncommitted work, and the next scan rediscovers it. Two consecutive scans converge, and the second does nothing.
 - **Files still being copied.** Files modified less than 60 s ago are left for the next scan.
 - **Re-probing.** Bumping `PROBE_VERSION` re-probes every file exactly once.
 - **Failed probes.** A probe failure is stored in `probe_error`, so the file is not retried until it changes.
@@ -243,7 +243,9 @@ Three candidates were produced independently on Claude Opus 5.5 (candidate 1), C
 
 ## Implementation reconciliation
 
-- Running `openapi-typescript` on the sketch's spec failed on an unregistered `ImageSize` schema. Fixed in `ApiDoc` by registering it. The spec and generated types in this package reflect the fix.
+- Running `openapi-typescript` on the sketch's spec failed on an unregistered `ImageSize` schema. Fixed in `ApiDoc` by registering it.
+- Scaffold (accepted by the lead): `MatchKey` is renamed `IdentityKey`, matching the SQL column. `Home` and `RowPage` carry the `rev` read in the same transaction as their rows, so an ETag always matches its body, and `Library::rev()` serves only the pre-query 304 check. Row titles are produced in the server (`row_title`), which owns display strings. The web profile declares the container as `mkv`, the server's wire name. `MAX_ROW_LIMIT` is 100. The backdrop frame is taken at 10% of the runtime with no clamp.
+- Lead decision after the scaffold: `may_mark_missing` is per root, not per scan. The scaffold had it per scan, which let one offline root block removals in every other root.
 
 ## Open questions and risks
 

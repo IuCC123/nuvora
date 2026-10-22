@@ -5,7 +5,6 @@ nuvora/
 ├─ Cargo.toml                 workspace: 3 crates
 ├─ rust-toolchain.toml        stable
 ├─ package.json               Bun workspace: packages/*, apps/*; gen:api, dev, build, typecheck
-├─ schema.sql -> crates/library/migrations/0001_init.sql
 ├─ crates/
 │  ├─ media/      nuvora-media     stateless media knowledge
 │  ├─ library/    nuvora-library   the catalog: DB + scanner + artwork store + read models
@@ -26,9 +25,9 @@ Nothing points back up.
 
 | module | public | private |
 |---|---|---|
-| `name` | `classify_path`, `PathClass`, `MovieName::parse`, `MovieName::match_key`, `MatchKey` | token tables, year heuristics |
+| `name` | `classify_path`, `PathClass`, `MovieName::parse`, `MovieName::identity_key`, `IdentityKey` | token tables, year heuristics |
 | `probe` | `MediaInfo` and stream types, codec enums with `as_str`/`from_name`, `Container`, `HdrFormat`, `PROBE_VERSION`, `probe()` | `raw::*` (ffprobe JSON), `parse()` |
-| `artwork` | `ArtworkRole`, `ImageSize` (+ `width`), `ArtworkSource`, `Frame`, `RenderedArtwork::render`, `MediaTools::grab_frame`, `Placeholder`, `PIPELINE_VERSION` | decode/resize/WebP/ThumbHash, HDR tone-map |
+| `artwork` | `ArtworkRole`, `ImageSize` (+ `width`), `ArtworkSource`, `Frame`, `RenderedArtwork::render`, `MediaTools::grab_frame`, `Placeholder`, `PIPELINE_VERSION` | decode/resize/WebP/ThumbHash |
 | `playback` | `DeviceProfile` (+ `baseline`, `decide`), `VideoSupport`, `AudioSupport`, `PlaybackDecision`, `Incompatibility` | rule helpers |
 | `tools` | `MediaTools::locate` | binary paths, timeouts |
 
