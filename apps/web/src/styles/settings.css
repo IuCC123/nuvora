@@ -64,13 +64,13 @@
 
 /* Facts about the server */
 
-.facts {
+.server-facts {
   display: flex;
   flex-direction: column;
   margin: 0;
 }
 
-.facts > div {
+.server-facts > div {
   display: grid;
   grid-template-columns: 140px minmax(0, 1fr);
   gap: 16px;
@@ -78,15 +78,15 @@
   border-bottom: 1px solid var(--nv-color-divider);
 }
 
-.facts > div:first-child {
+.server-facts > div:first-child {
   padding-top: 0;
 }
 
-.facts dt {
+.server-facts dt {
   color: var(--nv-color-text-secondary);
 }
 
-.facts dd {
+.server-facts dd {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -95,13 +95,13 @@
   font-variant-numeric: tabular-nums;
 }
 
-.facts-detail {
+.server-facts-detail {
   color: var(--nv-color-text-muted);
   font-size: var(--nv-type-small-size);
   line-height: var(--nv-type-small-line);
 }
 
-.facts-skeleton {
+.server-facts-skeleton {
   height: 320px;
   border-radius: var(--nv-radius-lg);
   background: repeating-linear-gradient(180deg, var(--nv-color-surface) 0 22px, transparent 22px 44px);
