@@ -164,8 +164,10 @@ fn is_extras_folder(name: &str) -> bool {
 ///    use it: folder-per-movie is the convention Plex users follow.
 /// 2. Else parse the file stem: split on `.`/`_`/space, take tokens up to the
 ///    first year in 1900..=current+1 that is not the first token (so `1917.mkv`
-///    and `2001 A Space Odyssey (1968)` work), drop quality/source/codec tokens.
+///    and `2001 A Space Odyssey (1968)` work), drop quality/source/codec and
+///    bitrate tokens.
 /// 3. No year found: the whole cleaned stem is the title, year = None.
+/// 4. A one-word CamelCase title is split into words (`BigBuckBunny`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MovieName {
     pub title: String,
@@ -261,10 +263,37 @@ fn stem_title_year(stem: &str) -> (String, Option<u16>) {
     match end {
         Some((i, _)) => {
             let year = tokens[i..].iter().find_map(|t| year_of(t));
-            (tokens[..i].join(" "), year)
+            (title_of(&tokens[..i]), year)
         }
         None if tokens.is_empty() => (stem.trim().to_owned(), None),
-        None => (tokens.join(" "), None),
+        None => (title_of(&tokens), None),
+    }
+}
+
+/// A one-word title written in CamelCase (`BigBuckBunny`) is split into its
+/// words. Only when every word is a capital and two or more lowercase letters,
+/// so `iPhone`, `McDonald` and `WALL-E` stay whole.
+fn title_of(tokens: &[&str]) -> String {
+    let [word] = tokens else {
+        return tokens.join(" ");
+    };
+    let starts: Vec<usize> = word
+        .char_indices()
+        .filter(|(_, c)| c.is_uppercase())
+        .map(|(i, _)| i)
+        .collect();
+    let ends = starts.iter().skip(1).copied().chain([word.len()]);
+    let humps: Vec<&str> = starts.iter().zip(ends).map(|(&a, b)| &word[a..b]).collect();
+    let camel = starts.first() == Some(&0)
+        && humps.len() >= 2
+        && humps.iter().all(|hump| {
+            let rest = hump.chars().skip(1);
+            rest.clone().count() >= 2 && rest.clone().all(char::is_lowercase)
+        });
+    if camel {
+        humps.join(" ")
+    } else {
+        (*word).to_owned()
     }
 }
 
@@ -324,7 +353,18 @@ fn is_release_token(token: &str) -> bool {
     let lower = token.to_ascii_lowercase();
     std::iter::once(lower.as_str())
         .chain(lower.split('-'))
-        .any(|part| RELEASE_TOKENS.contains(&part) || is_resolution(part))
+        .any(|part| RELEASE_TOKENS.contains(&part) || is_resolution(part) || is_bitrate(part))
+}
+
+/// `512kb`, `1024kbps`, `800k`.
+fn is_bitrate(part: &str) -> bool {
+    let Some(digits) = ["kbps", "kb", "k"]
+        .iter()
+        .find_map(|unit| part.strip_suffix(unit))
+    else {
+        return false;
+    };
+    !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// `480p`, `720p`, `1080i`, `2160p`.
@@ -448,6 +488,14 @@ mod tests {
         ("Blade Runner 2049.mkv", "Blade Runner 2049", None),
         ("Spider-Man.2002.1080p.mkv", "Spider-Man", Some(2002)),
         ("Heat.1080p.BluRay.x264.mkv", "Heat", None),
+        ("BigBuckBunny_512kb.mp4", "Big Buck Bunny", None),
+        ("ElephantsDream.1024kbps.mp4", "Elephants Dream", None),
+        ("Sintel.2010.800k.mp4", "Sintel", Some(2010)),
+        ("iPhone.mkv", "iPhone", None),
+        ("McDonald.mkv", "McDonald", None),
+        ("WALL-E.2008.mkv", "WALL-E", Some(2008)),
+        ("WALL-E.mkv", "WALL-E", None),
+        ("The.Matrix.1999.1080p.mkv", "The Matrix", Some(1999)),
     ];
 
     #[test]
