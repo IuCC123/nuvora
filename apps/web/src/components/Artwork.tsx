@@ -1,36 +1,41 @@
 import { useState } from "react";
 import { placeholderDataUrl, type Image, type ImageSize } from "@nuvora/core";
 import { client } from "../nuvora";
+import "../styles/artwork.css";
 
 /**
  * The ThumbHash placeholder paints in the first frame (it is a data URL from
- * the API response, no request), the real WebP loads lazily on top and fades in
- * over `--nv-motion-image-fade`. The box reserves its aspect ratio, so nothing
- * shifts. `decoding="async"` keeps decode off the main thread.
+ * the API response, no request), the real WebP loads on top and fades in over
+ * `--nv-motion-image-fade`. The box reserves its aspect ratio, so nothing
+ * shifts; `fill` instead covers a positioned parent (backdrops).
  */
-export function Artwork({ image, size, alt }: { image: Image; size: ImageSize; alt: string }) {
+export function Artwork({
+  image,
+  size,
+  alt,
+  fill = false,
+  eager = false,
+}: {
+  image: Image;
+  size: ImageSize;
+  alt: string;
+  fill?: boolean;
+  eager?: boolean;
+}) {
   const [loaded, setLoaded] = useState(false);
   return (
     <span
-      style={{
-        display: "block",
-        aspectRatio: String(image.aspect_ratio),
-        backgroundImage: `url(${placeholderDataUrl(image)})`,
-        backgroundSize: "cover",
-      }}
+      className={fill ? "artwork artwork-fill" : "artwork"}
+      style={{ aspectRatio: fill ? undefined : String(image.aspect_ratio), backgroundImage: `url(${placeholderDataUrl(image)})` }}
     >
       <img
         src={client.imageUrl(image, size)}
         alt={alt}
-        loading="lazy"
+        loading={eager ? "eager" : "lazy"}
+        fetchPriority={eager ? "high" : "auto"}
         decoding="async"
+        data-loaded={loaded}
         onLoad={() => setLoaded(true)}
-        style={{
-          width: "100%",
-          height: "100%",
-          opacity: loaded ? 1 : 0,
-          transition: "opacity var(--nv-motion-image-fade) var(--nv-motion-easing-standard)",
-        }}
       />
     </span>
   );

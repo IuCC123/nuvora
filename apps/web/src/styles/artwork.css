@@ -1,0 +1,25 @@
+/* Artwork: placeholder underneath, the image fades in on top */
+
+.artwork {
+  display: block;
+  background-size: cover;
+  background-position: center;
+}
+
+.artwork img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--nv-motion-image-fade) var(--nv-motion-easing-standard);
+}
+
+.artwork img[data-loaded="true"] {
+  opacity: 1;
+}
+
+.artwork-fill {
+  position: absolute;
+  inset: 0;
+}

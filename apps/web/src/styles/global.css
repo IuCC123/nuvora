@@ -1,9 +1,74 @@
-/* Base styles. Every value is a token variable from virtual:nuvora-tokens.css. */
+/* Base styles and shared controls. Every value is a token variable from virtual:nuvora-tokens.css. */
 :root {
   color-scheme: dark;
   background: var(--nv-color-canvas);
   color: var(--nv-color-text-primary);
   font-family: var(--nv-font-family);
+  font-size: var(--nv-type-body-size);
+  line-height: var(--nv-type-body-line);
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  caret-color: var(--nv-color-accent);
+  scrollbar-color: var(--nv-color-surface-raised) var(--nv-color-canvas);
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+}
+
+h1, h2, h3, p, dl, dd, ul {
+  margin: 0;
+}
+
+/* Zero specificity, so component classes can set their own padding. */
+:where(ul[role="list"]) {
+  list-style: none;
+  padding: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--nv-color-accent) 35%, transparent);
+  color: var(--nv-color-text-primary);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--nv-color-surface-raised);
+  border: 2px solid var(--nv-color-canvas);
+  border-radius: var(--nv-radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--nv-color-hairline);
 }
 
 /* One focus style for every interactive element: keyboard and TV remotes alike. */
@@ -13,6 +78,144 @@
   border-radius: var(--nv-radius-sm);
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 22px 0 18px;
+  border-radius: var(--nv-radius-md);
+  font-size: var(--nv-type-button-size);
+  line-height: var(--nv-type-button-line);
+  font-weight: var(--nv-font-weight-semibold);
+  transition:
+    background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    transform var(--nv-motion-duration-instant) var(--nv-motion-easing-standard);
+}
+
+.btn-primary {
+  background: var(--nv-color-accent);
+  color: var(--nv-color-accent-text);
+  box-shadow: var(--nv-shadow-raised);
+}
+
+.btn-primary:hover {
+  background: var(--nv-color-accent-hover);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+.btn-primary:disabled {
+  background: var(--nv-color-surface-raised);
+  color: var(--nv-color-text-muted);
+  box-shadow: none;
+  transform: none;
+}
+
+.btn-secondary {
+  padding: 0 18px;
+  background: var(--nv-color-surface-raised);
+  color: var(--nv-color-text-primary);
+}
+
+.btn-secondary:hover {
+  background: var(--nv-color-hairline);
+}
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--nv-radius-md);
+  color: var(--nv-color-text-secondary);
+  transition:
+    background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.icon-btn:hover {
+  background: var(--nv-color-surface-raised);
+  color: var(--nv-color-text-primary);
+}
+
+/* Notice: why something can't happen, over artwork or canvas */
+
+.notice {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  max-width: 520px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: var(--nv-radius-md);
+  background: var(--nv-color-overlay-panel);
+  border: 1px solid var(--nv-color-overlay-hairline);
+}
+
+.notice svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--nv-color-accent);
+}
+
+.notice-hint {
+  margin-top: 2px;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+}
+
+/* Whole-screen states */
+
+.error-state,
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 480px;
+  padding: 64px var(--nv-layout-gutter);
+}
+
+.error-state svg {
+  color: var(--nv-color-text-muted);
+}
+
+.error-state h1,
+.empty h2 {
+  font-size: var(--nv-type-title-size);
+  line-height: var(--nv-type-title-line);
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.error-state p,
+.empty p {
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-body-large-size);
+  line-height: var(--nv-type-body-large-line);
+  margin-bottom: 8px;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  * { transition-duration: 0ms !important; }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
 }

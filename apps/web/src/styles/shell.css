@@ -1,0 +1,211 @@
+/* Top bar, nav rail and the content column. The document scrolls; bar and rail stay put. */
+.app {
+  display: grid;
+  grid-template-columns: var(--nv-layout-nav-rail) minmax(0, 1fr);
+  grid-template-rows: var(--nv-layout-top-bar) 1fr;
+  min-height: 100dvh;
+}
+
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+  padding: 8px 14px;
+  border-radius: var(--nv-radius-md);
+  background: var(--nv-color-accent);
+  color: var(--nv-color-accent-text);
+  font-weight: var(--nv-font-weight-semibold);
+  transform: translateY(-200%);
+}
+
+.skip-link:focus-visible {
+  transform: none;
+}
+
+.content {
+  grid-column: 2;
+  min-width: 0;
+  outline: none;
+}
+
+/* Top bar */
+
+.topbar {
+  grid-column: 1 / -1;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px 0 22px;
+  background: var(--nv-color-canvas);
+  border-bottom: 1px solid var(--nv-color-divider);
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--nv-font-family-display);
+  font-stretch: 112%;
+  font-weight: var(--nv-font-weight-bold);
+  font-size: var(--nv-type-wordmark-size);
+  line-height: var(--nv-type-wordmark-line);
+  letter-spacing: 0.01em;
+}
+
+.wordmark svg {
+  color: var(--nv-color-accent);
+}
+
+.topbar-spacer {
+  flex: 1;
+}
+
+.scan-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 14px 0 12px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-color-surface);
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  font-variant-numeric: tabular-nums;
+  animation: fade-in var(--nv-motion-duration-base) var(--nv-motion-easing-enter);
+}
+
+.scan-spin {
+  color: var(--nv-color-accent);
+  animation: spin 900ms linear infinite;
+}
+
+.scan-count {
+  color: var(--nv-color-text-primary);
+}
+
+.scan-bar {
+  width: 72px;
+  height: 3px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-color-hairline);
+  overflow: hidden;
+}
+
+.scan-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-color-accent);
+  transition: width var(--nv-motion-duration-base) var(--nv-motion-easing-standard);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Nav rail */
+
+.rail {
+  position: sticky;
+  top: var(--nv-layout-top-bar);
+  align-self: start;
+  height: calc(100dvh - var(--nv-layout-top-bar));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 18px 12px;
+  border-right: 1px solid var(--nv-color-divider);
+  box-sizing: border-box;
+}
+
+.rail-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: var(--nv-radius-md);
+  color: var(--nv-color-text-secondary);
+  font-weight: var(--nv-font-weight-medium);
+  transition:
+    background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.rail-item:hover {
+  background: color-mix(in srgb, var(--nv-color-surface-raised) 60%, transparent);
+  color: var(--nv-color-text-primary);
+}
+
+.rail-item[aria-current="page"] {
+  background: var(--nv-color-surface-raised);
+  color: var(--nv-color-text-primary);
+}
+
+.rail-item[aria-current="page"] svg {
+  color: var(--nv-color-accent);
+}
+
+.rail-group {
+  margin: 18px 12px 6px;
+  font-size: var(--nv-type-caption-size);
+  line-height: var(--nv-type-caption-line);
+  font-weight: var(--nv-font-weight-semibold);
+  color: var(--nv-color-text-muted);
+}
+
+.rail-count {
+  margin-left: auto;
+  font-size: var(--nv-type-caption-size);
+  color: var(--nv-color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1023px) {
+  .app {
+    grid-template-columns: var(--nv-layout-nav-rail-compact) minmax(0, 1fr);
+  }
+
+  .rail {
+    padding-inline: 12px;
+    align-items: stretch;
+  }
+
+  .rail-item {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .rail-label,
+  .rail-count {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .rail-group {
+    height: 1px;
+    margin: 12px 8px;
+    background: var(--nv-color-divider);
+    font-size: 0;
+  }
+
+  .wordmark span {
+    display: none;
+  }
+}

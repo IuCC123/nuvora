@@ -1,0 +1,59 @@
+/* Player: the whole window is the video. Black, not canvas, so letterboxing disappears. */
+.player {
+  position: fixed;
+  inset: 0;
+  background: var(--nv-color-video);
+}
+
+.player-video {
+  width: 100%;
+  height: 100%;
+  background: var(--nv-color-video);
+}
+
+.player-back {
+  position: absolute;
+  z-index: 1;
+  top: 20px;
+  left: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px 0 10px;
+  border-radius: var(--nv-radius-pill);
+  background: color-mix(in srgb, var(--nv-color-canvas) 72%, transparent);
+  color: var(--nv-color-text-primary);
+  font-weight: var(--nv-font-weight-medium);
+  transition:
+    opacity var(--nv-motion-duration-base) var(--nv-motion-easing-standard),
+    background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.player-back:hover {
+  background: var(--nv-color-surface-raised);
+}
+
+.player[data-idle="true"] {
+  cursor: none;
+}
+
+.player[data-idle="true"] .player-back:not(:focus-visible) {
+  opacity: 0;
+}
+
+.player-notice {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: start;
+  padding: var(--nv-layout-gutter);
+}
+
+.player-notice h1 {
+  font-size: var(--nv-type-heading-size);
+  line-height: var(--nv-type-heading-line);
+  font-weight: var(--nv-font-weight-bold);
+  letter-spacing: -0.015em;
+}

@@ -1,13 +1,16 @@
 import { createRootRoute, createRoute, createRouter, Outlet } from "@tanstack/react-router";
 import { queries, queryClient } from "./nuvora";
+import { Shell } from "./components/Shell";
 import { Home } from "./screens/Home";
 import { MovieScreen } from "./screens/Movie";
 import { Player } from "./screens/Player";
+import { ErrorState } from "./screens/ErrorState";
 
 /**
  * Three routes. Each loader starts its screen's single request on navigation
  * (and on link hover/focus via `defaultPreload: "intent"`), so data is usually
- * cached before the screen renders.
+ * cached before the screen renders. Home and detail sit inside the shell (top
+ * bar and nav rail); the player takes the whole window.
  *
  *   /                          Home
  *   /movie/$id                 Movie detail
@@ -15,15 +18,20 @@ import { Player } from "./screens/Player";
  */
 const root = createRootRoute({ component: Outlet });
 
+const shell = createRoute({ getParentRoute: () => root, id: "shell", component: Shell });
+
 const home = createRoute({
-  getParentRoute: () => root,
+  getParentRoute: () => shell,
   path: "/",
   loader: () => queryClient.ensureQueryData(queries.home()),
   component: Home,
+  errorComponent: ({ reset }) => (
+    <ErrorState title="Can't reach your Nuvora server" detail="Check that it's running, then try again." retry={reset} />
+  ),
 });
 
 const movie = createRoute({
-  getParentRoute: () => root,
+  getParentRoute: () => shell,
   path: "/movie/$id",
   params: { parse: (p) => ({ id: Number(p.id) }), stringify: (p) => ({ id: String(p.id) }) },
   // Not awaited: the screen paints from the cached home card at once and fills
@@ -42,7 +50,7 @@ const play = createRoute({
 });
 
 export const router = createRouter({
-  routeTree: root.addChildren([home, movie, play]),
+  routeTree: root.addChildren([shell.addChildren([home, movie]), play]),
   defaultPreload: "intent",
   defaultPreloadStaleTime: 0, // TanStack Query owns freshness
   scrollRestoration: true,
@@ -53,5 +61,3 @@ declare module "@tanstack/react-router" {
     router: typeof router;
   }
 }
-
-export { movie as movieRoute, play as playRoute };

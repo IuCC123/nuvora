@@ -1,0 +1,202 @@
+/* Home: titled rows of posters that scroll sideways, edge to edge of the content column. */
+/* A flex column, so the strips' negative margins cannot collapse into the row gap. */
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  padding: 28px 0 var(--nv-space-7);
+}
+
+.row {
+  scroll-margin-top: calc(var(--nv-layout-top-bar) + var(--nv-space-4));
+}
+
+.row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--nv-layout-gutter);
+  margin-bottom: 14px;
+}
+
+.row-head h2 {
+  font-size: var(--nv-type-title-size);
+  line-height: var(--nv-type-title-line);
+  font-weight: var(--nv-font-weight-semibold);
+  letter-spacing: -0.005em;
+}
+
+.row-count {
+  margin-left: 10px;
+  color: var(--nv-color-text-muted);
+  font-size: var(--nv-type-small-size);
+  font-variant-numeric: tabular-nums;
+}
+
+.row-arrows {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.round-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--nv-color-surface);
+  color: var(--nv-color-text-secondary);
+  transition:
+    background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.round-btn:hover:not(:disabled) {
+  background: var(--nv-color-surface-raised);
+  color: var(--nv-color-text-primary);
+}
+
+.round-btn:focus-visible {
+  border-radius: 50%;
+}
+
+.round-btn:disabled {
+  color: color-mix(in srgb, var(--nv-color-text-muted) 45%, var(--nv-color-surface));
+}
+
+/*
+ * The strip's padding leaves room for the lifted card's ring and shadow,
+ * which overflow-x would otherwise clip; the negative margin keeps the layout.
+ */
+.row-strip {
+  display: flex;
+  gap: var(--nv-poster-gap);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  padding: 8px var(--nv-layout-gutter) 32px;
+  margin: -8px 0 -32px;
+  scroll-padding-inline: var(--nv-layout-gutter);
+}
+
+.row-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.row-item {
+  flex: none;
+  width: var(--nv-poster-width-regular);
+}
+
+.row-pending .poster-frame {
+  background: var(--nv-color-surface);
+}
+
+/* Poster card */
+
+.poster-card {
+  display: block;
+  border-radius: var(--nv-radius-sm);
+}
+
+.poster-card:focus-visible {
+  outline: none;
+}
+
+.poster-frame {
+  position: relative;
+  display: block;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--nv-radius-sm);
+  background: var(--nv-color-surface);
+  transition:
+    transform var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    box-shadow var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.poster-frame > .artwork,
+.poster-frame > .title-card {
+  height: 100%;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.poster-hover {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  background: var(--nv-color-poster-hover);
+  opacity: 0;
+  transition: opacity var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.poster-hover-play {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--nv-color-accent);
+  color: var(--nv-color-accent-text);
+  box-shadow: var(--nv-shadow-raised);
+  transform: scale(0.9);
+  transition: transform var(--nv-motion-duration-fast) var(--nv-motion-easing-enter);
+}
+
+.poster-hover-play svg {
+  margin-left: 3px;
+}
+
+.poster-card:hover .poster-frame,
+.poster-card:focus-visible .poster-frame {
+  transform: translateY(-3px);
+  box-shadow:
+    0 0 0 2px var(--nv-color-canvas),
+    0 0 0 4px var(--nv-color-focus-ring),
+    var(--nv-shadow-lift);
+}
+
+.poster-card:hover .poster-hover,
+.poster-card:focus-visible .poster-hover {
+  opacity: 1;
+}
+
+.poster-card:hover .poster-hover-play,
+.poster-card:focus-visible .poster-hover-play {
+  transform: none;
+}
+
+.poster-caption {
+  display: block;
+  margin-top: 10px;
+}
+
+.poster-title,
+.poster-year {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.poster-title {
+  font-weight: var(--nv-font-weight-medium);
+}
+
+.poster-year {
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .poster-card:hover .poster-frame,
+  .poster-card:focus-visible .poster-frame {
+    transform: none;
+  }
+}
