@@ -1,4 +1,4 @@
-import { accountRoute, signedIn, type Reply } from "./fixtureAccounts";
+import { accountRoute, hasLibraries, signedIn, signedInAsAdmin, type Reply } from "./fixtureAccounts";
 import { continueWatching, watchRoute, watchState, withWatch } from "./fixtureWatch";
 import type { FetchLike, HomeResponse, HttpMethod, ItemDetail, PosterCard, RowPage, ScanStatus, Version } from "@nuvora/core";
 
@@ -42,6 +42,7 @@ const byId = (id: number): PosterCard => cards().find((c) => c.id === id)!;
 const ALL_FIRST_PAGE = 8;
 
 function home(): HomeResponse {
+  if (!hasLibraries()) return { rows: [] };
   const recent = [14, 13, 12, 5, 11, 9, 4].map(byId);
   const resume = continueWatching().map(byId);
   const all = cards();
@@ -168,6 +169,9 @@ function catalogRoute(method: HttpMethod, path: string, request: unknown): Reply
   if (!signedIn()) return { status: 401, body: { code: "unauthorized", message: "Sign in to continue.", field: null } };
   const watch = watchRoute(method, path, request, (id) => item(id)?.versions.map((v) => v.file_id));
   if (watch) return watch;
+  if (path === "/api/scan" && method === "POST" && !signedInAsAdmin()) {
+    return { status: 403, body: { code: "forbidden", message: "Only an admin can do that.", field: null } };
+  }
   const body = route(method, path);
   return body === undefined ? { status: 404, body: { code: "not_found", message: "Not found", field: null } } : { status: 200, body };
 }

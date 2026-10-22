@@ -34,6 +34,8 @@ function invalidDisplayName(name: string): Reply | null {
  *   signed-out  users exist, nobody signed in: Sign in (jamie / password1)
  *   admin       signed in as the admin (the default)
  *   member      signed in as a member
+ *   empty       signed in as the admin, with no libraries (an empty Home)
+ *   member-empty  signed in as a member, with no libraries
  *
  * Sample content: names and folders are invented.
  */
@@ -78,6 +80,10 @@ function scenario(name: string): State {
       return { ...base, users, session: null, libraries };
     case "member":
       return { ...base, users, session: 2, libraries };
+    case "empty":
+      return { ...base, users, session: 1, libraries: [] };
+    case "member-empty":
+      return { ...base, users, session: 2, libraries: [] };
     default:
       return { ...base, users, session: 1, libraries };
   }
@@ -142,6 +148,14 @@ const enabledAdmins = () => state.users.filter((u) => u.role === "admin" && !u.d
 export function expireSession() {
   state.session = null;
   save();
+}
+
+export function hasLibraries(): boolean {
+  return state.libraries.length > 0;
+}
+
+export function signedInAsAdmin(): boolean {
+  return me()?.role === "admin";
 }
 
 export function signedIn(): boolean {
