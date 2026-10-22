@@ -50,7 +50,39 @@ impl FromStr for ArtworkId {
     /// Exactly 32 lowercase hex chars; anything else is rejected before it can
     /// reach a filesystem path.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let _ = s;
-        todo!()
+        if s.len() != 32 || !s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+            return Err(ParseIdError);
+        }
+        let mut id = [0u8; 16];
+        for (i, byte) in id.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&s[2 * i..2 * i + 2], 16).map_err(|_| ParseIdError)?;
+        }
+        Ok(ArtworkId(id))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn artwork_ids_round_trip_as_lowercase_hex() {
+        let id = ArtworkId([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 255]);
+        let text = id.to_string();
+        assert_eq!(text, "000102030405060708090a0b0c0d0e0f".replace("0f", "ff"));
+        assert_eq!(text.parse::<ArtworkId>().unwrap(), id);
+    }
+
+    #[test]
+    fn malformed_artwork_ids_are_rejected() {
+        for bad in [
+            "",
+            "00",
+            "ZZ0102030405060708090a0b0c0d0e0f",
+            "000102030405060708090A0B0C0D0E0F",
+            "../../etc/passwd/0000",
+        ] {
+            assert!(bad.parse::<ArtworkId>().is_err(), "{bad:?}");
+        }
     }
 }
