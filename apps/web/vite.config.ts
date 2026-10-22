@@ -73,8 +73,9 @@ export default defineConfig(({ mode }) => {
   const video = env.NUVORA_FIXTURE_VIDEO ?? "/tmp/nuvora-media/Movies/Tears of Steel (2012)/Tears of Steel (2012).webm";
   return {
     plugins: [react(), tokensCss(), ...(fixtures ? [fixtureAssets(video)] : [])],
-    // Dev: Vite serves the app with HMR; the Rust server answers /api (default bind).
-    server: fixtures ? {} : { proxy: { "/api": "http://127.0.0.1:8640" } },
+    // Dev: Vite serves the app with HMR; the Rust server answers /api (default bind, or NUVORA_SERVER).
+    // The Host header stays Vite's, so it matches the browser's Origin and passes the server's CSRF check.
+    server: fixtures ? {} : { proxy: { "/api": { target: env.NUVORA_SERVER ?? "http://127.0.0.1:8640", changeOrigin: false } } },
     build: {
       // Read by the Rust binary (rust-embed) for production.
       outDir: "dist",
