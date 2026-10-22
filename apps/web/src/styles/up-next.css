@@ -1,0 +1,154 @@
+/* The player's Next episode card and the episode heading parts. Kept apart from player.css, which the control bar owns. */
+.player-heading h1 {
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.player-heading-sep {
+  color: var(--nv-color-text-muted);
+  font-weight: var(--nv-font-weight-regular);
+}
+
+.player-heading-part {
+  color: var(--nv-color-text-secondary);
+  font-weight: var(--nv-font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.up-next {
+  position: absolute;
+  right: var(--player-pad);
+  bottom: 32px;
+  display: flex;
+  gap: 16px;
+  width: min(400px, calc(100% - 2 * var(--player-pad)));
+  padding: 12px 16px 12px 12px;
+  border-radius: var(--nv-radius-lg);
+  background: var(--nv-color-surface-raised);
+  border: 1px solid var(--nv-color-overlay-hairline);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+  user-select: none;
+  transition: transform var(--nv-motion-duration-base) var(--nv-motion-easing-standard);
+  animation: up-next-in var(--nv-motion-duration-base) var(--nv-motion-easing-enter);
+}
+
+.up-next[data-raised="true"] {
+  transform: translateY(-112px);
+}
+
+@keyframes up-next-in {
+  from {
+    opacity: 0;
+    translate: 24px 0;
+  }
+}
+
+.up-next-thumb {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 136px;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--nv-radius-md);
+  overflow: hidden;
+  background: var(--nv-color-surface);
+}
+
+.up-next-thumb > .artwork,
+.up-next-thumb-blank {
+  position: absolute;
+  inset: 0;
+}
+
+.up-next-thumb-blank {
+  background: linear-gradient(160deg, var(--nv-color-hairline), var(--nv-color-surface));
+}
+
+/* Dims the frame under the countdown so the white numeral reads over any picture. */
+.up-next-thumb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.up-next-ring {
+  position: relative;
+  z-index: 1;
+  width: 52px;
+  height: 52px;
+  transform: rotate(-90deg);
+}
+
+.up-next-ring circle {
+  fill: none;
+  stroke-width: 3;
+}
+
+.up-next-ring-track {
+  stroke: rgba(255, 255, 255, 0.24);
+}
+
+.up-next-ring-fill {
+  stroke: var(--nv-color-accent);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 260ms linear;
+}
+
+.up-next-count {
+  position: absolute;
+  z-index: 1;
+  font-size: var(--nv-type-title-size);
+  font-weight: var(--nv-font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.up-next-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.up-next-body h2 {
+  font-size: var(--nv-type-body-large-size);
+  line-height: var(--nv-type-body-large-line);
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.up-next-episode {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 2px;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+}
+
+.up-next-label {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.up-next-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.up-next-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.up-next .btn-small {
+  height: 32px;
+}
+
+@media (max-width: 640px) {
+  .up-next-thumb {
+    width: 96px;
+  }
+}

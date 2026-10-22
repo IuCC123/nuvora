@@ -53,6 +53,43 @@ export function FilmIcon(p: IconProps) {
   );
 }
 
+export function TvIcon(p: IconProps) {
+  return (
+    <svg {...stroke(p)}>
+      <rect width="20" height="14" x="2" y="4" rx="2" />
+      <path d="M8 21h8M12 18v3" />
+    </svg>
+  );
+}
+
+export function ChevronDownIcon(p: IconProps) {
+  return (
+    <svg {...stroke({ size: 16, strokeWidth: 2, ...p })}>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+/** An arrow beside a short and a long bar: the sort direction, upside down for descending. */
+export function SortDirectionIcon({ descending, ...p }: IconProps & { descending: boolean }) {
+  return (
+    <svg {...stroke({ size: 18, strokeWidth: 2, ...p })}>
+      <g transform={descending ? "matrix(1 0 0 -1 0 24)" : undefined}>
+        <path d="m3 8 4-4 4 4M7 4v16" />
+      </g>
+      <path d={descending ? "M15 6h6M15 12h4M15 18h2" : "M15 6h2M15 12h4M15 18h6"} />
+    </svg>
+  );
+}
+
+export function CloseIcon(p: IconProps) {
+  return (
+    <svg {...stroke({ size: 16, strokeWidth: 2, ...p })}>
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
 export function RefreshIcon(p: IconProps) {
   return (
     <svg {...stroke({ size: 18, ...p })}>
@@ -188,6 +225,16 @@ export function PauseIcon({ size = 18, ...rest }: IconProps) {
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden focusable={false} {...rest}>
       <rect x="5.5" y="4" width="4.5" height="16" rx="1.2" fill="currentColor" />
       <rect x="14" y="4" width="4.5" height="16" rx="1.2" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** Play then a bar: skip to the next episode. */
+export function SkipNextIcon({ size = 22, ...rest }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden focusable={false} {...rest}>
+      <path d="M4 5.2v13.6a1 1 0 0 0 1.53.85l10.3-6.8a1 1 0 0 0 0-1.7L5.53 4.35A1 1 0 0 0 4 5.2z" fill="currentColor" />
+      <rect x="17.5" y="4" width="2.6" height="16" rx="1.1" fill="currentColor" />
     </svg>
   );
 }

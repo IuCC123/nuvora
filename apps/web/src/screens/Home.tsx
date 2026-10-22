@@ -15,7 +15,7 @@ export function Home() {
   return (
     <div className="home">
       <h1 className="sr-only">Home</h1>
-      {rows.length ? rows.map((row) => <PosterRow key={row.kind} row={row} />) : <EmptyLibrary />}
+      {rows.length ? rows.map((row) => <PosterRow key={`${row.kind}-${row.library_id ?? ""}`} row={row} />) : <EmptyLibrary />}
     </div>
   );
 }
@@ -25,8 +25,8 @@ function EmptyLibrary() {
   const admin = useUser()?.role === "admin";
   return (
     <div className="empty">
-      <h2>No movies yet</h2>
-      {admin ? <ScanPrompt /> : <p>Movies show up here once an admin adds them to this server.</p>}
+      <h2>Nothing to watch yet</h2>
+      {admin ? <ScanPrompt /> : <p>Movies and shows appear here once an admin adds them to this server.</p>}
     </div>
   );
 }
@@ -35,7 +35,7 @@ function ScanPrompt() {
   const scan = useStartScan();
   return (
     <>
-      <p>Add movie files to a library folder, then scan to bring them in.</p>
+      <p>Add movie or episode files to a library folder, then scan to bring them in.</p>
       <button type="button" className="btn btn-secondary" onClick={() => scan.mutate()} disabled={scan.isPending}>
         Scan library
       </button>

@@ -1,0 +1,112 @@
+/* Menus opened from a toolbar button: sort, quality, seasons. Same surface as the account menu. */
+.dropdown {
+  position: relative;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 6;
+  min-width: 220px;
+  max-height: min(420px, calc(100dvh - 160px));
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: var(--nv-radius-lg);
+  background: var(--nv-color-surface-raised);
+  border: 1px solid var(--nv-color-hairline);
+  box-shadow: var(--nv-shadow-lift);
+  transform-origin: top left;
+  animation: menu-in var(--nv-motion-duration-fast) var(--nv-motion-easing-enter);
+}
+
+.dropdown-menu[data-align="end"] {
+  right: 0;
+  left: auto;
+  transform-origin: top right;
+}
+
+.dropdown-group + .dropdown-group,
+.dropdown-item + .dropdown-group,
+.dropdown-group + .dropdown-item {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--nv-color-hairline);
+}
+
+.dropdown-heading {
+  padding: 6px 10px 4px 38px;
+  color: var(--nv-color-text-muted);
+  font-size: var(--nv-type-caption-size);
+  line-height: var(--nv-type-caption-line);
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 12px 0 8px;
+  border-radius: var(--nv-radius-md);
+  color: var(--nv-color-text-primary);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus-visible {
+  background: var(--nv-color-hairline);
+  outline: none;
+}
+
+.dropdown-check {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  color: var(--nv-color-accent);
+}
+
+.dropdown-text {
+  flex: 1;
+}
+
+.dropdown-aside {
+  margin-left: 16px;
+  color: var(--nv-color-text-muted);
+  font-size: var(--nv-type-small-size);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The toolbar button that opens a menu or toggles a choice. */
+.tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--nv-radius-md);
+  background: var(--nv-color-surface);
+  color: var(--nv-color-text-primary);
+  font-weight: var(--nv-font-weight-medium);
+  white-space: nowrap;
+  transition:
+    background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.tool-btn:hover,
+.tool-btn[aria-expanded="true"] {
+  background: var(--nv-color-surface-raised);
+}
+
+.tool-btn svg {
+  flex: none;
+  color: var(--nv-color-text-secondary);
+}
+
+.tool-btn-label {
+  color: var(--nv-color-text-secondary);
+}

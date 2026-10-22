@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useCanGoBack, useNavigate, useParams, useRouter, useRouterState, useSearch } from "@tanstack/react-router";
-import { formatClock } from "@nuvora/core";
+import { formatClock, type EpisodeDetail, type EpisodeRef } from "@nuvora/core";
 import { client, queries } from "../nuvora";
 import { ArrowLeftIcon, Back10Icon, Forward10Icon, FullscreenIcon, PauseIcon, PipIcon, PlayIcon, SpinIcon, VolumeIcon } from "../components/Icon";
 import { Notice, type NoticeText } from "../components/Notice";
+import { NextEpisodeButton } from "../components/player/NextEpisodeButton";
+import { PlayerTitle } from "../components/player/PlayerTitle";
 import { Scrubber } from "../components/player/Scrubber";
+import { UpNext } from "../components/player/UpNext";
 import { Volume } from "../components/player/Volume";
 import { fileGone, playerFailed, playState } from "../lib/playState";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
@@ -34,26 +37,45 @@ const TOGGLE_KEYS = new Set([" ", "k", "m", "f", "Escape"]);
 export function Player() {
   const { id } = useParams({ from: "/movie/$id/play" });
   const { file, t } = useSearch({ from: "/movie/$id/play" });
+  return <PlayerScreen route="/movie/$id/play" id={id} file={file} t={t} />;
+}
+
+/** An episode's player. Its loader always settles on a file, so a missing one only means the redirect is still on its way. */
+export function EpisodePlayer() {
+  const { id } = useParams({ from: "/episode/$id/play" });
+  const { file, t } = useSearch({ from: "/episode/$id/play" });
+  return file === undefined ? null : <PlayerScreen route="/episode/$id/play" id={id} file={file} t={t} />;
+}
+
+function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/episode/$id/play"; id: number; file: number; t: number | undefined }) {
   const navigate = useNavigate();
   const router = useRouter();
   const canGoBack = useCanGoBack();
-  const { data: movie } = useQuery(queries.item(id));
+  const { data } = useQuery(queries.item(id));
+  const movie = data?.kind === "movie" || data?.kind === "episode" ? data : undefined;
+  const episode = movie?.kind === "episode" ? movie : undefined;
   const [failed, setFailed] = useState(false);
-  useDocumentTitle(movie?.title);
+  useDocumentTitle(episode ? `${episode.show_title} · ${episode.label}` : movie?.title);
+  useLeaveFullscreen();
 
   // Only the detail page links here, so stepping back returns to it without a new history entry.
   // A player opened from a pasted link has nothing behind it and swaps itself for the detail page.
-  const back = useCallback(
-    () => (canGoBack ? router.history.back() : void navigate({ to: "/movie/$id", params: { id }, replace: true })),
-    [canGoBack, router, navigate, id],
-  );
+  const back = useCallback(() => {
+    if (canGoBack) return router.history.back();
+    if (episode) void navigate({ to: "/show/$id", params: { id: episode.show_id }, search: { season: episode.season }, replace: true });
+    else void navigate({ to: "/movie/$id", params: { id }, replace: true });
+  }, [canGoBack, router, navigate, id, episode]);
   const keepPlace = useCallback(
     (positionMs: number) => {
       const seconds = Math.floor(positionMs / 1000);
-      void navigate({ to: "/movie/$id/play", params: { id }, search: { file, ...(seconds > 0 && { t: seconds }) }, replace: true, resetScroll: false });
+      const search = { file, ...(seconds > 0 && { t: seconds }) };
+      if (route === "/movie/$id/play") void navigate({ to: route, params: { id }, search, replace: true, resetScroll: false });
+      else void navigate({ to: route, params: { id }, search, replace: true, resetScroll: false });
     },
-    [navigate, id, file],
+    [navigate, route, id, file],
   );
+  // The next episode replaces this one in history, so Back still returns to the show.
+  const playNext = useCallback((next: EpisodeRef) => void navigate({ to: "/episode/$id/play", params: { id: next.id }, search: {}, replace: true }), [navigate]);
   const version = movie?.versions.find((v) => v.file_id === file);
   const durationMs = version?.media?.duration_ms;
   // A time at or past the end would open on the last frame; such a link starts from the beginning.
@@ -72,8 +94,10 @@ export function Player() {
       key={`${id}:${file}`}
       itemId={id}
       fileId={file}
-      title={movie?.title}
-      year={movie?.year}
+      title={episode?.show_title ?? movie?.title}
+      year={movie?.kind === "movie" ? movie.year : undefined}
+      episode={episode}
+      onNext={playNext}
       src={src}
       startAt={startAt}
       notice={notice}
@@ -89,6 +113,8 @@ interface PlayerViewProps {
   fileId: number;
   title: string | undefined;
   year: number | null | undefined;
+  episode: EpisodeDetail | undefined;
+  onNext: (next: EpisodeRef) => void;
   src: string | undefined;
   /** Seconds. Read once: the URL keeps moving with playback after that. */
   startAt: number | undefined;
@@ -100,9 +126,8 @@ interface PlayerViewProps {
 
 type PulseKind = "play" | "pause" | "back" | "forward" | "volume";
 
-function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, notice, onBack, onFailed, onPosition }: PlayerViewProps) {
+function PlayerView({ itemId, fileId, title, year, episode, onNext, src, startAt: initialStart, notice, onBack, onFailed, onPosition }: PlayerViewProps) {
   const [startAt] = useState(initialStart);
-  const root = useRef<HTMLDivElement>(null);
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   const media = useMediaState(video);
   const [ready, setReady] = useState(false);
@@ -129,7 +154,7 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
   }, []);
 
   useEffect(() => {
-    const onChange = () => setFullscreen(document.fullscreenElement === root.current);
+    const onChange = () => setFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
@@ -179,7 +204,8 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
     },
     fullscreen() {
       if (document.fullscreenElement) void document.exitFullscreen();
-      else if (document.fullscreenEnabled) void root.current?.requestFullscreen().catch(() => {});
+      // The whole page, not this view: the next episode mounts a new view and full screen carries over.
+      else if (document.fullscreenEnabled) void document.documentElement.requestFullscreen().catch(() => {});
       else if (videoFullscreen) {
         try {
           videoFullscreen.call(video);
@@ -247,7 +273,6 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
 
   return (
     <div
-      ref={root}
       className="player"
       data-controls={visible ? "shown" : "hidden"}
       onPointerMove={(e) => e.pointerType !== "touch" && wake()}
@@ -318,6 +343,8 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
         )}
       </div>
 
+      {episode?.next && src && !notice && <UpNext video={video} next={episode.next} controlsShown={visible} onPlay={onNext} />}
+
       {notice && (
         <div className="player-notice">
           <Notice text={notice} />
@@ -333,12 +360,7 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
           <button type="button" className="player-btn player-back" aria-label={title ? `Back to ${title}` : "Back"} data-tip="Back · Esc" onMouseDown={(e) => e.preventDefault()} onClick={onBack}>
             <ArrowLeftIcon />
           </button>
-          {title && (
-            <div className="player-heading">
-              <h1>{title}</h1>
-              {year != null && <span className="player-year">{year}</span>}
-            </div>
-          )}
+          <PlayerTitle title={title} year={year} episode={episode} />
         </header>
 
         {src && !notice && (
@@ -370,6 +392,7 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
                 <ControlButton label={`Forward ${SKIP_SECONDS} seconds`} tip="Forward 10 s · L" onClick={() => actions.skip(SKIP_SECONDS)}>
                   <Forward10Icon />
                 </ControlButton>
+                {episode?.next && <NextEpisodeButton next={episode.next} onPlay={onNext} />}
               </div>
               <div className="player-controls-end">
                 {pipSupported && (
@@ -433,6 +456,11 @@ function useReleaseStream(video: HTMLVideoElement | null) {
       video.load();
     };
   }, [video]);
+}
+
+/** Full screen belongs to the page while the player is open; leaving the player leaves it too. */
+function useLeaveFullscreen() {
+  useEffect(() => () => void (document.fullscreenElement && document.exitFullscreen().catch(() => {})), []);
 }
 
 /** True until `ms` pass without a `wake()`. */

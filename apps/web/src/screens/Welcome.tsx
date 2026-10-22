@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { checkDisplayName, checkPassword, checkPasswordsMatch, checkRequired, checkUsername, PASSWORD_MIN_LENGTH, queryKeys } from "@nuvora/core";
+import { checkDisplayName, checkPassword, checkPasswordsMatch, checkRequired, checkUsername, PASSWORD_MIN_LENGTH, queryKeys, type LibraryKind } from "@nuvora/core";
 import { client, queries } from "../nuvora";
 import { AuthScreen } from "../components/AuthScreen";
 import { FormError, TextField } from "../components/Field";
 import { FolderList } from "../components/FolderList";
+import { LIBRARY_TYPES, TypePicker, TypeSuggestion } from "../components/LibraryType";
 import { setSessionUser } from "../lib/session";
 import { serverError } from "../lib/serverError";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
@@ -105,19 +106,24 @@ export function WelcomeLibrary() {
     },
   });
   const form = useForm(
-    { name: "Movies", paths: [] as readonly string[] },
-    (v) => ({ name: checkRequired(v.name, "a name for the library"), paths: v.paths.length ? null : "Choose the folder your movies are in." }),
+    { name: LIBRARY_TYPES.movies.label, paths: [] as readonly string[], kind: "movies" as LibraryKind },
+    (v) => ({ name: checkRequired(v.name, "a name for the library"), paths: v.paths.length ? null : "Choose the folder your videos are in.", kind: null }),
     create.reset,
   );
+  // Still named after its type, the library follows a type change.
+  const chooseKind = (kind: LibraryKind) => {
+    if (form.values.name.trim() === LIBRARY_TYPES[form.values.kind].label) form.set("name", LIBRARY_TYPES[kind].label);
+    form.set("kind", kind);
+  };
   const failed = serverError(create.error, ["name", "paths"]);
 
   return (
     <AuthScreen>
       <div className="auth-card auth-card-wide">
         <Steps step={2} />
-        <h1>Add your movies</h1>
+        <h1>Add your library</h1>
         <p className="auth-lede">
-          Choose the folder that holds your movie files, and Nuvora brings them in. When you add more later, scan again from Settings.
+          Choose the folder that holds your movies or shows, and Nuvora brings them in. When you add more later, scan again from Settings.
         </p>
         {existing.length > 0 && (
           <p className="welcome-existing">
@@ -128,8 +134,9 @@ export function WelcomeLibrary() {
         <form
           className="form"
           noValidate
-          onSubmit={form.submit((v) => create.mutate({ name: v.name.trim(), kind: "movies", paths: [...v.paths] }))}
+          onSubmit={form.submit((v) => create.mutate({ name: v.name.trim(), kind: v.kind, paths: [...v.paths] }))}
         >
+          <TypePicker value={form.values.kind} onChange={chooseKind} />
           <TextField label="Library name" {...form.field("name")} error={form.error("name") ?? failed.field.name} />
           <FolderList
             label="Folder"
@@ -138,6 +145,7 @@ export function WelcomeLibrary() {
             error={form.error("paths") ?? failed.field.paths}
             openPicker
           />
+          <TypeSuggestion paths={form.values.paths} kind={form.values.kind} onUse={chooseKind} />
           <FormError message={failed.form} />
           <div className="form-actions">
             <button type="submit" className="btn btn-primary" disabled={create.isPending || create.isSuccess} aria-busy={create.isPending}>
