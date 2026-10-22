@@ -133,9 +133,9 @@ const versionOverrides: Record<number, (v: Version) => Version[]> = {
         video: [{ codec: "VP9", profile: "Profile 0", width: 1920, height: 800, frame_rate: 24, bit_depth: 8, hdr: null }],
         audio: [{ index: 1, codec: "opus", channels: 2, layout: "Stereo", language: "eng", is_default: true }],
         subtitles: [
-          { index: 2, codec: "SRT", format: "srt", renderable: true, language: "eng", is_default: false, is_forced: false, is_hearing_impaired: false },
-          { index: 3, codec: "SRT", format: "srt", renderable: true, language: "spa", is_default: false, is_forced: false, is_hearing_impaired: false },
-          { index: 4, codec: "PGS", format: "image", renderable: false, language: "eng", title: "Commentary", is_default: false, is_forced: false, is_hearing_impaired: false },
+          { index: 2, codec: "SRT", format: "srt", renderable: true, language: "eng", is_default: false, is_forced: false, is_hearing_impaired: false, external: false },
+          { index: 3, codec: "SRT", format: "srt", renderable: true, language: "spa", is_default: false, is_forced: false, is_hearing_impaired: false, external: false },
+          { index: 4, codec: "PGS", format: "image", renderable: false, language: "eng", title: "Commentary", is_default: false, is_forced: false, is_hearing_impaired: false, external: false },
         ],
       },
     },
@@ -168,8 +168,8 @@ const versionOverrides: Record<number, (v: Version) => Version[]> = {
         duration_ms: 1_420_000,
         audio: [{ index: 1, codec: "aac", channels: 2, layout: "Stereo", language: "jpn", is_default: true }],
         subtitles: [
-          { index: 2, codec: "ASS", format: "ass", renderable: true, language: "spa", title: "Español", is_default: true, is_forced: false, is_hearing_impaired: false },
-          { index: 3, codec: "ASS", format: "ass", renderable: true, language: "fre", title: "Complets", is_default: false, is_forced: false, is_hearing_impaired: false },
+          { index: 2, codec: "ASS", format: "ass", renderable: true, language: "spa", title: "Español", is_default: true, is_forced: false, is_hearing_impaired: false, external: false },
+          { index: 3, codec: "ASS", format: "ass", renderable: true, language: "fre", title: "Complets", is_default: false, is_forced: false, is_hearing_impaired: false, external: false },
         ],
       },
     },

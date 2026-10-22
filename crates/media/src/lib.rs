@@ -12,6 +12,7 @@ mod hls;
 mod name;
 mod playback;
 mod probe;
+mod sidecar;
 mod subtitles;
 #[cfg(test)]
 mod test_fixtures;
@@ -34,6 +35,7 @@ pub use probe::{
     AudioCodec, AudioStream, ColorInfo, Container, HdrFormat, MediaInfo, PROBE_VERSION, ProbeError,
     SubtitleCodec, SubtitleStream, VideoCodec, VideoStream, probe,
 };
+pub use sidecar::{SIDECAR_EXTENSIONS, SidecarName, sidecar_codec, sidecar_name};
 pub use subtitles::{
     ExtractError, FontAttachment, SubtitleText, dump_attachment, extract_subtitle,
     font_attachments, font_mime_type,

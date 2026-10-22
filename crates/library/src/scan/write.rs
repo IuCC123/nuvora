@@ -13,7 +13,8 @@ use super::place::{self, Placement};
 use super::plan::{
     ArtKind, FileForArtwork, ItemFiles, KnownFile, Move, ProbeJob, StoredArtwork, WantedSource,
 };
-use super::walk::{RelPath, RootId};
+use super::sidecars::SidecarRow;
+use super::walk::{DiskFile, RelPath, RootId};
 use crate::{ArtworkId, FileId, ItemId, LibraryKind, LibrarySpec};
 
 pub(crate) struct RootRow {
@@ -568,6 +569,73 @@ pub(crate) fn live_artwork_ids(conn: &Connection) -> rusqlite::Result<HashSet<Ar
 
 /// `UPDATE catalog SET rev = rev + 1`. Home and row ETags are this number, so a
 /// write that changes visible rows without bumping it would serve stale 304s.
+/// Replaces `root`'s subtitle files with `subtitles` attached to their
+/// videos (`sidecars::assign`). Bumps the rev only when something changed.
+pub(crate) fn sync_sidecars(
+    tx: &Transaction<'_>,
+    root: RootId,
+    subtitles: &[DiskFile],
+) -> rusqlite::Result<()> {
+    let videos: Vec<(FileId, String)> = tx
+        .prepare_cached("SELECT id, rel_path FROM media_file WHERE root_id = ?1")?
+        .query_map([root.0], |r| Ok((FileId(r.get(0)?), r.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    let wanted = super::sidecars::assign(&videos, subtitles);
+    let stored: Vec<SidecarRow> = tx
+        .prepare_cached(
+            "SELECT s.file_id, s.rel_path, s.size, s.mtime_ns, s.format, s.language, s.title, \
+             s.is_forced, s.is_sdh, s.is_default FROM media_sidecar s \
+             JOIN media_file f ON f.id = s.file_id WHERE f.root_id = ?1 ORDER BY s.file_id, s.rel_path",
+        )?
+        .query_map([root.0], |r| {
+            Ok(SidecarRow {
+                file: FileId(r.get(0)?),
+                rel: r.get(1)?,
+                size: r.get::<_, i64>(2)? as u64,
+                mtime_ns: r.get(3)?,
+                format: match r.get_ref(4)?.as_str()? {
+                    "ass" => "ass",
+                    "vtt" => "vtt",
+                    _ => "srt",
+                },
+                name: nuvora_media::SidecarName {
+                    language: r.get(5)?,
+                    title: r.get(6)?,
+                    forced: r.get(7)?,
+                    hearing_impaired: r.get(8)?,
+                    default: r.get(9)?,
+                },
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    if stored == wanted {
+        return Ok(());
+    }
+    tx.execute(
+        "DELETE FROM media_sidecar WHERE file_id IN (SELECT id FROM media_file WHERE root_id = ?1)",
+        [root.0],
+    )?;
+    let mut insert = tx.prepare_cached(
+        "INSERT INTO media_sidecar (file_id, rel_path, size, mtime_ns, format, language, title, \
+         is_forced, is_sdh, is_default) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+    )?;
+    for row in &wanted {
+        insert.execute(params![
+            row.file.0,
+            row.rel,
+            row.size as i64,
+            row.mtime_ns,
+            row.format,
+            row.name.language,
+            row.name.title,
+            row.name.forced,
+            row.name.hearing_impaired,
+            row.name.default,
+        ])?;
+    }
+    bump_rev(tx)
+}
+
 pub(crate) fn bump_rev(tx: &Transaction<'_>) -> rusqlite::Result<()> {
     tx.execute("UPDATE catalog SET rev = rev + 1 WHERE id = 1", [])?;
     Ok(())

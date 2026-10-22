@@ -58,6 +58,8 @@ pub(crate) struct RootWalk {
     pub videos: Vec<DiskFile>,
     /// `PathClass::Image` entries, for local artwork.
     pub images: Vec<DiskFile>,
+    /// `PathClass::Subtitle` entries, attached to videos by `sidecars::assign`.
+    pub subtitles: Vec<DiskFile>,
     /// Non-UTF-8 names and other per-entry errors.
     pub issues: Vec<(String, String)>,
 }
@@ -72,6 +74,7 @@ impl RootWalk {
             unreadable: Vec::new(),
             videos: Vec::new(),
             images: Vec::new(),
+            subtitles: Vec::new(),
             issues: Vec::new(),
         }
     }
@@ -128,6 +131,7 @@ pub(crate) fn walk_root(root: RootId, library_id: i64, abs: &Path) -> RootWalk {
         let bucket = match classify_path(rel) {
             PathClass::Video => &mut walk.videos,
             PathClass::Image { .. } => &mut walk.images,
+            PathClass::Subtitle => &mut walk.subtitles,
             PathClass::Extra | PathClass::Other => continue,
         };
         let meta = match entry.metadata() {
@@ -157,6 +161,7 @@ pub(crate) fn walk_root(root: RootId, library_id: i64, abs: &Path) -> RootWalk {
     }
     walk.videos.sort_by(|a, b| a.rel.cmp(&b.rel));
     walk.images.sort_by(|a, b| a.rel.cmp(&b.rel));
+    walk.subtitles.sort_by(|a, b| a.rel.cmp(&b.rel));
     walk.unreadable.sort();
     walk
 }

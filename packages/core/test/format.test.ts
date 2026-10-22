@@ -36,8 +36,8 @@ const tearsOfSteel: Version = {
     video: [{ codec: "VP9", profile: "Profile 0", width: 1920, height: 800, frame_rate: 24, hdr: null, bit_depth: 8 }],
     audio: [{ index: 1, codec: "opus", channels: 2, layout: "Stereo", language: "eng", is_default: true }],
     subtitles: [
-      { index: 2, codec: "subrip", format: "srt", renderable: true, language: "eng", is_default: false, is_forced: false, is_hearing_impaired: false },
-      { index: 3, codec: "subrip", format: "srt", renderable: true, language: "spa", is_default: false, is_forced: false, is_hearing_impaired: false },
+      { index: 2, codec: "subrip", format: "srt", renderable: true, language: "eng", is_default: false, is_forced: false, is_hearing_impaired: false, external: false },
+      { index: 3, codec: "subrip", format: "srt", renderable: true, language: "spa", is_default: false, is_forced: false, is_hearing_impaired: false, external: false },
     ],
   },
 };
@@ -62,8 +62,8 @@ test("untagged tracks leave the language out instead of saying unknown", () => {
       ...media,
       audio: [{ ...media.audio[0]!, language: null }],
       subtitles: [
-        { index: 2, codec: "subrip", format: "srt", renderable: true, language: "und", is_default: false, is_forced: false, is_hearing_impaired: false },
-        { index: 3, codec: "subrip", format: "srt", renderable: true, language: "eng", is_default: false, is_forced: false, is_hearing_impaired: false },
+        { index: 2, codec: "subrip", format: "srt", renderable: true, language: "und", is_default: false, is_forced: false, is_hearing_impaired: false, external: false },
+        { index: 3, codec: "subrip", format: "srt", renderable: true, language: "eng", is_default: false, is_forced: false, is_hearing_impaired: false, external: false },
       ],
     },
   };

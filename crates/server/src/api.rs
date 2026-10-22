@@ -1002,6 +1002,11 @@ impl From<nuvora_library::Item> for ItemDetail {
 impl From<nuvora_library::Version> for Version {
     fn from(v: nuvora_library::Version) -> Self {
         let summary = version_summary(&v.media);
+        let sidecars: Vec<subtitles::SubtitleTrack> = v
+            .sidecars
+            .iter()
+            .map(subtitles::SubtitleTrack::from)
+            .collect();
         let (media, playback) = match v.media {
             VersionMedia::Probed { info, playback } => {
                 let playback = match playback {
@@ -1025,7 +1030,9 @@ impl From<nuvora_library::Version> for Version {
                         reasons: reasons.iter().map(reason_text).collect(),
                     },
                 };
-                (Some(MediaDetails::from(info)), playback)
+                let mut details = MediaDetails::from(info);
+                details.subtitles.extend(sidecars);
+                (Some(details), playback)
             }
             VersionMedia::Unreadable { reason } => (None, Playback::Unavailable { reason }),
         };

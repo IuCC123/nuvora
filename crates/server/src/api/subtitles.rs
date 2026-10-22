@@ -14,7 +14,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
 use axum::response::{IntoResponse, Response};
-use nuvora_library::{FileId, SubtitleSource};
+use nuvora_library::{FileId, SIDECAR_INDEX_BASE, Sidecar, SubtitleSource};
 use nuvora_media::{SubtitleCodec, SubtitleStream, SubtitleText};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
@@ -27,11 +27,13 @@ static EXTRACTIONS: Semaphore = Semaphore::const_new(2);
 
 const IMMUTABLE: &str = "private, max-age=31536000, immutable";
 
-/// One subtitle track of a version. Fetch a renderable one from
+/// One subtitle track of a version: a stream in the file, or a subtitle
+/// file next to it. Fetch a renderable one from
 /// `/api/files/{file_id}/subtitles/{index}`.
 #[derive(Serialize, ToSchema)]
 pub struct SubtitleTrack {
-    /// The stream index in the file: `{stream_index}` in the subtitle URL.
+    /// The stream index in the file, or 1000 and up for files next to it:
+    /// `{stream_index}` in the subtitle URL.
     pub index: u32,
     /// Display name: `"ASS"`, `"SRT"`, `"PGS"`.
     pub codec: String,
@@ -46,6 +48,9 @@ pub struct SubtitleTrack {
     pub is_forced: bool,
     /// Subtitles for the deaf and hard of hearing (SDH).
     pub is_hearing_impaired: bool,
+    /// A subtitle file next to the video rather than a track inside it.
+    /// Its `index` is 1000 or more.
+    pub external: bool,
 }
 
 /// What the track is, for choosing how to draw it. Clients treat an unknown
@@ -123,6 +128,36 @@ pub(super) async fn get_subtitle(
     Query(query): Query<SubtitleQuery>,
 ) -> Result<Response, ApiError> {
     let source = subtitle_source(&state, id).await?;
+    let text = match query.format.unwrap_or_default() {
+        SubtitleOutput::Vtt => SubtitleText::WebVtt,
+        SubtitleOutput::Ass => SubtitleText::Ass,
+    };
+    let tools = &state.server.tools;
+    if stream_index >= SIDECAR_INDEX_BASE {
+        // A subtitle file next to the video: its own name keys the cache,
+        // with its size and time, so an edited file is read again.
+        let sidecar = source
+            .sidecars
+            .iter()
+            .find(|s| s.index == stream_index)
+            .ok_or(ApiError::not_found())?;
+        let cached = cache_dir(&state, &source).join(format!(
+            "file-{}-{}-{}.{}",
+            sidecar.index,
+            sidecar.size,
+            sidecar.mtime_ns,
+            text.extension()
+        ));
+        let file = &sidecar.path;
+        let bytes = cached_or(&cached, file, |out| async move {
+            let charset = text_charset(&tokio::fs::read(file).await.map_err(ApiError::internal)?);
+            nuvora_media::extract_subtitle(tools, file, 0, &sidecar.codec, text, &out, charset)
+                .await
+                .map_err(ApiError::internal)
+        })
+        .await?;
+        return Ok(immutable(text.mime_type(), bytes));
+    }
     let stream = source
         .subtitles
         .iter()
@@ -133,19 +168,26 @@ pub(super) async fn get_subtitle(
             "This subtitle track needs conversion, which isn't available yet",
         ));
     }
-    let text = match query.format.unwrap_or_default() {
-        SubtitleOutput::Vtt => SubtitleText::WebVtt,
-        SubtitleOutput::Ass => SubtitleText::Ass,
-    };
     let cached = cache_dir(&state, &source).join(format!("{stream_index}.{}", text.extension()));
-    let (tools, media) = (&state.server.tools, &source.path);
+    let media = &source.path;
     let bytes = cached_or(&cached, media, |out| async move {
-        nuvora_media::extract_subtitle(tools, media, stream_index, &stream.codec, text, &out)
+        nuvora_media::extract_subtitle(tools, media, stream_index, &stream.codec, text, &out, None)
             .await
             .map_err(ApiError::internal)
     })
     .await?;
     Ok(immutable(text.mime_type(), bytes))
+}
+
+/// The encoding to read a subtitle file in when it isn't UTF-8: UTF-16 by
+/// its byte order mark, else Windows-1252, which most older Western
+/// subtitle files are.
+fn text_charset(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0xFF, 0xFE]) || bytes.starts_with(&[0xFE, 0xFF]) {
+        return Some("UTF-16");
+    }
+    let body = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
+    std::str::from_utf8(body).is_err().then_some("CP1252")
 }
 
 /// The file's font attachments, in stream order. Empty for files without any
@@ -305,6 +347,26 @@ impl From<SubtitleStream> for SubtitleTrack {
             title: s.title,
             is_default: s.is_default,
             is_forced: s.is_forced,
+            external: false,
+        }
+    }
+}
+
+impl From<&Sidecar> for SubtitleTrack {
+    fn from(s: &Sidecar) -> Self {
+        let format = subtitle_format(&s.codec);
+        SubtitleTrack {
+            index: s.index,
+            codec: codec_name(&s.codec),
+            format,
+            renderable: renderable(format),
+            language: s.name.language.clone(),
+            title: s.name.title.clone(),
+            is_default: s.name.default,
+            is_forced: s.name.forced,
+            is_hearing_impaired: s.name.hearing_impaired
+                || s.name.title.as_deref().is_some_and(names_sdh),
+            external: true,
         }
     }
 }
@@ -637,10 +699,10 @@ Dialogue: 0,0:00:00.50,0:00:01.50,Default,,0,0,0,,{\\pos(960,100)}Hola {\\b1}mun
             json!([
                 {"index": 1, "codec": "SRT", "format": "srt", "renderable": true,
                  "language": "eng", "title": null, "is_default": false,
-                 "is_forced": false, "is_hearing_impaired": false},
+                 "is_forced": false, "is_hearing_impaired": false, "external": false},
                 {"index": 2, "codec": "ASS", "format": "ass", "renderable": true,
                  "language": "spa", "title": "Full SDH", "is_default": true,
-                 "is_forced": false, "is_hearing_impaired": true},
+                 "is_forced": false, "is_hearing_impaired": true, "external": false},
             ])
         );
     }
@@ -726,5 +788,74 @@ Dialogue: 0,0:00:00.50,0:00:01.50,Default,,0,0,0,,{\\pos(960,100)}Hola {\\b1}mun
                 "{uri}"
             );
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn subtitle_files_next_to_a_video_are_tracks_too() {
+        let app = TestApp::new().await;
+        let admin = app.setup_admin().await;
+        app.clips(&["movies/Side (2022)/Side (2022).mp4"]);
+        let dir = app.path("movies/Side (2022)");
+        std::fs::write(dir.join("Side (2022).en.srt"), SRT).unwrap();
+        // Windows-1252, as older Spanish subtitle files often are.
+        std::fs::write(
+            dir.join("Side (2022).spa.forced.srt"),
+            b"1\n00:00:00,500 --> 00:00:01,200\n\xbfQu\xe9 pas\xf3?\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.join("Subs")).unwrap();
+        std::fs::write(dir.join("Subs/3_French.srt"), SRT).unwrap();
+        app.scan().await;
+        let movies = app.get("/api/rows/all_movies", &admin).await.json();
+        let id = movies["items"][0]["id"].as_i64().unwrap();
+        let detail = app.get(&format!("/api/items/{id}"), &admin).await.json();
+        let version = &detail["versions"][0];
+        let file = version["file_id"].as_i64().unwrap();
+        let tracks: Vec<(u64, String, bool, bool)> = version["media"]["subtitles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| {
+                (
+                    t["index"].as_u64().unwrap(),
+                    t["language"].as_str().unwrap_or("").to_owned(),
+                    t["is_forced"].as_bool().unwrap(),
+                    t["external"].as_bool().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            tracks,
+            [
+                (1000, "eng".into(), false, true),
+                (1001, "spa".into(), true, true),
+                (1002, "fre".into(), false, true),
+            ]
+        );
+        let english = app
+            .get(&format!("/api/files/{file}/subtitles/1000"), &admin)
+            .await;
+        assert_eq!(text(&english), SRT_AS_VTT);
+        let spanish = app
+            .get(&format!("/api/files/{file}/subtitles/1001"), &admin)
+            .await;
+        assert_eq!(spanish.status, StatusCode::OK);
+        assert!(text(&spanish).contains("¿Qué pasó?"), "{}", text(&spanish));
+        let missing = app
+            .get(&format!("/api/files/{file}/subtitles/1003"), &admin)
+            .await;
+        assert_eq!(missing.status, StatusCode::NOT_FOUND);
+
+        // A file removed from disk is gone after the next scan.
+        std::fs::remove_file(dir.join("Subs/3_French.srt")).unwrap();
+        app.scan().await;
+        let detail = app.get(&format!("/api/items/{id}"), &admin).await.json();
+        assert_eq!(
+            detail["versions"][0]["media"]["subtitles"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
     }
 }

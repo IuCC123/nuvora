@@ -305,6 +305,8 @@ pub struct Version {
     pub file_name: String,
     pub size_bytes: u64,
     pub media: VersionMedia,
+    /// Subtitle files next to it, in name order.
+    pub sidecars: Vec<crate::subtitles::Sidecar>,
 }
 
 /// A probed file always has a playback decision; an unreadable one never does.
@@ -877,7 +879,8 @@ pub(crate) fn versions(
                     VersionMedia::Probed { info, playback }
                 }
             };
-            Version {
+            Ok(Version {
+                sidecars: crate::subtitles::sidecars(conn, f.id)?,
                 file_id: f.id,
                 file_name: f
                     .rel_path
@@ -887,9 +890,9 @@ pub(crate) fn versions(
                     .to_owned(),
                 size_bytes: f.size,
                 media,
-            }
+            })
         })
-        .collect();
+        .collect::<rusqlite::Result<_>>()?;
     versions.sort_by_key(|v| std::cmp::Reverse(version_rank(v)));
     Ok(versions)
 }

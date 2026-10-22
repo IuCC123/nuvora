@@ -33,6 +33,7 @@
 
 pub(crate) mod place;
 mod plan;
+mod sidecars;
 mod walk;
 pub(crate) mod write;
 
@@ -445,6 +446,15 @@ async fn scan(
         let gone = plan.gone;
         ctx.db
             .write(move |tx| write::remove_gone(tx, &gone, &stale, now_ms))
+            .await?;
+    }
+    for walk in walks
+        .iter()
+        .filter(|w| w.complete && !plan.held_roots.contains(&w.root))
+    {
+        let (root, subtitles) = (walk.root, walk.subtitles.clone());
+        ctx.db
+            .write(move |tx| write::sync_sidecars(tx, root, &subtitles))
             .await?;
     }
     let live = ctx.db.read(write::live_artwork_ids).await?;

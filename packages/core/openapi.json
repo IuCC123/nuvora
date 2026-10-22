@@ -5157,7 +5157,7 @@
       },
       "SubtitleTrack": {
         "type": "object",
-        "description": "One subtitle track of a version. Fetch a renderable one from\n`/api/files/{file_id}/subtitles/{index}`.",
+        "description": "One subtitle track of a version: a stream in the file, or a subtitle\nfile next to it. Fetch a renderable one from\n`/api/files/{file_id}/subtitles/{index}`.",
         "required": [
           "index",
           "codec",
@@ -5165,12 +5165,17 @@
           "renderable",
           "is_default",
           "is_forced",
-          "is_hearing_impaired"
+          "is_hearing_impaired",
+          "external"
         ],
         "properties": {
           "codec": {
             "type": "string",
             "description": "Display name: `\"ASS\"`, `\"SRT\"`, `\"PGS\"`."
+          },
+          "external": {
+            "type": "boolean",
+            "description": "A subtitle file next to the video rather than a track inside it.\nIts `index` is 1000 or more."
           },
           "format": {
             "$ref": "#/components/schemas/SubtitleFormat"
@@ -5178,7 +5183,7 @@
           "index": {
             "type": "integer",
             "format": "int32",
-            "description": "The stream index in the file: `{stream_index}` in the subtitle URL.",
+            "description": "The stream index in the file, or 1000 and up for files next to it:\n`{stream_index}` in the subtitle URL.",
             "minimum": 0
           },
           "is_default": {

@@ -63,7 +63,8 @@ pub enum ExtractError {
 
 /// Writes stream `index` of `path` (a subtitle stream of `codec`) to `out` as
 /// `text`. An ASS stream extracted as ASS is copied, so the script keeps every
-/// style, position and comment line.
+/// style, position and comment line. `charset` names a text file's encoding
+/// when it isn't UTF-8 (`"CP1252"`).
 pub async fn extract_subtitle(
     tools: &MediaTools,
     path: &Path,
@@ -71,14 +72,19 @@ pub async fn extract_subtitle(
     codec: &SubtitleCodec,
     text: SubtitleText,
     out: &Path,
+    charset: Option<&str>,
 ) -> Result<(), ExtractError> {
     let encoder = match (codec, text) {
         (SubtitleCodec::Ass, SubtitleText::Ass) => "copy",
         (_, text) => text.muxer(),
     };
     let mut command = Command::new(&tools.ffmpeg);
+    command.args(["-nostdin", "-v", "error", "-y"]);
+    if let Some(charset) = charset {
+        command.args(["-sub_charenc", charset]);
+    }
     command
-        .args(["-nostdin", "-v", "error", "-y", "-i"])
+        .arg("-i")
         .arg(path)
         .args(["-map", &format!("0:{index}"), "-c:s", encoder])
         .args(["-f", text.muxer()])

@@ -26,7 +26,10 @@ pub enum PathClass {
     /// A local artwork candidate. `stem` is the lowercase file stem
     /// (`poster`, `folder`, `fanart`, `backdrop`, `the matrix (1999)-poster`, ...).
     Image { stem: String },
-    /// Anything else (`.nfo`, `.srt`, `.DS_Store`, ...). Skipped.
+    /// A subtitle file (`.srt`, `.ass`, `.ssa`, `.vtt`), attached by the
+    /// scanner to the video it belongs to.
+    Subtitle,
+    /// Anything else (`.nfo`, `.DS_Store`, ...). Skipped.
     Other,
 }
 
@@ -140,6 +143,8 @@ pub fn classify_path(rel: &Path) -> PathClass {
         } else {
             PathClass::Video
         }
+    } else if crate::sidecar::SIDECAR_EXTENSIONS.contains(&ext.as_str()) {
+        PathClass::Subtitle
     } else if IMAGE_EXTENSIONS.contains(&ext.as_str()) {
         PathClass::Image {
             stem: stem.to_lowercase(),
@@ -1129,7 +1134,9 @@ mod tests {
         ("@eaDir/Movie (2010).mkv", "other"),
         ("Movie (2010)/.hidden.mkv", "other"),
         ("Movie (2010)/Movie (2010)-poster.jpg", "image"),
-        ("Movie (2010)/Movie (2010).srt", "other"),
+        ("Movie (2010)/Movie (2010).srt", "subtitle"),
+        ("Movie (2010)/Subs/2_English.SRT", "subtitle"),
+        ("Movie (2010)/Movie (2010).nfo", "other"),
     ];
 
     #[test]
@@ -1139,6 +1146,7 @@ mod tests {
                 PathClass::Video => "video",
                 PathClass::Extra => "extra",
                 PathClass::Image { .. } => "image",
+                PathClass::Subtitle => "subtitle",
                 PathClass::Other => "other",
             };
             assert_eq!(got, *want, "{path}");

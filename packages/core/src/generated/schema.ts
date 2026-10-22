@@ -1432,16 +1432,23 @@ export interface components {
          */
         SubtitleMode: "auto" | "always" | "off";
         /**
-         * @description One subtitle track of a version. Fetch a renderable one from
+         * @description One subtitle track of a version: a stream in the file, or a subtitle
+         *     file next to it. Fetch a renderable one from
          *     `/api/files/{file_id}/subtitles/{index}`.
          */
         SubtitleTrack: {
             /** @description Display name: `"ASS"`, `"SRT"`, `"PGS"`. */
             codec: string;
+            /**
+             * @description A subtitle file next to the video rather than a track inside it.
+             *     Its `index` is 1000 or more.
+             */
+            external: boolean;
             format: components["schemas"]["SubtitleFormat"];
             /**
              * Format: int32
-             * @description The stream index in the file: `{stream_index}` in the subtitle URL.
+             * @description The stream index in the file, or 1000 and up for files next to it:
+             *     `{stream_index}` in the subtitle URL.
              */
             index: number;
             is_default: boolean;

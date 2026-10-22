@@ -46,7 +46,7 @@ pub use metadata::read::{Credit, Extras};
 pub use scan::{ScanIssue, ScanPhase, ScanProgress, ScanState, ScanStatus, ScanSummary};
 pub use search::{EpisodeHit, PersonHit, PersonRole, SearchResults};
 pub use shows::{Episode, EpisodeRef, Season, SeasonSummary, Show};
-pub use subtitles::SubtitleSource;
+pub use subtitles::{SIDECAR_INDEX_BASE, Sidecar, SubtitleSource};
 pub use views::{
     Artwork, Card, CardNote, CatalogRev, Cursor, EpisodeNumber, HOME_ROW_LIMIT, Home,
     InvalidCursor, Item, ItemKind, MAX_ROW_LIMIT, Movie, Row, RowKind, RowPage, StreamSource,

@@ -23,6 +23,7 @@ function track(language: string | null, extra: Partial<SubtitleTrack> = {}): Sub
     is_default: false,
     is_forced: false,
     is_hearing_impaired: false,
+    external: false,
     ...extra,
   };
 }
