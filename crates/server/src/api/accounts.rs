@@ -53,6 +53,10 @@ pub struct User {
     pub username: String,
     pub display_name: String,
     pub role: Role,
+    pub subtitle_mode: SubtitleMode,
+    /// The language subtitles should be in, ISO 639-2 (`"spa"`). `None`
+    /// means the device's language.
+    pub subtitle_language: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, ToSchema, Clone, Copy, PartialEq, Eq, Debug)]
@@ -60,6 +64,19 @@ pub struct User {
 pub enum Role {
     Admin,
     Member,
+}
+
+/// When the player turns subtitles on. The track chooser in `@nuvora/core`
+/// applies it.
+#[derive(Serialize, Deserialize, ToSchema, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum SubtitleMode {
+    /// The preferred language when the audio is in another one, else a
+    /// forced track, else a default-flagged track.
+    Auto,
+    /// The preferred language, else a default-flagged track.
+    Always,
+    Off,
 }
 
 /// Creates the first admin. Usernames are 1 to 32 letters, digits, `.`, `_` or
@@ -87,6 +104,22 @@ pub struct UpdateMeRequest {
     pub display_name: Option<String>,
     pub current_password: Option<String>,
     pub new_password: Option<String>,
+    pub subtitle_mode: Option<SubtitleMode>,
+    /// Three letters, ISO 639-2 (`"spa"`). `null` clears it, back to the
+    /// device's language; leaving it out keeps it.
+    #[serde(default, deserialize_with = "present")]
+    #[schema(value_type = Option<String>)]
+    pub subtitle_language: Option<Option<String>>,
+}
+
+/// `Some(value)` whenever the field is present, `null` included, so a PATCH
+/// can tell "clear it" from "leave it".
+fn present<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 #[utoipa::path(get, path = "/api/health", responses((status = 200, body = Health)))]
@@ -223,7 +256,10 @@ pub(super) async fn update_me(
     State(state): State<AppState>,
     signed_in: SignedIn,
     JsonBody(body): JsonBody<UpdateMeRequest>,
-) -> Result<Json<User>, ApiError> {
+) -> Result<Response, ApiError> {
+    if body.subtitle_mode.is_some() || body.subtitle_language.is_some() {
+        return Ok(StatusCode::NOT_IMPLEMENTED.into_response());
+    }
     let lib = &state.library;
     let me = signed_in.user.id;
     let mut changes = UserChanges {
@@ -250,7 +286,7 @@ pub(super) async fn update_me(
         .update_user(me, me, changes, Some(signed_in.token), state.auth.now_ms())
         .await
         .map_err(account_error)?;
-    Ok(Json(User::from(user)))
+    Ok(Json(User::from(user)).into_response())
 }
 
 /// Starts a session for `user`: the `User` body plus the session cookie.
@@ -354,6 +390,8 @@ impl From<nuvora_library::User> for User {
             username: u.username,
             display_name: u.display_name,
             role: u.role.into(),
+            subtitle_mode: SubtitleMode::Auto,
+            subtitle_language: None,
         }
     }
 }
@@ -421,7 +459,14 @@ mod tests {
             state,
             json!({
                 "setup_required": false,
-                "user": {"id": 1, "username": "admin", "display_name": "Admin", "role": "admin"},
+                "user": {
+                    "id": 1,
+                    "username": "admin",
+                    "display_name": "Admin",
+                    "role": "admin",
+                    "subtitle_mode": "auto",
+                    "subtitle_language": null,
+                },
                 "server_name": "Nuvora",
             })
         );

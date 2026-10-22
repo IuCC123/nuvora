@@ -197,6 +197,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/files/{id}/fonts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The file's font attachments, in stream order. Empty for files without any
+         *     (every MP4).
+         */
+        get: operations["list_fonts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/{id}/fonts/{index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One font attachment's bytes, immutable like a subtitle track. 404 when
+         *     the stream at `index` is not a font.
+         */
+        get: operations["get_font"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/files/{id}/stream": {
         parameters: {
             query?: never;
@@ -211,6 +251,29 @@ export interface paths {
          *     buffering. First-frame latency is then disk + network + decoder.
          */
         get: operations["stream_file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/{id}/subtitles/{stream_index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The track as text, extracted with ffmpeg on the first request and read
+         *     from the server's cache after that. Answers with
+         *     `Cache-Control: private, max-age=31536000, immutable`. 404 when the file
+         *     has no subtitle stream at `stream_index`; 400 when the track is not
+         *     renderable.
+         */
+        get: operations["get_subtitle"];
         put?: never;
         post?: never;
         delete?: never;
@@ -505,6 +568,24 @@ export interface components {
          * @enum {string}
          */
         ErrorCode: "bad_request" | "validation" | "unauthorized" | "bad_credentials" | "forbidden" | "not_found" | "setup_done" | "username_taken" | "last_admin" | "rate_limited" | "internal";
+        /**
+         * @description A font attached to the file (Matroska attachments). Styled tracks name
+         *     fonts that only these provide.
+         */
+        FontAttachment: {
+            file_name: string;
+            /**
+             * Format: int32
+             * @description The attachment's stream index: `{index}` in `url`.
+             */
+            index: number;
+            /** @description `"font/ttf"`, `"font/otf"`, `"font/collection"`, `"font/woff"`, `"font/woff2"`. */
+            mime_type: string;
+            /** Format: int64 */
+            size_bytes?: number | null;
+            /** @description `/api/files/{file_id}/fonts/{index}`. Immutable. */
+            url: string;
+        };
         FsDir: {
             name: string;
             /** @description Absolute; pass it back as `?path=` to open the folder. */
@@ -724,13 +805,42 @@ export interface components {
             password: string;
             username: string;
         };
+        /**
+         * @description What the track is, for choosing how to draw it. Clients treat an unknown
+         *     format like `other`.
+         * @enum {string}
+         */
+        SubtitleFormat: "srt" | "ass" | "vtt" | "mov_text" | "image" | "other";
+        /**
+         * @description When the player turns subtitles on. The track chooser in `@nuvora/core`
+         *     applies it.
+         * @enum {string}
+         */
+        SubtitleMode: "auto" | "always" | "off";
+        /**
+         * @description One subtitle track of a version. Fetch a renderable one from
+         *     `/api/files/{file_id}/subtitles/{index}`.
+         */
         SubtitleTrack: {
+            /** @description Display name: `"ASS"`, `"SRT"`, `"PGS"`. */
             codec: string;
-            /** Format: int32 */
+            format: components["schemas"]["SubtitleFormat"];
+            /**
+             * Format: int32
+             * @description The stream index in the file: `{stream_index}` in the subtitle URL.
+             */
             index: number;
             is_default: boolean;
             is_forced: boolean;
+            /** @description Subtitles for the deaf and hard of hearing (SDH). */
+            is_hearing_impaired: boolean;
+            /** @description ISO 639-2 as probed, lowercased: `"spa"`, `"eng"`. */
             language?: string | null;
+            /**
+             * @description The server can deliver the track as text. False for `image` and
+             *     `other`, which need conversion.
+             */
+            renderable: boolean;
             title?: string | null;
         };
         ToolInfo: {
@@ -754,6 +864,12 @@ export interface components {
             current_password?: string | null;
             display_name?: string | null;
             new_password?: string | null;
+            /**
+             * @description Three letters, ISO 639-2 (`"spa"`). `null` clears it, back to the
+             *     device's language; leaving it out keeps it.
+             */
+            subtitle_language?: string | null;
+            subtitle_mode?: null | components["schemas"]["SubtitleMode"];
         };
         UpdateServerRequest: {
             server_name: string;
@@ -774,6 +890,12 @@ export interface components {
             /** Format: int64 */
             id: number;
             role: components["schemas"]["Role"];
+            /**
+             * @description The language subtitles should be in, ISO 639-2 (`"spa"`). `None`
+             *     means the device's language.
+             */
+            subtitle_language?: string | null;
+            subtitle_mode: components["schemas"]["SubtitleMode"];
             username: string;
         };
         Version: {
@@ -1567,6 +1689,83 @@ export interface operations {
             };
         };
     };
+    list_fonts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FontAttachment"][];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_font: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "font/*": number[];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     stream_file: {
         parameters: {
             query?: never;
@@ -1616,6 +1815,57 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_subtitle: {
+        parameters: {
+            query?: {
+                /** @description Default `vtt`. */
+                format?: "vtt" | "ass";
+            };
+            header?: never;
+            path: {
+                id: number;
+                stream_index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/vtt": string;
+                    "text/x-ssa": string;
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
             };
         };
     };
