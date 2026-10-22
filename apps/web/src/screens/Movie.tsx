@@ -17,6 +17,7 @@ import { Artwork } from "../components/Artwork";
 import { CheckIcon, PlayIcon, RestartIcon } from "../components/Icon";
 import { Notice } from "../components/Notice";
 import { TitleCard, titleCardVars } from "../components/TitleCard";
+import { hasInteracted } from "../lib/interacted";
 import { languageName } from "../lib/languageName";
 import { playState } from "../lib/playState";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
@@ -122,8 +123,9 @@ function Actions({ movie }: { movie: MovieDetail }) {
   const state = playState(movie.versions);
   const play = useRef<HTMLAnchorElement>(null);
   // The poster that opened this page is gone, so focus would fall to <body>; give it to Play instead.
+  // A page someone loaded directly has no opener, so focus stays put rather than ringing Play unasked.
   useEffect(() => {
-    if (document.activeElement === document.body) play.current?.focus({ preventScroll: true });
+    if (hasInteracted() && document.activeElement === document.body) play.current?.focus({ preventScroll: true });
   }, []);
   if (state.kind === "play") {
     const { position_ms, file_id } = movie.watch;
