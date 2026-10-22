@@ -16,10 +16,15 @@
 //! paths = ["/Volumes/Media/Movies"]
 //! ```
 
-use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::net::{Ipv4Addr, SocketAddr};
+use std::path::{Path, PathBuf};
 
-use nuvora_library::LibrarySpec;
+use nuvora_library::{LibraryKind, LibrarySpec};
+use serde::Deserialize;
+
+pub const DEFAULT_BIND: SocketAddr =
+    SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), 8640);
+const MOVIES_KEY: &str = "movies";
 
 #[derive(clap::Args, Debug, Default)]
 pub struct ServeArgs {
@@ -62,11 +67,228 @@ pub enum ConfigError {
     MissingFolder { key: String, path: PathBuf },
     #[error("two libraries share the key {0:?}")]
     DuplicateKey(String),
+    #[error("library {key:?}: kind {kind:?} is not supported (only \"movies\")")]
+    UnknownKind { key: String, kind: String },
+    #[error("no data directory: pass --data-dir or set data_dir in nuvora.toml")]
+    NoDataDir,
+}
+
+/// `nuvora.toml` as written. Unknown keys are errors so a typo cannot silently
+/// disable a setting.
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct FileConfig {
+    bind: Option<SocketAddr>,
+    data_dir: Option<PathBuf>,
+    ffmpeg: Option<PathBuf>,
+    ffprobe: Option<PathBuf>,
+    #[serde(default)]
+    library: Vec<FileLibrary>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FileLibrary {
+    key: String,
+    name: Option<String>,
+    kind: Option<String>,
+    paths: Vec<PathBuf>,
 }
 
 /// File, then flags on top. Canonicalizes library paths, rejects duplicates,
 /// logs a warning when `bind` is not a loopback address.
 pub fn load(args: &ServeArgs) -> Result<Config, ConfigError> {
-    let _ = args;
-    todo!()
+    let dirs = directories::ProjectDirs::from("", "", "Nuvora");
+    let path = args.config.clone().or_else(|| {
+        dirs.as_ref()
+            .map(|d| d.config_dir().join("nuvora.toml"))
+            .filter(|p| p.is_file())
+    });
+    let file = match &path {
+        Some(path) => read_file(path)?,
+        None => FileConfig::default(),
+    };
+
+    let mut libraries = Vec::with_capacity(file.library.len() + 1);
+    for lib in file.library {
+        if libraries.iter().any(|l: &LibrarySpec| l.key == lib.key) {
+            return Err(ConfigError::DuplicateKey(lib.key));
+        }
+        let kind = match lib.kind.as_deref().unwrap_or(MOVIES_KEY) {
+            MOVIES_KEY => LibraryKind::Movies,
+            other => {
+                return Err(ConfigError::UnknownKind {
+                    key: lib.key,
+                    kind: other.to_owned(),
+                });
+            }
+        };
+        libraries.push(LibrarySpec {
+            name: lib.name.unwrap_or_else(|| lib.key.clone()),
+            key: lib.key,
+            kind,
+            roots: lib.paths,
+        });
+    }
+    if !args.movies.is_empty() {
+        match libraries.iter_mut().find(|l| l.key == MOVIES_KEY) {
+            Some(movies) => movies.roots.extend(args.movies.iter().cloned()),
+            None => libraries.push(LibrarySpec {
+                key: MOVIES_KEY.into(),
+                name: "Movies".into(),
+                kind: LibraryKind::Movies,
+                roots: args.movies.clone(),
+            }),
+        }
+    }
+    for lib in &mut libraries {
+        let mut roots = Vec::with_capacity(lib.roots.len());
+        for root in &lib.roots {
+            let canonical = root
+                .canonicalize()
+                .ok()
+                .filter(|p| p.is_dir())
+                .ok_or_else(|| ConfigError::MissingFolder {
+                    key: lib.key.clone(),
+                    path: root.clone(),
+                })?;
+            if !roots.contains(&canonical) {
+                roots.push(canonical);
+            }
+        }
+        lib.roots = roots;
+    }
+    if libraries.is_empty() {
+        tracing::warn!(
+            "no libraries configured; pass --movies <DIR> or add [[library]] to nuvora.toml"
+        );
+    }
+
+    let bind = args.bind.or(file.bind).unwrap_or(DEFAULT_BIND);
+    if !bind.ip().is_loopback() {
+        tracing::warn!(
+            "binding to {bind}: Step 1 has no authentication, so anyone who can reach this address can browse and play the library"
+        );
+    }
+    let data_dir = args
+        .data_dir
+        .clone()
+        .or(file.data_dir)
+        .or_else(|| dirs.map(|d| d.data_dir().to_path_buf()))
+        .ok_or(ConfigError::NoDataDir)?;
+    Ok(Config {
+        bind,
+        data_dir,
+        libraries,
+        ffmpeg: file.ffmpeg,
+        ffprobe: file.ffprobe,
+    })
+}
+
+fn read_file(path: &Path) -> Result<FileConfig, ConfigError> {
+    let text = std::fs::read_to_string(path).map_err(|source| ConfigError::Read {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    toml::from_str(&text).map_err(|source| ConfigError::Parse {
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(config: Option<PathBuf>, movies: Vec<PathBuf>) -> ServeArgs {
+        ServeArgs {
+            config,
+            bind: None,
+            data_dir: Some("/tmp/nuvora-test-data".into()),
+            movies,
+        }
+    }
+
+    #[test]
+    fn flags_alone_make_a_movies_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = load(&args(None, vec![dir.path().to_path_buf()])).unwrap();
+        assert_eq!(config.bind, DEFAULT_BIND);
+        assert_eq!(config.libraries.len(), 1);
+        assert_eq!(
+            (
+                config.libraries[0].key.as_str(),
+                config.libraries[0].name.as_str()
+            ),
+            ("movies", "Movies")
+        );
+        assert_eq!(
+            config.libraries[0].roots,
+            [dir.path().canonicalize().unwrap()]
+        );
+    }
+
+    #[test]
+    fn file_then_flags_on_top() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b) = (dir.path().join("a"), dir.path().join("b"));
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        let toml = dir.path().join("nuvora.toml");
+        std::fs::write(
+            &toml,
+            format!(
+                "bind = \"0.0.0.0:9000\"\nffmpeg = \"/opt/ffmpeg\"\n\n[[library]]\nkey = \"movies\"\nname = \"Films\"\nkind = \"movies\"\npaths = [{:?}]\n",
+                a.to_str().unwrap()
+            ),
+        )
+        .unwrap();
+        let config = load(&args(Some(toml), vec![b.clone(), b.clone()])).unwrap();
+        assert_eq!(config.bind.port(), 9000);
+        assert_eq!(config.ffmpeg.as_deref(), Some(Path::new("/opt/ffmpeg")));
+        assert_eq!(config.libraries[0].name, "Films");
+        assert_eq!(
+            config.libraries[0].roots,
+            [a.canonicalize().unwrap(), b.canonicalize().unwrap()],
+            "flag folders join, deduplicated"
+        );
+    }
+
+    #[test]
+    fn rejects_missing_folders_duplicate_keys_unknown_kinds_and_typos() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = load(&args(None, vec![dir.path().join("nope")]));
+        assert!(
+            matches!(missing, Err(ConfigError::MissingFolder { .. })),
+            "{missing:?}"
+        );
+
+        let toml = dir.path().join("dup.toml");
+        std::fs::write(
+            &toml,
+            "[[library]]\nkey = \"m\"\npaths = []\n[[library]]\nkey = \"m\"\npaths = []\n",
+        )
+        .unwrap();
+        assert!(
+            matches!(load(&args(Some(toml), vec![])), Err(ConfigError::DuplicateKey(k)) if k == "m")
+        );
+
+        let toml = dir.path().join("kind.toml");
+        std::fs::write(
+            &toml,
+            "[[library]]\nkey = \"s\"\nkind = \"shows\"\npaths = []\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            load(&args(Some(toml), vec![])),
+            Err(ConfigError::UnknownKind { .. })
+        ));
+
+        let toml = dir.path().join("typo.toml");
+        std::fs::write(&toml, "bindd = \"127.0.0.1:1\"\n").unwrap();
+        assert!(matches!(
+            load(&args(Some(toml), vec![])),
+            Err(ConfigError::Parse { .. })
+        ));
+    }
 }
