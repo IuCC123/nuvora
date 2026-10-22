@@ -6,6 +6,7 @@ import { TitleCard } from "./TitleCard";
 
 /** A poster that links to its detail screen. Hover/focus preloads the item (router `defaultPreload: "intent"`). */
 export function PosterCardView({ card }: { card: PosterCard }) {
+  const marks = card.progress != null ? `${Math.max(1, Math.round(card.progress * 100))}% watched` : card.watched ? "Watched" : null;
   return (
     <Link to="/movie/$id" params={{ id: card.id }} className="poster-card">
       <span className="poster-frame">
@@ -20,12 +21,13 @@ export function PosterCardView({ card }: { card: PosterCard }) {
       <span className="poster-caption">
         <span className="poster-title">{card.title}</span>
         <span className="poster-year">{card.year ?? " "}</span>
+        {marks && <span className="sr-only">{marks}</span>}
       </span>
     </Link>
   );
 }
 
-/** An amber bar along the bottom edge while in progress; a check in the corner once watched. Unwatched carries nothing. */
+/** An amber bar along the bottom edge while in progress; a check in the corner once watched. Unwatched carries nothing. Hidden from screen readers, so callers say it in words. */
 export function PosterMarks({ progress, watched }: { progress: number | null; watched: boolean }) {
   return (
     <>
