@@ -74,6 +74,9 @@ export interface Queries {
   adminServer(): QueryDef<ServerInfo>;
 }
 
+/** Long enough that the screen's mount reuses its loader's request, short enough that a revisit shows other admins' changes. */
+const ADMIN_FRESH = 5_000;
+
 export function createQueries(client: NuvoraClient): Queries {
   return {
     home: () => ({ queryKey: queryKeys.home, queryFn: ({ signal }) => client.home(signal), staleTime: 30_000 }),
@@ -87,14 +90,10 @@ export function createQueries(client: NuvoraClient): Queries {
     }),
     scanStatus: () => ({ queryKey: queryKeys.scan, queryFn: ({ signal }) => client.scanStatus(signal), staleTime: 0 }),
     authState: () => ({ queryKey: queryKeys.auth, queryFn: ({ signal }) => client.authState(signal), staleTime: 60_000 }),
-    adminLibraries: () => ({
-      queryKey: queryKeys.adminLibraries,
-      queryFn: ({ signal }) => client.admin.libraries(signal),
-      staleTime: 0,
-    }),
+    adminLibraries: () => ({ queryKey: queryKeys.adminLibraries, queryFn: ({ signal }) => client.admin.libraries(signal), staleTime: ADMIN_FRESH }),
     adminFs: (path) => ({ queryKey: queryKeys.adminFs(path), queryFn: ({ signal }) => client.admin.fs(path, signal), staleTime: 30_000 }),
-    adminUsers: () => ({ queryKey: queryKeys.adminUsers, queryFn: ({ signal }) => client.admin.users(signal), staleTime: 0 }),
-    adminServer: () => ({ queryKey: queryKeys.adminServer, queryFn: ({ signal }) => client.admin.server(signal), staleTime: 0 }),
+    adminUsers: () => ({ queryKey: queryKeys.adminUsers, queryFn: ({ signal }) => client.admin.users(signal), staleTime: ADMIN_FRESH }),
+    adminServer: () => ({ queryKey: queryKeys.adminServer, queryFn: ({ signal }) => client.admin.server(signal), staleTime: ADMIN_FRESH }),
   };
 }
 
