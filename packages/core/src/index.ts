@@ -22,8 +22,21 @@ export type {
   ScanStatus,
   Version,
 } from "./client";
-export { createQueries, findCard, isScanRunning, queryKeys } from "./queries";
-export type { Queries, QueryDef } from "./queries";
+export { createQueries, findCard, isScanRunning, queryKeys, rowCards } from "./queries";
+export type { InfiniteQueryDef, Queries, QueryDef } from "./queries";
 export { placeholderDataUrl } from "./images";
+export { titleCardLook } from "./titleCard";
+export type { TitleCardLook } from "./titleCard";
+export {
+  containerLabel,
+  fileFacts,
+  formatBitrate,
+  formatBytes,
+  formatDuration,
+  formatFrameRate,
+  formatRuntime,
+  versionChips,
+} from "./format";
+export type { FileFact, LanguageName } from "./format";
 export { ApiError } from "./transport";
 export type { AbortSignalLike, FetchLike, RequestInitLike, ResponseLike } from "./transport";

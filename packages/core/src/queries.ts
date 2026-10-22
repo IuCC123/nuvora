@@ -1,4 +1,4 @@
-import type { NuvoraClient, HomeResponse, ItemDetail, PosterCard, ScanStatus } from "./client";
+import type { HomeResponse, HomeRow, ItemDetail, NuvoraClient, PosterCard, RowKind, RowPage, ScanStatus } from "./client";
 import type { AbortSignalLike } from "./transport";
 
 /**
@@ -13,8 +13,19 @@ export interface QueryDef<T> {
   readonly staleTime: number;
 }
 
+/** TanStack's infinite-query shape, for rows that load more pages as they scroll. */
+export interface InfiniteQueryDef<T, P> {
+  readonly queryKey: readonly unknown[];
+  readonly queryFn: (ctx: { signal: AbortSignalLike; pageParam: P }) => Promise<T>;
+  readonly initialPageParam: P;
+  readonly getNextPageParam: (lastPage: T) => P | undefined;
+  readonly staleTime: number;
+}
+
 export const queryKeys = {
   home: ["home"] as const,
+  /** Prefix of every row page query; invalidate it together with `home`. */
+  rows: ["row"] as const,
   item: (id: number) => ["item", id] as const,
   scan: ["scan"] as const,
 };
@@ -24,6 +35,12 @@ export interface Queries {
   home(): QueryDef<HomeResponse>;
   /** Prefetch on card focus/hover so the detail screen opens with data. */
   item(id: number): QueryDef<ItemDetail>;
+  /**
+   * The pages of a home row after its first, starting at `after` (the row's
+   * `next`). Keyed by that cursor, so a refreshed home with a new first page
+   * starts paging again instead of appending stale pages.
+   */
+  rowPages(kind: RowKind, after: string): InfiniteQueryDef<RowPage, string>;
   /** Apps poll this while `isScanRunning`. */
   scanStatus(): QueryDef<ScanStatus>;
 }
@@ -32,6 +49,13 @@ export function createQueries(client: NuvoraClient): Queries {
   return {
     home: () => ({ queryKey: queryKeys.home, queryFn: ({ signal }) => client.home(signal), staleTime: 30_000 }),
     item: (id) => ({ queryKey: queryKeys.item(id), queryFn: ({ signal }) => client.item(id, signal), staleTime: 30_000 }),
+    rowPages: (kind, after) => ({
+      queryKey: [...queryKeys.rows, kind, after],
+      queryFn: ({ signal, pageParam }) => client.row(kind, pageParam, signal),
+      initialPageParam: after,
+      getNextPageParam: (last) => last.next ?? undefined,
+      staleTime: 30_000,
+    }),
     scanStatus: () => ({ queryKey: queryKeys.scan, queryFn: ({ signal }) => client.scanStatus(signal), staleTime: 0 }),
   };
 }
@@ -51,4 +75,13 @@ export function findCard(home: HomeResponse | undefined, id: number): PosterCard
     if (card) return card;
   }
   return undefined;
+}
+
+/**
+ * A home row's cards so far: its first page plus every page loaded after it.
+ * `hasMore` is false once the last loaded page (or the first, if none) has no cursor.
+ */
+export function rowCards(row: HomeRow, pages: readonly RowPage[] = []): { cards: PosterCard[]; hasMore: boolean } {
+  const last = pages.length ? pages[pages.length - 1]!.next : row.next;
+  return { cards: [...row.items, ...pages.flatMap((p) => p.items)], hasMore: last != null };
 }
