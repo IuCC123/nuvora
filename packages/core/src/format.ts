@@ -5,9 +5,11 @@ import type { Version } from "./client";
  * fact, how to name a language, is passed in (the web uses `Intl.DisplayNames`).
  */
 
-/** `"12 min"`, `"1 h 52 min"`. Rounds to the minute; under a minute reads `"1 min"`. */
+/** `"12 min"`, `"1 h 52 min"`. Rounds to the nearest minute; under a minute reads in seconds, `"20 s"`. */
 export function formatRuntime(ms: number): string {
-  const minutes = Math.max(1, Math.round(ms / 60_000));
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.round(ms / 60_000);
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   if (h === 0) return `${m} min`;
@@ -81,7 +83,8 @@ export function fileFacts(version: Version, languageName: LanguageName = (c) => 
   const video = media?.video[0];
   if (video) {
     facts.push(
-      fact("Video", `${video.width} × ${video.height}`, [
+      fact("Video", [
+        `${video.width} × ${video.height}`,
         [video.codec, video.profile].filter(Boolean).join(" "),
         video.frame_rate ? formatFrameRate(video.frame_rate) : null,
         video.hdr ?? "SDR",
@@ -91,31 +94,31 @@ export function fileFacts(version: Version, languageName: LanguageName = (c) => 
   if (media?.audio.length) {
     const main = media.audio.find((a) => a.is_default) ?? media.audio[0]!;
     facts.push(
-      fact("Audio", languages(media.audio, languageName), [
-        codecLabel(main.codec, AUDIO_CODECS),
-        main.layout ?? channelLayout(main.channels),
-      ]),
+      fact("Audio", [languages(media.audio, languageName), codecLabel(main.codec, AUDIO_CODECS), main.layout ?? channelLayout(main.channels)]),
     );
   }
   if (media?.subtitles.length) {
     const codecs = unique(media.subtitles.map((s) => codecLabel(s.codec, SUBTITLE_CODECS)));
-    facts.push(fact("Subtitles", languages(media.subtitles, languageName), [codecs.join(", ")]));
+    facts.push(fact("Subtitles", [languages(media.subtitles, languageName), codecs.join(", ")]));
   }
   if (media?.duration_ms) {
-    facts.push(fact("Length", formatDuration(media.duration_ms), [media.bitrate ? formatBitrate(media.bitrate) : null]));
+    facts.push(fact("Length", [formatDuration(media.duration_ms), media.bitrate ? formatBitrate(media.bitrate) : null]));
   }
-  facts.push(fact("Location", version.file_name, [formatBytes(version.size_bytes)]));
+  facts.push(fact("Location", [version.file_name, formatBytes(version.size_bytes)]));
   return facts;
 }
 
-function fact(label: FileFact["label"], value: string, detail: readonly (string | null | undefined)[]): FileFact {
-  const text = detail.filter(Boolean).join(" · ");
+/** The first non-empty part is the value, the rest the detail. Every caller's parts include at least one string. */
+function fact(label: FileFact["label"], parts: readonly (string | null | undefined)[]): FileFact {
+  const [value = "", ...detail] = parts.filter((p): p is string => !!p);
+  const text = detail.join(" · ");
   return text ? { label, value, detail: text } : { label, value };
 }
 
+/** The tracks' languages, named. Untagged tracks are left out rather than called "unknown". */
 function languages(tracks: readonly { language?: string | null }[], name: LanguageName): string {
-  const names = unique(tracks.map((t) => (t.language && t.language !== "und" ? name(t.language) : "Unknown language")));
-  return names.join(", ");
+  const tagged = tracks.flatMap((t) => (t.language && t.language !== "und" ? [name(t.language)] : []));
+  return unique(tagged).join(", ");
 }
 
 function unique(values: readonly string[]): string[] {
