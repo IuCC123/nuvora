@@ -3,6 +3,11 @@ import { ApiError, type AbortSignalLike, type FetchLike, type HttpMethod, type R
 
 type Schemas = components["schemas"];
 export type HomeResponse = Schemas["HomeResponse"];
+export type HomeLayout = Schemas["HomeLayout"];
+export type HomeRowConfig = Schemas["HomeRowConfig"];
+export type HomeBackground = Schemas["HomeBackground"];
+export type PosterSize = Schemas["PosterSize"];
+export type HomeRowQuery = Schemas["HomeRowQuery"];
 export type HomeRow = Schemas["HomeRow"];
 export type RowKind = Schemas["RowKind"];
 export type RowPage = Schemas["RowPage"];
@@ -76,6 +81,9 @@ export interface ClientOptions {
  * renamed route in Rust fails this file's typecheck after `bun run gen:api`.
  */
 export interface NuvoraClient {
+  homeLayout(signal?: AbortSignalLike): Promise<HomeLayout>;
+  saveHomeLayout(layout: HomeLayout): Promise<HomeLayout>;
+  resetHomeLayout(): Promise<void>;
   home(signal?: AbortSignalLike): Promise<HomeResponse>;
   /** The page of a home row after `after` (a `next` from `home()` or a previous page). A `library` row also names its library. */
   row(kind: RowKind, after: string, signal?: AbortSignalLike, library?: number): Promise<RowPage>;
@@ -197,6 +205,12 @@ export function createClient(options: ClientOptions): NuvoraClient {
 
   return {
     home: (signal) => get<HomeResponse>("/api/home", {}, signal),
+    homeLayout: (signal) => get<HomeLayout>("/api/me/home", {}, signal),
+    saveHomeLayout: async (layout) => {
+      await put("/api/me/home", {}, layout);
+      return get<HomeLayout>("/api/me/home");
+    },
+    resetHomeLayout: () => remove("/api/me/home", {}),
     row: (kind, after, signal, library) =>
       get<RowPage>("/api/rows/{row}", { row: kind }, signal, library === undefined ? { after } : { after, library: String(library) }),
     item: (id, signal) => get<ItemDetail>("/api/items/{id}", { id }, signal),

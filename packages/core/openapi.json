@@ -2178,6 +2178,120 @@
         ]
       }
     },
+    "/api/me/home": {
+      "get": {
+        "operationId": "get_layout",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeLayout"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "put_layout",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HomeLayout"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeLayout"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "reset_layout",
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/rows/{row}": {
       "get": {
         "summary": "Keyset paging on the row's sort key. A malformed cursor, or one from\nanother row (or library), is 400. Per user, with the same ETag as home.\nA library row needs `?library=`; an unknown library is an empty row.",
@@ -2402,6 +2516,13 @@
           "missing_paths"
         ],
         "properties": {
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A preset icon name; `None` means the default for its kind."
+          },
           "id": {
             "type": "integer",
             "format": "int64"
@@ -2624,6 +2745,13 @@
           "paths"
         ],
         "properties": {
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A preset icon name (see the web app's icon picker)."
+          },
           "kind": {
             "$ref": "#/components/schemas/LibraryKind"
           },
@@ -3172,12 +3300,55 @@
           "ok"
         ]
       },
-      "HomeResponse": {
+      "HomeBackground": {
+        "type": "string",
+        "enum": [
+          "none",
+          "ambient",
+          "dusk",
+          "ocean",
+          "forest",
+          "ember",
+          "aurora",
+          "graphite"
+        ]
+      },
+      "HomeLayout": {
         "type": "object",
         "required": [
           "rows"
         ],
         "properties": {
+          "background": {
+            "$ref": "#/components/schemas/HomeBackground"
+          },
+          "poster_size": {
+            "$ref": "#/components/schemas/PosterSize"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HomeRowConfig"
+            },
+            "description": "In display order, hidden ones included."
+          }
+        }
+      },
+      "HomeResponse": {
+        "type": "object",
+        "required": [
+          "rows",
+          "background",
+          "poster_size"
+        ],
+        "properties": {
+          "background": {
+            "$ref": "#/components/schemas/HomeBackground",
+            "description": "From the user's layout (`GET /api/me/home`)."
+          },
+          "poster_size": {
+            "$ref": "#/components/schemas/PosterSize"
+          },
           "rows": {
             "type": "array",
             "items": {
@@ -3196,6 +3367,20 @@
           "items"
         ],
         "properties": {
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The library's preset icon, on `library` rows that have one."
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The layout row this is (`GET /api/me/home`)."
+          },
           "items": {
             "type": "array",
             "items": {
@@ -3221,6 +3406,17 @@
             ],
             "description": "Opaque cursor for `GET /api/rows/{row}?after=` (plus `&library=` for a\nlibrary row). `None` when `items` is the whole row."
           },
+          "query": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HomeRowQuery",
+                "description": "On `library` rows: the library page query. Later pages come from\n`GET /api/libraries/{library_id}/items` with this query and `after=next`."
+              }
+            ]
+          },
           "title": {
             "type": "string"
           },
@@ -3231,6 +3427,145 @@
             "minimum": 0
           }
         }
+      },
+      "HomeRowConfig": {
+        "type": "object",
+        "required": [
+          "id",
+          "type"
+        ],
+        "properties": {
+          "filter": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WatchFilter"
+              }
+            ]
+          },
+          "hdr": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "description": "Chosen by the client, unique in the layout: 1 to 40 letters, digits, `-` or `_`."
+          },
+          "library_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Required on `library` rows."
+          },
+          "order": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SortOrder"
+              }
+            ]
+          },
+          "resolution": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Resolution"
+              }
+            ]
+          },
+          "sort": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LibrarySort"
+              }
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The user's own title; `None` uses the default (the library's name)."
+          },
+          "type": {
+            "$ref": "#/components/schemas/HomeRowType"
+          }
+        }
+      },
+      "HomeRowQuery": {
+        "type": "object",
+        "properties": {
+          "filter": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WatchFilter"
+              }
+            ]
+          },
+          "hdr": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "order": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SortOrder"
+              }
+            ]
+          },
+          "resolution": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Resolution"
+              }
+            ]
+          },
+          "sort": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LibrarySort"
+              }
+            ]
+          }
+        }
+      },
+      "HomeRowType": {
+        "type": "string",
+        "enum": [
+          "continue_watching",
+          "recently_added",
+          "library"
+        ]
       },
       "Image": {
         "type": "object",
@@ -3464,6 +3799,13 @@
           "item_count"
         ],
         "properties": {
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A preset icon name; `None` means the default for its kind."
+          },
           "id": {
             "type": "integer",
             "format": "int64"
@@ -3775,6 +4117,14 @@
             "minimum": 0
           }
         }
+      },
+      "PosterSize": {
+        "type": "string",
+        "enum": [
+          "small",
+          "medium",
+          "large"
+        ]
       },
       "ProgressRequest": {
         "type": "object",
@@ -4361,6 +4711,13 @@
         "type": "object",
         "description": "Every field is optional. `paths` replaces the whole list; removing a folder\nremoves its items from the catalog (never from disk). A different `kind`\nrebuilds every item of the library and resets watch progress in it (ask\nfirst); a scan then fills in artwork.",
         "properties": {
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A preset icon name; `\"\"` goes back to the default for the kind."
+          },
           "kind": {
             "oneOf": [
               {

@@ -310,3 +310,82 @@
     transform: none;
   }
 }
+
+.row-title-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.row-icon {
+  color: var(--nv-color-text-secondary);
+  flex: none;
+}
+
+.row-title-link:hover .row-icon {
+  color: var(--nv-color-accent);
+}
+
+/* Poster sizes from the user's layout. */
+.home[data-poster-size="small"] {
+  --nv-poster-width-regular: 124px;
+}
+
+.home[data-poster-size="large"] {
+  --nv-poster-width-regular: 196px;
+}
+
+.home {
+  position: relative;
+  isolation: isolate;
+}
+
+.home-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: -14px var(--nv-layout-gutter) -18px;
+}
+
+/* Backgrounds: a wash at the top of Home that fades into the canvas. */
+.home-bg,
+.swatch-fill {
+  --bg-a: transparent;
+  --bg-b: transparent;
+  --bg-c: transparent;
+  background:
+    radial-gradient(70% 55% at 12% 0%, var(--bg-a), transparent 72%),
+    radial-gradient(60% 50% at 88% 6%, var(--bg-b), transparent 72%),
+    radial-gradient(50% 45% at 50% 40%, var(--bg-c), transparent 75%);
+}
+
+.home-bg {
+  position: absolute;
+  inset: 0 0 auto;
+  height: min(1100px, 140vh);
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, #000 0%, #000 35%, transparent 100%);
+}
+
+[data-bg="dusk"] { --bg-a: rgb(124 58 237 / 0.34); --bg-b: rgb(219 39 119 / 0.26); --bg-c: rgb(67 56 202 / 0.14); }
+[data-bg="ocean"] { --bg-a: rgb(14 116 144 / 0.4); --bg-b: rgb(37 99 235 / 0.28); --bg-c: rgb(8 145 178 / 0.14); }
+[data-bg="forest"] { --bg-a: rgb(22 101 52 / 0.42); --bg-b: rgb(101 163 13 / 0.2); --bg-c: rgb(20 83 45 / 0.16); }
+[data-bg="ember"] { --bg-a: rgb(234 88 12 / 0.34); --bg-b: rgb(190 18 60 / 0.26); --bg-c: rgb(180 83 9 / 0.14); }
+[data-bg="aurora"] { --bg-a: rgb(16 185 129 / 0.3); --bg-b: rgb(139 92 246 / 0.3); --bg-c: rgb(6 182 212 / 0.18); }
+[data-bg="graphite"] { --bg-a: rgb(148 163 184 / 0.16); --bg-b: rgb(100 116 139 / 0.14); --bg-c: rgb(71 85 105 / 0.1); }
+[data-bg="none"] .swatch-fill,
+.swatch[data-bg="none"] .swatch-fill { background: var(--nv-color-canvas); }
+.swatch[data-bg="ambient"] .swatch-fill {
+  background:
+    radial-gradient(60% 70% at 30% 30%, rgb(229 160 13 / 0.45), transparent 70%),
+    radial-gradient(60% 70% at 75% 60%, rgb(56 189 248 / 0.35), transparent 70%),
+    var(--nv-color-surface);
+}
+
+.home-bg[data-bg="ambient"] > .artwork {
+  inset: -80px;
+  filter: blur(80px) saturate(1.4);
+  opacity: 0.5;
+  transform: scale(1.2);
+}

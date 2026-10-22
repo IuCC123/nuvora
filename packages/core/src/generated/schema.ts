@@ -538,6 +538,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me/home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_layout"];
+        put: operations["put_layout"];
+        post?: never;
+        delete: operations["reset_layout"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rows/{row}": {
         parameters: {
             query?: never;
@@ -602,6 +618,8 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         AdminLibrary: {
+            /** @description A preset icon name; `None` means the default for its kind. */
+            icon?: string | null;
             /** Format: int64 */
             id: number;
             /**
@@ -676,6 +694,8 @@ export interface components {
          *     none already used by another library.
          */
         CreateLibraryRequest: {
+            /** @description A preset icon name (see the web app's icon picker). */
+            icon?: string | null;
             kind: components["schemas"]["LibraryKind"];
             name: string;
             paths: string[];
@@ -867,11 +887,26 @@ export interface components {
         };
         /** @enum {string} */
         HealthStatus: "ok";
+        /** @enum {string} */
+        HomeBackground: "none" | "ambient" | "dusk" | "ocean" | "forest" | "ember" | "aurora" | "graphite";
+        HomeLayout: {
+            background?: components["schemas"]["HomeBackground"];
+            poster_size?: components["schemas"]["PosterSize"];
+            /** @description In display order, hidden ones included. */
+            rows: components["schemas"]["HomeRowConfig"][];
+        };
         HomeResponse: {
+            /** @description From the user's layout (`GET /api/me/home`). */
+            background: components["schemas"]["HomeBackground"];
+            poster_size: components["schemas"]["PosterSize"];
             /** @description Render in order. Clients render unknown row kinds like any other row. */
             rows: components["schemas"]["HomeRow"][];
         };
         HomeRow: {
+            /** @description The library's preset icon, on `library` rows that have one. */
+            icon?: string | null;
+            /** @description The layout row this is (`GET /api/me/home`). */
+            id?: string | null;
             /** @description The first page, at most 40 cards. */
             items: components["schemas"]["PosterCard"][];
             kind: components["schemas"]["RowKind"];
@@ -885,6 +920,7 @@ export interface components {
              *     library row). `None` when `items` is the whole row.
              */
             next?: string | null;
+            query?: null | components["schemas"]["HomeRowQuery"];
             title: string;
             /**
              * Format: int32
@@ -892,6 +928,33 @@ export interface components {
              */
             total: number;
         };
+        HomeRowConfig: {
+            filter?: null | components["schemas"]["WatchFilter"];
+            hdr?: boolean | null;
+            hidden?: boolean;
+            /** @description Chosen by the client, unique in the layout: 1 to 40 letters, digits, `-` or `_`. */
+            id: string;
+            /**
+             * Format: int64
+             * @description Required on `library` rows.
+             */
+            library_id?: number | null;
+            order?: null | components["schemas"]["SortOrder"];
+            resolution?: null | components["schemas"]["Resolution"];
+            sort?: null | components["schemas"]["LibrarySort"];
+            /** @description The user's own title; `None` uses the default (the library's name). */
+            title?: string | null;
+            type: components["schemas"]["HomeRowType"];
+        };
+        HomeRowQuery: {
+            filter?: null | components["schemas"]["WatchFilter"];
+            hdr?: boolean | null;
+            order?: null | components["schemas"]["SortOrder"];
+            resolution?: null | components["schemas"]["Resolution"];
+            sort?: null | components["schemas"]["LibrarySort"];
+        };
+        /** @enum {string} */
+        HomeRowType: "continue_watching" | "recently_added" | "library";
         /** @description An artwork. URL: `/api/images/{id}/{size}`. Immutable: cache forever. */
         Image: {
             /**
@@ -971,6 +1034,8 @@ export interface components {
         LibrarySort: "title" | "year" | "added" | "watched" | "runtime";
         /** @description A library as every member sees it, for the nav rail and the library page header. */
         LibrarySummary: {
+            /** @description A preset icon name; `None` means the default for its kind. */
+            icon?: string | null;
             /** Format: int64 */
             id: number;
             /**
@@ -1075,6 +1140,8 @@ export interface components {
             /** Format: int32 */
             year?: number | null;
         };
+        /** @enum {string} */
+        PosterSize: "small" | "medium" | "large";
         /**
          * @description Where playback is. Clients send it every 10 s while playing, on pause,
          *     after a seek settles and when leaving the player.
@@ -1289,6 +1356,8 @@ export interface components {
          *     first); a scan then fills in artwork.
          */
         UpdateLibraryRequest: {
+            /** @description A preset icon name; `""` goes back to the default for the kind. */
+            icon?: string | null;
             kind?: null | components["schemas"]["LibraryKind"];
             name?: string | null;
             paths?: string[] | null;
@@ -2930,6 +2999,100 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_layout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomeLayout"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_layout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HomeLayout"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomeLayout"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reset_layout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

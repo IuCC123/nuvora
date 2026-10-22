@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { queries } from "../nuvora";
 import { useUser } from "../lib/session";
-import { FilmIcon, FolderIcon, HouseIcon, ServerIcon, TvIcon, UserIcon, UsersIcon } from "./Icon";
+import { FolderIcon, HouseIcon, ServerIcon, UserIcon, UsersIcon } from "./Icon";
+import { LibraryIcon } from "./LibraryIcon";
 
 /** Home, then one entry per library with its type's icon, each opening the library page. */
 export function NavRail() {
@@ -23,7 +24,6 @@ function LibraryRail({ pathname }: { pathname: string }) {
       </p>
       <ul role="list" aria-labelledby="rail-libraries">
         {libraries?.map((library) => {
-          const Icon = library.kind === "shows" ? TvIcon : FilmIcon;
           return (
             <li key={library.id}>
               <Link
@@ -32,7 +32,7 @@ function LibraryRail({ pathname }: { pathname: string }) {
                 className="rail-item"
                 aria-current={pathname === `/library/${library.id}` ? "page" : undefined}
               >
-                <Icon />
+                <LibraryIcon icon={library.icon} kind={library.kind} />
                 <span className="rail-label">{library.name}</span>
                 <span className="rail-count">{library.item_count.toLocaleString()}</span>
               </Link>

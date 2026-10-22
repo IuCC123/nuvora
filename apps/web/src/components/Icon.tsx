@@ -328,3 +328,71 @@ export function SubtitlesIcon({ on, ...p }: IconProps & { on: boolean }) {
     </svg>
   );
 }
+
+export function SlidersIcon(p: IconProps) {
+  return (
+    <svg {...stroke(p)}>
+      <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" />
+      <circle cx="16" cy="6" r="2" />
+      <circle cx="10" cy="12" r="2" />
+      <circle cx="18" cy="18" r="2" />
+    </svg>
+  );
+}
+
+export function EyeIcon(p: IconProps) {
+  return (
+    <svg {...stroke(p)}>
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+export function EyeOffIcon(p: IconProps) {
+  return (
+    <svg {...stroke(p)}>
+      <path d="M10.7 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-2.2 3.1M6.6 6.6C3.7 8.6 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2M2 2l20 20" />
+    </svg>
+  );
+}
+
+export function GripIcon(p: IconProps) {
+  return (
+    <svg {...stroke(p)}>
+      <path d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01" strokeWidth={3} />
+    </svg>
+  );
+}
+
+export function ArrowUpIcon(p: IconProps) {
+  return (
+    <svg {...stroke(p)}>
+      <path d="m6 11 6-6 6 6M12 5v14" />
+    </svg>
+  );
+}
+
+export function ArrowDownIcon(p: IconProps) {
+  return (
+    <svg {...stroke(p)}>
+      <path d="m6 13 6 6 6-6M12 19V5" />
+    </svg>
+  );
+}
+
+export function PencilIcon(p: IconProps) {
+  return (
+    <svg {...stroke(p)}>
+      <path d="M17 3a2.85 2.85 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z" />
+    </svg>
+  );
+}
+
+export function TrashIcon(p: IconProps) {
+  return (
+    <svg {...stroke(p)}>
+      <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    </svg>
+  );
+}

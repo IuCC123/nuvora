@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { rowCards, type HomeRow } from "@nuvora/core";
+import { homeRowQueryParams, librarySearch, parseLibraryView, rowCards, type HomeRow, type RowPage } from "@nuvora/core";
 import { queries } from "../nuvora";
+import { LibraryIcon } from "./LibraryIcon";
 import { ChevronLeftIcon, ChevronRightIcon } from "./Icon";
 import { PosterCardView } from "./PosterCard";
 
@@ -16,11 +17,18 @@ const MAX_PENDING_CARDS = 6;
  */
 export function PosterRow({ row }: { row: HomeRow }) {
   const library = row.kind === "library" ? (row.library_id ?? undefined) : undefined;
-  const headingId = library === undefined ? `row-${row.kind}` : `row-library-${library}`;
+  const headingId = `row-${row.id ?? (library === undefined ? row.kind : `library-${library}`)}`;
   const strip = useRef<HTMLUListElement>(null);
   const [armed, setArmed] = useState(false);
-  const pages = useInfiniteQuery({ ...queries.rowPages(row.kind, row.next ?? "", library), enabled: armed && row.next != null });
-  const { cards, hasMore } = rowCards(row, pages.data?.pages);
+  const { data: libraries } = useQuery(queries.libraries());
+  const kind = libraries?.find((l) => l.id === library)?.kind ?? "movies";
+  // A custom row's later pages come from the library page with its query; built-in rows page through the row cursor.
+  const params = row.query && library !== undefined ? homeRowQueryParams(row.query) : null;
+  const rowPages = useInfiniteQuery({ ...queries.rowPages(row.kind, row.next ?? "", library), enabled: armed && row.next != null && !params });
+  const queryPages = useInfiniteQuery({ ...queries.queryRowPages(library ?? 0, params ?? {}, row.next ?? ""), enabled: armed && row.next != null && !!params });
+  const pages = params ? queryPages : rowPages;
+  const seeAll = row.query ? librarySearch({ ...parseLibraryView({ ...row.query, res: row.query.resolution }), group: true }) : {};
+  const { cards, hasMore } = rowCards(row, pages.data?.pages as RowPage[] | undefined);
   const failed = pages.isError && !pages.isFetching;
   const pending = hasMore && !failed ? Math.min(MAX_PENDING_CARDS, Math.max(1, row.total - cards.length)) : 0;
   const { atStart, atEnd } = useScrollEdges(strip, cards.length + pending);
@@ -40,7 +48,8 @@ export function PosterRow({ row }: { row: HomeRow }) {
           {library === undefined ? (
             row.title
           ) : (
-            <Link to="/library/$id" params={{ id: library }} className="row-title-link">
+            <Link to="/library/$id" params={{ id: library }} search={seeAll} className="row-title-link">
+              <LibraryIcon icon={row.icon} kind={kind} size={20} className="row-icon" />
               {row.title}
             </Link>
           )}
@@ -48,7 +57,7 @@ export function PosterRow({ row }: { row: HomeRow }) {
         {(row.kind === "all_movies" || library !== undefined) && <span className="row-count">{row.total.toLocaleString()}</span>}
         <div className="row-arrows">
           {library !== undefined && (
-            <Link to="/library/$id" params={{ id: library }} className="row-see-all" aria-label={`See all of ${row.title}`}>
+            <Link to="/library/$id" params={{ id: library }} search={seeAll} className="row-see-all" aria-label={`See all of ${row.title}`}>
               See all
             </Link>
           )}

@@ -1,3 +1,4 @@
+import { LibraryIcon } from "../components/LibraryIcon";
 import { useLayoutEffect, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
@@ -56,7 +57,10 @@ export function LibraryScreen() {
   return (
     <div className="library" style={{ "--library-sticky": `${stickyTop}px` } as CSSProperties}>
       <header className="library-head">
-        <h1>{library.name}</h1>
+        <h1 className="library-heading">
+          <LibraryIcon icon={library.icon} kind={library.kind} size={26} className="library-heading-icon" />
+          {library.name}
+        </h1>
         <FilteredCount total={total} library={library} filtered={filtered} noun={noun} />
       </header>
       <div className="library-toolbar" ref={setToolbar}>

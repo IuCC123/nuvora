@@ -6,7 +6,8 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { FormError, TextField } from "../../components/Field";
 import { FolderList } from "../../components/FolderList";
 import { AlertIcon, PlusIcon, RefreshIcon } from "../../components/Icon";
-import { LIBRARY_TYPES, LibraryTypeIcon, TypePicker, TypeSuggestion } from "../../components/LibraryType";
+import { IconPicker, LibraryIcon } from "../../components/LibraryIcon";
+import { LIBRARY_TYPES, TypePicker, TypeSuggestion } from "../../components/LibraryType";
 import { serverError } from "../../lib/serverError";
 import { useForm } from "../../lib/useForm";
 import { LoadError, SettingsPage, SkeletonRows } from "./SettingsPage";
@@ -77,7 +78,7 @@ function LibraryRow({ library, onEdit, onRemove }: { library: AdminLibrary; onEd
   });
   return (
     <li className="settings-row library-row">
-      <LibraryTypeIcon kind={library.kind} />
+      <LibraryIcon icon={library.icon} kind={library.kind} className="library-icon" />
       <div className="library-main">
         <p className="library-name">
           {library.name}
@@ -129,13 +130,20 @@ interface LibraryChanges {
   name: string;
   paths: string[];
   kind: LibraryKind;
+  icon: string | null;
 }
 
 function LibraryEditor({ library, onDone }: { library: AdminLibrary | null; onDone: () => void }) {
   const qc = useQueryClient();
   const save = useMutation({
-    mutationFn: ({ kind, ...v }: LibraryChanges) =>
-      library ? client.admin.updateLibrary(library.id, { ...v, ...(kind !== library.kind && { kind }) }) : client.admin.createLibrary({ ...v, kind }),
+    mutationFn: ({ kind, icon, ...v }: LibraryChanges) =>
+      library
+        ? client.admin.updateLibrary(library.id, {
+            ...v,
+            ...(kind !== library.kind && { kind }),
+            ...(icon !== (library.icon ?? null) && { icon: icon ?? "" }),
+          })
+        : client.admin.createLibrary({ ...v, kind, icon }),
     onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: queryKeys.adminLibraries }),
@@ -148,8 +156,13 @@ function LibraryEditor({ library, onDone }: { library: AdminLibrary | null; onDo
     },
   });
   const form = useForm(
-    { name: library?.name ?? LIBRARY_TYPES.movies.label, paths: (library?.paths ?? []) as readonly string[], kind: library?.kind ?? ("movies" as LibraryKind) },
-    (v) => ({ name: checkRequired(v.name, "a name for the library"), paths: v.paths.length ? null : "Choose at least one folder.", kind: null }),
+    {
+      name: library?.name ?? LIBRARY_TYPES.movies.label,
+      paths: (library?.paths ?? []) as readonly string[],
+      kind: library?.kind ?? ("movies" as LibraryKind),
+      icon: library?.icon ?? "",
+    },
+    (v) => ({ name: checkRequired(v.name, "a name for the library"), paths: v.paths.length ? null : "Choose at least one folder.", kind: null, icon: null }),
     save.reset,
   );
   // A type change rebuilds the library, so it waits for a confirmation.
@@ -167,12 +180,13 @@ function LibraryEditor({ library, onDone }: { library: AdminLibrary | null; onDo
       className="form editor"
       noValidate
       aria-label={title}
-      onSubmit={form.submit((v) => submit({ name: v.name.trim(), paths: [...v.paths], kind: v.kind }))}
+      onSubmit={form.submit((v) => submit({ name: v.name.trim(), paths: [...v.paths], kind: v.kind, icon: v.icon || null }))}
       onKeyDown={(e) => e.key === "Escape" && !save.isPending && !confirming && onDone()}
     >
       <h2 className="editor-title">{title}</h2>
       <TypePicker value={form.values.kind} onChange={chooseKind} />
       <TextField label="Name" placeholder={LIBRARY_TYPES[form.values.kind].label} autoFocus {...form.field("name")} error={form.error("name") ?? failed.field.name} />
+      <IconPicker value={form.values.icon || null} kind={form.values.kind} onChange={(icon) => form.set("icon", icon)} />
       <FolderList
         label="Folders"
         paths={form.values.paths}

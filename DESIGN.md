@@ -220,3 +220,10 @@ A movie without poster artwork gets a title card, never a cropped video frame. I
 - Use spinners where a placeholder can stand in.
 - Put the accent on inactive or decorative elements.
 - Add an eyebrow label above a heading, gradient text, or a glass effect.
+
+## Personal home screens
+
+- **Library icons.** Each library shows one of 22 preset line icons (24-unit grid, 1.75 stroke, same as the rest of the set) in the rail, on its home row and as the library page's heading, where it is amber. Movies default to the film icon and TV to the TV icon.
+- **Backgrounds.** Home can sit on a wash in one of six palettes (Dusk, Ocean, Forest, Ember, Aurora, Graphite), each three soft radial gradients at 14% to 42% opacity, or "From what you watch", the first poster on screen blurred 80px at 50%. Every background fades into the canvas within the first screen and a half, so rows stay on the canvas color for reading.
+- **Poster sizes.** Small 124px, medium 150px, large 196px. Everything else in a row scales from the card width.
+- **Customize panel.** A 440px panel from the right on `surface`, with swatches, a segmented size control, and the row list on `surface-raised`. Changes apply as they happen and save to the account.

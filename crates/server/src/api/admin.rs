@@ -44,6 +44,8 @@ pub struct AdminLibrary {
     /// Entries of `paths` that cannot be read right now (unmounted share,
     /// permissions). Their items stay in the catalog.
     pub missing_paths: Vec<String>,
+    /// A preset icon name; `None` means the default for its kind.
+    pub icon: Option<String>,
 }
 
 /// Chosen when the library is added. Changing it later rebuilds the
@@ -64,6 +66,8 @@ pub struct CreateLibraryRequest {
     pub name: String,
     pub kind: LibraryKind,
     pub paths: Vec<String>,
+    /// A preset icon name (see the web app's icon picker).
+    pub icon: Option<String>,
 }
 
 /// Every field is optional. `paths` replaces the whole list; removing a folder
@@ -76,6 +80,8 @@ pub struct UpdateLibraryRequest {
     pub name: Option<String>,
     pub paths: Option<Vec<String>>,
     pub kind: Option<LibraryKind>,
+    /// A preset icon name; `""` goes back to the default for the kind.
+    pub icon: Option<String>,
 }
 
 #[derive(Deserialize, IntoParams)]
@@ -211,13 +217,22 @@ pub(super) async fn create_library(
     JsonBody(body): JsonBody<CreateLibraryRequest>,
 ) -> Result<(StatusCode, Json<AdminLibrary>), ApiError> {
     let name = valid_library_name(&body.name)?;
+    let icon = valid_icon(body.icon.as_deref())?;
     let roots = valid_folders(body.paths).await?;
     let kind = body.kind.into();
-    let library = state
+    let mut library = state
         .library
         .create_library(name, kind, roots)
         .await
         .map_err(library_error)?;
+    if icon.is_some() {
+        state
+            .library
+            .set_library_icon(library.id, icon.clone())
+            .await
+            .map_err(ApiError::internal)?;
+        library.icon = icon;
+    }
     state.library.request_scan();
     Ok((StatusCode::CREATED, Json(admin_library(library).await)))
 }
@@ -240,6 +255,10 @@ pub(super) async fn update_library(
     JsonBody(body): JsonBody<UpdateLibraryRequest>,
 ) -> Result<Json<AdminLibrary>, ApiError> {
     let name = body.name.as_deref().map(valid_library_name).transpose()?;
+    let icon = match body.icon.as_deref() {
+        Some(raw) => Some(valid_icon(Some(raw))?),
+        None => None,
+    };
     let roots = match body.paths {
         Some(paths) => Some(valid_folders(paths).await?),
         None => None,
@@ -257,6 +276,15 @@ pub(super) async fn update_library(
         .map_err(library_error)?;
     if folders_changed {
         state.library.request_scan();
+    }
+    let mut library = library;
+    if let Some(icon) = icon {
+        state
+            .library
+            .set_library_icon(library.id, icon.clone())
+            .await
+            .map_err(ApiError::internal)?;
+        library.icon = icon;
     }
     Ok(Json(admin_library(library).await))
 }
@@ -590,6 +618,19 @@ async fn admin_library(library: LibraryInfo) -> AdminLibrary {
             .collect(),
         item_count: library.item_count,
         missing_paths: missing.iter().map(|p| p.display().to_string()).collect(),
+        icon: library.icon,
+    }
+}
+
+/// `None` or `""` is the kind's default; anything else must be a preset.
+fn valid_icon(icon: Option<&str>) -> Result<Option<String>, ApiError> {
+    match icon.map(str::trim) {
+        None | Some("") => Ok(None),
+        Some(name) if super::home::LIBRARY_ICONS.contains(&name) => Ok(Some(name.to_owned())),
+        Some(_) => Err(ApiError::validation(
+            "icon",
+            "Choose one of the preset icons",
+        )),
     }
 }
 

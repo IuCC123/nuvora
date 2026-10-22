@@ -307,3 +307,14 @@
     width: 20px;
   }
 }
+
+.library-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.library-heading-icon {
+  color: var(--nv-color-accent);
+  flex: none;
+}

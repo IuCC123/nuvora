@@ -16,6 +16,8 @@ import type {
   RowKind,
   RowPage,
   ScanStatus,
+  HomeLayout,
+  HomeRowQuery,
   MetadataSettings,
   ServerInfo,
 } from "./client";
@@ -63,6 +65,7 @@ export const queryKeys = {
   adminUsers: ["admin", "users"] as const,
   adminServer: ["admin", "server"] as const,
   adminMetadata: ["admin", "metadata"] as const,
+  homeLayout: ["home-layout"] as const,
 };
 
 /**
@@ -95,6 +98,8 @@ export interface Queries {
    * starts paging again instead of appending stale pages.
    */
   rowPages(kind: RowKind, after: string, library?: number): InfiniteQueryDef<RowPage, string>;
+  /** Later pages of a custom home row: the library page with the row's query. */
+  queryRowPages(library: number, query: Record<string, string>, after: string): InfiniteQueryDef<LibraryPage, string>;
   /** A season's episodes, with watch state and a playback decision each. */
   episodes(seasonId: number): QueryDef<Episode[]>;
   libraries(): QueryDef<LibrarySummary[]>;
@@ -114,6 +119,7 @@ export interface Queries {
   adminUsers(): QueryDef<AdminUser[]>;
   adminServer(): QueryDef<ServerInfo>;
   adminMetadata(): QueryDef<MetadataSettings>;
+  homeLayout(): QueryDef<HomeLayout>;
 }
 
 /** Long enough that the screen's mount reuses its loader's request, short enough that a revisit shows other admins' changes. */
@@ -126,6 +132,13 @@ export function createQueries(client: NuvoraClient): Queries {
     rowPages: (kind, after, library) => ({
       queryKey: [...queryKeys.rows, kind, library ?? null, after],
       queryFn: ({ signal, pageParam }) => client.row(kind, pageParam, signal, library),
+      initialPageParam: after,
+      getNextPageParam: (last) => last.next ?? undefined,
+      staleTime: 30_000,
+    }),
+    queryRowPages: (library, query, after) => ({
+      queryKey: [...queryKeys.rows, "query", library, query, after],
+      queryFn: ({ signal, pageParam }) => client.libraryItems(library, query, pageParam, HOME_ROW_PAGE, signal),
       initialPageParam: after,
       getNextPageParam: (last) => last.next ?? undefined,
       staleTime: 30_000,
@@ -149,6 +162,7 @@ export function createQueries(client: NuvoraClient): Queries {
     adminInspect: (path) => ({ queryKey: queryKeys.adminInspect(path), queryFn: ({ signal }) => client.admin.inspect(path, signal), staleTime: 30_000 }),
     adminUsers: () => ({ queryKey: queryKeys.adminUsers, queryFn: ({ signal }) => client.admin.users(signal), staleTime: ADMIN_FRESH }),
     adminServer: () => ({ queryKey: queryKeys.adminServer, queryFn: ({ signal }) => client.admin.server(signal), staleTime: ADMIN_FRESH }),
+    homeLayout: () => ({ queryKey: queryKeys.homeLayout, queryFn: ({ signal }) => client.homeLayout(signal), staleTime: 30_000 }),
     adminMetadata: () => ({ queryKey: queryKeys.adminMetadata, queryFn: ({ signal }) => client.admin.metadata(signal), staleTime: ADMIN_FRESH }),
   };
 }
@@ -174,6 +188,20 @@ export function findCard(home: HomeResponse | undefined, id: number): PosterCard
  * A home row's cards so far: its first page plus every page loaded after it.
  * `hasMore` is false once the last loaded page (or the first, if none) has no cursor.
  */
+/** Cards per later page of a custom home row. */
+const HOME_ROW_PAGE = 40;
+
+/** A home row's library query as the library page's URL parameters. */
+export function homeRowQueryParams(query: HomeRowQuery): Record<string, string> {
+  const params: Record<string, string> = {};
+  if (query.sort) params.sort = query.sort;
+  if (query.order) params.order = query.order;
+  if (query.filter) params.filter = query.filter;
+  if (query.resolution) params.res = query.resolution;
+  if (query.hdr) params.hdr = "true";
+  return params;
+}
+
 export function rowCards(row: HomeRow, pages: readonly RowPage[] = []): { cards: PosterCard[]; hasMore: boolean } {
   const last = pages.length ? pages[pages.length - 1]!.next : row.next;
   return { cards: [...row.items, ...pages.flatMap((p) => p.items)], hasMore: last != null };

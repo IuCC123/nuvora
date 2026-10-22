@@ -8,6 +8,7 @@
 mod accounts;
 mod browse;
 mod db;
+mod home_layout;
 mod ids;
 mod libraries;
 mod metadata;
@@ -37,6 +38,7 @@ pub use browse::{
     GroupKey, IndexGroup, LibraryCursor, LibraryPage, LibraryQuery, Order, Resolution, Sort,
     WatchFilter,
 };
+pub use home_layout::HomeRowSpec;
 pub use ids::{ArtworkId, FileId, ItemId, LibraryId, ParseIdError, UserId};
 pub use libraries::{LibraryError, LibraryInfo};
 pub use metadata::read::{Credit, Extras};

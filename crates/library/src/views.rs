@@ -61,6 +61,16 @@ pub struct Row {
     pub next: Option<Cursor>,
     /// The library's name, on a [`RowKind::Library`] row.
     pub library_name: Option<String>,
+    /// The library's preset icon, on a [`RowKind::Library`] row.
+    pub library_icon: Option<String>,
+    /// The user's own title for this row, from their home layout.
+    pub title: Option<String>,
+    /// On a custom library row: the query its later pages come from, through
+    /// the library page, and the cursor to the second page.
+    pub query: Option<crate::browse::LibraryQuery>,
+    pub library_next: Option<crate::browse::LibraryCursor>,
+    /// Index of the [`crate::HomeRowSpec`] this row was built from.
+    pub spec: Option<usize>,
 }
 
 /// A later page of one row, from [`Library::row`](crate::Library::row).
@@ -354,7 +364,84 @@ pub(crate) fn home(conn: &Connection, user: UserId) -> rusqlite::Result<Home> {
             cards,
             next,
             library_name,
+            library_icon: None,
+            title: None,
+            query: None,
+            library_next: None,
+            spec: None,
         });
+    }
+    Ok(Home { rev, rows })
+}
+
+/// The rows of a custom home layout, in order. See [`crate::HomeRowSpec`].
+pub(crate) fn home_with(
+    conn: &Connection,
+    user: UserId,
+    specs: &[crate::HomeRowSpec],
+) -> rusqlite::Result<Home> {
+    use crate::HomeRowSpec;
+    use rusqlite::OptionalExtension;
+    let rev = rev(conn)?;
+    let mut rows = Vec::new();
+    for (index, spec) in specs.iter().enumerate() {
+        match spec {
+            HomeRowSpec::ContinueWatching { title } | HomeRowSpec::RecentlyAdded { title } => {
+                let kind = if matches!(spec, HomeRowSpec::ContinueWatching { .. }) {
+                    RowKind::ContinueWatching
+                } else {
+                    RowKind::RecentlyAdded
+                };
+                let (total, cards, next) = row_page(conn, kind, None, HOME_ROW_LIMIT, user)?;
+                if kind == RowKind::ContinueWatching && total == 0 {
+                    continue;
+                }
+                rows.push(Row {
+                    kind,
+                    total,
+                    cards,
+                    next,
+                    library_name: None,
+                    library_icon: None,
+                    title: title.clone(),
+                    query: None,
+                    library_next: None,
+                    spec: Some(index),
+                });
+            }
+            HomeRowSpec::Library {
+                library,
+                query,
+                title,
+            } => {
+                let Some((name, icon)) = conn
+                    .prepare_cached("SELECT name, icon FROM library WHERE id = ?1")?
+                    .query_row([library.0], |r| {
+                        Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+                    })
+                    .optional()?
+                else {
+                    continue;
+                };
+                let Some(page) =
+                    crate::browse::page(conn, *library, query, None, HOME_ROW_LIMIT, user)?
+                else {
+                    continue;
+                };
+                rows.push(Row {
+                    kind: RowKind::Library(*library),
+                    total: page.total,
+                    cards: page.cards,
+                    next: None,
+                    library_name: Some(name),
+                    library_icon: icon,
+                    title: title.clone(),
+                    query: Some(query.clone()),
+                    library_next: page.next,
+                    spec: Some(index),
+                });
+            }
+        }
     }
     Ok(Home { rev, rows })
 }

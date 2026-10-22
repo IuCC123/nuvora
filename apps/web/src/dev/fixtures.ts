@@ -2,7 +2,7 @@ import { accountRoute, hasLibraries, signedIn, signedInAsAdmin, type Reply } fro
 import { catalogEpisodes, catalogFiles, catalogItem, homeRows, libraryRoute } from "./fixtureLibrary";
 import { continueWatching, watchRoute, watchState, withWatch } from "./fixtureWatch";
 import { NO_DETAILS } from "./noDetails";
-import type { FetchLike, FontAttachment, HomeResponse, HttpMethod, ItemDetail, PosterCard, RowPage, ScanStatus, Version } from "@nuvora/core";
+import type { FetchLike, FontAttachment, HomeLayout, HomeResponse, HttpMethod, ItemDetail, PosterCard, RowPage, ScanStatus, Version } from "@nuvora/core";
 
 /**
  * Dev-only transport (`VITE_FIXTURES=1`): answers the JSON endpoints from the
@@ -56,11 +56,30 @@ const byId = (id: number): PosterCard => cards().find((c) => c.id === id)!;
 
 const ALL_FIRST_PAGE = 8;
 
+/** The fixture account's home layout: only the look is applied; rows keep the fixture order. */
+let layout: HomeLayout | null = null;
+
 function home(): HomeResponse {
-  if (!hasLibraries()) return { rows: [] };
+  const look = { background: layout?.background ?? "none", poster_size: layout?.poster_size ?? "medium" } as const;
+  if (!hasLibraries()) return { rows: [], ...look };
   const recent = [14, 13, 12, 5, 11, 9, 4].map(byId);
   const movie = (id: number) => cards().find((c) => c.id === id) ?? movieCard(catalogItem(id));
-  return { rows: homeRows(recent, movie) };
+  return { rows: homeRows(recent, movie), ...look };
+}
+
+function homeLayout(): HomeLayout {
+  return (
+    layout ?? {
+      background: "none",
+      poster_size: "medium",
+      rows: [
+        { id: "continue-watching", type: "continue_watching", hidden: false },
+        { id: "recently-added", type: "recently_added", hidden: false },
+        { id: "library-1", type: "library", hidden: false, library_id: 1 },
+        { id: "library-2", type: "library", hidden: false, library_id: 2 },
+      ],
+    }
+  );
 }
 
 function movieCard(item: ItemDetail | undefined): PosterCard | undefined {
@@ -229,7 +248,7 @@ function catalogRoute(method: HttpMethod, path: string, query: URLSearchParams, 
   if (path === "/api/scan" && method === "POST" && !signedInAsAdmin()) {
     return { status: 403, body: { code: "forbidden", message: "Only an admin can do that.", field: null } };
   }
-  const body = route(method, path, query);
+  const body = route(method, path, query, request);
   return body === undefined ? { status: 404, body: { code: "not_found", message: "Not found", field: null } } : { status: 200, body };
 }
 
@@ -238,8 +257,13 @@ function versionsOf(id: number): number[] | undefined {
   return movie?.kind === "movie" ? movie.versions.map((v) => v.file_id) : undefined;
 }
 
-function route(method: HttpMethod, path: string, query: URLSearchParams): unknown {
+function route(method: HttpMethod, path: string, query: URLSearchParams, body?: unknown): unknown {
   if (path === "/api/home") return home();
+  if (path === "/api/me/home") {
+    if (method === "PUT") layout = body as HomeLayout;
+    if (method === "DELETE") layout = null;
+    return homeLayout();
+  }
   if (path === "/api/rows/all_movies") return allMoviesAfter(query.get("after"));
   if (path === "/api/scan" && method === "POST") {
     if (scanStatus().state === "idle") Object.assign(scan, { startedAt: Date.now(), from: 0 });

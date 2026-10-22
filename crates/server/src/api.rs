@@ -31,6 +31,7 @@
 mod accounts;
 mod admin;
 mod browse;
+mod home;
 mod metadata;
 mod subtitles;
 #[cfg(test)]
@@ -156,6 +157,11 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(browse::get_library_index))
         .routes(routes!(watch::put_progress))
         .routes(routes!(watch::put_watched, watch::delete_watched))
+        .routes(routes!(
+            home::get_layout,
+            home::put_layout,
+            home::reset_layout
+        ))
         .routes(routes!(get_image))
         .routes(routes!(stream_file))
         .routes(routes!(subtitles::get_subtitle))
@@ -266,6 +272,9 @@ pub fn compression()
 pub struct HomeResponse {
     /// Render in order. Clients render unknown row kinds like any other row.
     pub rows: Vec<HomeRow>,
+    /// From the user's layout (`GET /api/me/home`).
+    pub background: home::HomeBackground,
+    pub poster_size: home::PosterSize,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -281,6 +290,22 @@ pub struct HomeRow {
     pub next: Option<String>,
     /// Set on `library` rows: the library page to open from "See all".
     pub library_id: Option<i64>,
+    /// The layout row this is (`GET /api/me/home`).
+    pub id: Option<String>,
+    /// The library's preset icon, on `library` rows that have one.
+    pub icon: Option<String>,
+    /// On `library` rows: the library page query. Later pages come from
+    /// `GET /api/libraries/{library_id}/items` with this query and `after=next`.
+    pub query: Option<HomeRowQuery>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct HomeRowQuery {
+    pub sort: Option<browse::LibrarySort>,
+    pub order: Option<browse::SortOrder>,
+    pub filter: Option<browse::WatchFilter>,
+    pub resolution: Option<browse::Resolution>,
+    pub hdr: Option<bool>,
 }
 
 /// A later page of one row.
@@ -591,17 +616,22 @@ impl<S: Send + Sync> FromRequestParts<S> for Device {
 /// user's copy stale.
 #[utoipa::path(get, path = "/api/home", responses((status = 200, body = HomeResponse), (status = 304)))]
 async fn get_home(
-    State(lib): State<Library>,
+    State(state): State<AppState>,
     me: SignedIn,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    if if_none_match(&headers, &rev_etag(lib.rev(), me.watch_rev)) {
+    if if_none_match(&headers, &rev_etag(state.library.rev(), me.watch_rev)) {
         return Ok(StatusCode::NOT_MODIFIED.into_response());
     }
-    let home = lib.home(me.user.id).await.map_err(ApiError::internal)?;
+    let layout = home::layout_for(&state, &me).await?;
+    let built = state
+        .library
+        .home_with(me.user.id, home::specs(&layout))
+        .await
+        .map_err(ApiError::internal)?;
     Ok(json_with_etag(
-        &rev_etag(home.rev, me.watch_rev),
-        &HomeResponse::from(home),
+        &rev_etag(built.rev, me.watch_rev),
+        &home_response(built, &layout),
     ))
 }
 
@@ -831,24 +861,44 @@ fn unix_ms(t: SystemTime) -> i64 {
         .map_or(0, |d| d.as_millis() as i64)
 }
 
-impl From<nuvora_library::Home> for HomeResponse {
-    fn from(home: nuvora_library::Home) -> Self {
-        let rows = home
-            .rows
-            .into_iter()
-            .map(|row| HomeRow {
+fn home_response(built: nuvora_library::Home, layout: &home::HomeLayout) -> HomeResponse {
+    let visible: Vec<&home::HomeRowConfig> = layout.rows.iter().filter(|r| !r.hidden).collect();
+    let rows = built
+        .rows
+        .into_iter()
+        .map(|row| {
+            let config = row.spec.and_then(|i| visible.get(i).copied());
+            HomeRow {
                 kind: row.kind.into(),
-                title: row_title(&row),
+                title: row.title.clone().unwrap_or_else(|| row_title(&row)),
                 total: row.total,
                 library_id: match row.kind {
                     nuvora_library::RowKind::Library(id) => Some(id.raw()),
                     _ => None,
                 },
+                id: config.map(|c| c.id.clone()),
+                icon: row.library_icon.clone(),
+                query: config
+                    .filter(|c| c.row_type == home::HomeRowType::Library)
+                    .map(|c| HomeRowQuery {
+                        sort: c.sort,
+                        order: c.order,
+                        filter: c.filter,
+                        resolution: c.resolution,
+                        hdr: c.hdr,
+                    }),
+                next: row
+                    .next
+                    .map(|c| c.to_string())
+                    .or_else(|| row.library_next.map(|c| c.to_string())),
                 items: row.cards.into_iter().map(PosterCard::from).collect(),
-                next: row.next.map(|c| c.to_string()),
-            })
-            .collect();
-        HomeResponse { rows }
+            }
+        })
+        .collect();
+    HomeResponse {
+        rows,
+        background: layout.background,
+        poster_size: layout.poster_size,
     }
 }
 
@@ -1510,6 +1560,92 @@ mod tests {
         assert_eq!(
             (reply.status, reply.body.len()),
             (StatusCode::NOT_MODIFIED, 0)
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_home_layout_is_saved_per_user_and_shapes_home() {
+        let app = TestApp::new().await;
+        let cookie = app.setup_admin().await;
+        let layout = app.get("/api/me/home", &cookie).await.json();
+        assert_eq!(layout["background"], "none");
+        let ids: Vec<&str> = layout["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, ["continue-watching", "recently-added", "library-1"]);
+
+        let custom = serde_json::json!({
+            "background": "aurora",
+            "poster_size": "large",
+            "rows": [
+                { "id": "library-1", "type": "library", "library_id": 1, "title": "Unwatched films", "sort": "year", "order": "desc", "filter": "unwatched" },
+                { "id": "recently-added", "type": "recently_added", "hidden": true },
+                { "id": "continue-watching", "type": "continue_watching" }
+            ]
+        });
+        let saved = app
+            .call("PUT", "/api/me/home", Some(&cookie), Some(custom))
+            .await;
+        assert_eq!(saved.status, StatusCode::OK);
+        let home = app.get("/api/home", &cookie).await.json();
+        assert_eq!(
+            (&home["background"], &home["poster_size"]),
+            (&serde_json::json!("aurora"), &serde_json::json!("large"))
+        );
+        let rows = home["rows"].as_array().unwrap();
+        assert_eq!(
+            rows.len(),
+            1,
+            "recently added is hidden and continue watching is empty"
+        );
+        assert_eq!(rows[0]["title"], "Unwatched films");
+        assert_eq!(rows[0]["id"], "library-1");
+        assert_eq!(rows[0]["query"]["sort"], "year");
+        assert_eq!(rows[0]["query"]["filter"], "unwatched");
+
+        let bad = serde_json::json!({ "rows": [{ "id": "a b", "type": "recently_added" }] });
+        assert_eq!(
+            app.call("PUT", "/api/me/home", Some(&cookie), Some(bad))
+                .await
+                .status,
+            StatusCode::BAD_REQUEST
+        );
+        let icon = app
+            .call(
+                "PATCH",
+                "/api/admin/libraries/1",
+                Some(&cookie),
+                Some(serde_json::json!({ "icon": "rocket" })),
+            )
+            .await
+            .json();
+        assert_eq!(icon["icon"], "rocket");
+        let bad_icon = app
+            .call(
+                "PATCH",
+                "/api/admin/libraries/1",
+                Some(&cookie),
+                Some(serde_json::json!({ "icon": "skull" })),
+            )
+            .await;
+        assert_eq!(bad_icon.status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            app.get("/api/home", &cookie).await.json()["rows"][0]["icon"],
+            "rocket"
+        );
+
+        assert_eq!(
+            app.call("DELETE", "/api/me/home", Some(&cookie), None)
+                .await
+                .status,
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            app.get("/api/me/home", &cookie).await.json()["background"],
+            "none"
         );
     }
 

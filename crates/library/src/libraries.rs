@@ -18,6 +18,8 @@ pub struct LibraryInfo {
     pub roots: Vec<PathBuf>,
     /// Items with at least one file present.
     pub item_count: u32,
+    /// A preset icon name; `None` uses its kind's default.
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -37,10 +39,18 @@ impl From<crate::db::DbError> for LibraryError {
 }
 
 fn load(c: &Connection, id: i64) -> rusqlite::Result<Option<LibraryInfo>> {
-    let Some((name, kind)) = c
-        .query_row("SELECT name, kind FROM library WHERE id = ?1", [id], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-        })
+    let Some((name, kind, icon)) = c
+        .query_row(
+            "SELECT name, kind, icon FROM library WHERE id = ?1",
+            [id],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                ))
+            },
+        )
         .optional()?
     else {
         return Ok(None);
@@ -68,6 +78,7 @@ fn load(c: &Connection, id: i64) -> rusqlite::Result<Option<LibraryInfo>> {
         kind,
         roots,
         item_count: item_count as u32,
+        icon,
     }))
 }
 
@@ -258,5 +269,29 @@ impl Library {
                 Ok(Ok(()))
             })
             .await?
+    }
+}
+
+impl crate::Library {
+    /// Set or clear (`None`) a library's preset icon. `false` when the library does not exist.
+    pub async fn set_library_icon(
+        &self,
+        id: LibraryId,
+        icon: Option<String>,
+    ) -> Result<bool, crate::QueryError> {
+        Ok(self
+            .inner
+            .db
+            .write(move |tx| {
+                let changed = tx.execute(
+                    "UPDATE library SET icon = ?1 WHERE id = ?2",
+                    rusqlite::params![icon, id.0],
+                )?;
+                if changed > 0 {
+                    crate::scan::write::bump_rev(tx)?;
+                }
+                Ok(changed > 0)
+            })
+            .await?)
     }
 }

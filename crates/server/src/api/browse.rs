@@ -38,6 +38,8 @@ pub struct LibrarySummary {
     pub kind: LibraryKind,
     /// Movies, or shows for a TV library, with at least one file present.
     pub item_count: u32,
+    /// A preset icon name; `None` means the default for its kind.
+    pub icon: Option<String>,
 }
 
 /// A show's page. `next` is what Play starts.
@@ -277,6 +279,7 @@ pub(super) async fn get_libraries(
                 name: l.name,
                 kind: l.kind.into(),
                 item_count: l.item_count,
+                icon: l.icon,
             })
             .collect(),
     ))
@@ -419,7 +422,7 @@ pub(super) async fn get_episodes(
     Ok(response)
 }
 
-fn library_query(
+pub(super) fn library_query(
     sort: Option<LibrarySort>,
     order: Option<SortOrder>,
     filter: Option<WatchFilter>,

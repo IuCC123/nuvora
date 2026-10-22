@@ -19,6 +19,11 @@ export type {
   LoginRequest,
   Role,
   CastMember,
+  HomeBackground,
+  HomeLayout,
+  HomeRowConfig,
+  HomeRowQuery,
+  PosterSize,
   Details,
   MetadataSettings,
   ServerInfo,
@@ -63,7 +68,7 @@ export type {
   SubtitleMode,
   SubtitleTrack,
 } from "./client";
-export { createQueries, findCard, isScanRunning, LIBRARY_PAGE_SIZE, queryKeys, rowCards, watchStateKeys } from "./queries";
+export { createQueries, findCard, isScanRunning, LIBRARY_PAGE_SIZE, queryKeys, homeRowQueryParams, rowCards, watchStateKeys } from "./queries";
 export type { InfiniteQueryDef, Queries, QueryDef } from "./queries";
 export { placeholderDataUrl } from "./images";
 export { titleCardLook } from "./titleCard";
