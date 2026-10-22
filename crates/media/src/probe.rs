@@ -168,6 +168,14 @@ pub enum ProbeError {
     Io(#[from] std::io::Error),
 }
 
+impl ProbeError {
+    /// The file may read fine next time (a slow share, a file still locked),
+    /// so the scanner retries it instead of waiting for it to change.
+    pub fn is_transient(&self) -> bool {
+        matches!(self, ProbeError::Timeout(_) | ProbeError::Io(_))
+    }
+}
+
 /// Run `ffprobe -v error -print_format json -show_format -show_streams` on
 /// `path` with the tools' timeout (the child is killed on timeout) and parse
 /// the result. Concurrency is the caller's job (the scanner holds a semaphore).

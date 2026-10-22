@@ -601,6 +601,37 @@ mod tests {
         assert!(quiet.is_err(), "no scan runs without a request");
     }
 
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_file_that_could_not_be_read_is_retried_next_scan() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let (root, data) = (dir.path().join("Movies"), dir.path().join("data"));
+        let file = root.join("Heat (1995)/Heat (1995).mp4");
+        sdr_movie(&file);
+        let mode = |m| std::fs::set_permissions(&file, std::fs::Permissions::from_mode(m)).unwrap();
+        let lib = open(&root, &data).await;
+
+        mode(0o000);
+        let first = scan(&lib).await;
+        let second = scan(&lib).await;
+        mode(0o644);
+        assert_eq!((first.added, first.failed), (1, 1), "{first:?}");
+        assert_eq!(
+            (second.changed, second.unchanged, second.failed),
+            (1, 0, 1),
+            "{second:?}"
+        );
+
+        let third = scan(&lib).await;
+        assert_eq!((third.changed, third.failed), (1, 0), "{third:?}");
+        let heat = find(&lib, "Heat").await;
+        assert!(matches!(
+            heat.versions[0].media,
+            VersionMedia::Probed { .. }
+        ));
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn config_only_adds_what_is_missing() {
         let dir = tempfile::tempdir().unwrap();

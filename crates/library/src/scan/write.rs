@@ -113,7 +113,8 @@ fn blob16(blob: Vec<u8>) -> [u8; 16] {
 ///    `missing_since` (a returning file revives its old item and id);
 /// 2. upsert the `media_file` row (by `(root, rel_path)`, so a crash-and-retry
 ///    of the same insert updates instead of duplicating);
-/// 3. replace its `media_stream` rows (or set `probe_error` on failure);
+/// 3. replace its `media_stream` rows (or set `probe_error` on failure, with
+///    a stale `probe_version` when the failure is transient);
 /// 4. rewrite the item's `filename` metadata layer from the item's *oldest*
 ///    file, so which version was probed last never changes the title.
 ///
@@ -144,6 +145,11 @@ pub(crate) fn upsert_file(
         ),
         Err(e) => (None, None, None, Some(e.to_string())),
     };
+    // A stale version makes the next scan probe the file again.
+    let probe_version = match probe {
+        Err(e) if e.is_transient() => 0,
+        _ => PROBE_VERSION,
+    };
     let file_id = match existing {
         Some((id, _)) => {
             tx.execute(
@@ -154,7 +160,7 @@ pub(crate) fn upsert_file(
                     job.disk.size as i64,
                     job.disk.mtime_ns,
                     fingerprint.to_vec(),
-                    PROBE_VERSION,
+                    probe_version,
                     probe_error,
                     container,
                     duration_ms.map(|d| d as i64),
@@ -176,7 +182,7 @@ pub(crate) fn upsert_file(
                     job.disk.mtime_ns,
                     fingerprint.to_vec(),
                     now_ms,
-                    PROBE_VERSION,
+                    probe_version,
                     probe_error,
                     container,
                     duration_ms.map(|d| d as i64),

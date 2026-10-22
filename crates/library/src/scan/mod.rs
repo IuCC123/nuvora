@@ -443,8 +443,8 @@ async fn scan(
 }
 
 /// Fingerprint and probe one file. A fingerprint read failure is reported as
-/// the probe's failure so the file is stored (with `probe_error`) and not
-/// retried until it changes.
+/// the probe's `Io` failure, so the file is stored (with `probe_error`) and
+/// retried next scan.
 async fn probe_job(
     ctx: &ScanContext,
     root_abs: &HashMap<RootId, PathBuf>,
