@@ -13,7 +13,7 @@ export function SettingsAccount() {
   if (!user) return null;
   return (
     <SettingsPage title="Account" lede={`You're signed in as ${user.username}.`}>
-      <Profile key={user.display_name} user={user} />
+      <Profile user={user} />
       <Password />
     </SettingsPage>
   );
@@ -26,7 +26,13 @@ function Profile({ user }: { user: User }) {
   return (
     <section className="settings-section" aria-labelledby="profile">
       <h2 id="profile">Profile</h2>
-      <form className="form settings-form" noValidate onSubmit={form.submit((v) => save.mutate({ display_name: v.display_name.trim() }))}>
+      <form
+        className="form settings-form"
+        noValidate
+        onSubmit={form.submit((v) =>
+          save.mutate({ display_name: v.display_name.trim() }, { onSuccess: (saved) => form.reset({ display_name: saved.display_name }) }),
+        )}
+      >
         <TextField
           label="Display name"
           autoComplete="name"
@@ -90,7 +96,7 @@ function Password() {
         </div>
         <FormError message={failed.form} />
         <div className="form-actions">
-          <button type="submit" className="btn btn-primary" disabled={save.isPending} aria-busy={save.isPending}>
+          <button type="submit" className="btn btn-primary" disabled={!form.dirty || save.isPending} aria-busy={save.isPending}>
             Change password
           </button>
           <Saved show={save.isSuccess && !form.dirty}>Password changed. Your other devices are signed out.</Saved>

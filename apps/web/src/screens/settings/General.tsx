@@ -16,7 +16,7 @@ export function SettingsGeneral() {
         <LoadError error={server.error} retry={() => void server.refetch()} />
       ) : (
         <>
-          <ServerName key={server.data.server_name} name={server.data.server_name} />
+          <ServerName name={server.data.server_name} />
           <About server={server.data} />
         </>
       )}
@@ -38,7 +38,13 @@ function ServerName({ name }: { name: string }) {
   return (
     <section className="settings-section" aria-labelledby="server-name">
       <h2 id="server-name">Server name</h2>
-      <form className="form settings-form" noValidate onSubmit={form.submit((v) => save.mutate({ server_name: v.server_name.trim() }))}>
+      <form
+        className="form settings-form"
+        noValidate
+        onSubmit={form.submit((v) =>
+          save.mutate({ server_name: v.server_name.trim() }, { onSuccess: (saved) => form.reset({ server_name: saved.server_name }) }),
+        )}
+      >
         <TextField
           label="Name"
           hint="People see it on the sign-in screen."

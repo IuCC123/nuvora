@@ -15,6 +15,7 @@ export function useForm<V extends FormValues>(
   /** Called on every edit; pass the mutation's `reset` so a server error clears once the person changes something. */
   onEdit?: () => void,
 ) {
+  const [baseline, setBaseline] = useState(initial);
   const [values, setValues] = useState(initial);
   const [visited, setVisited] = useState<Partial<Record<keyof V, boolean>>>({});
   const [submitted, setSubmitted] = useState(false);
@@ -53,13 +54,15 @@ export function useForm<V extends FormValues>(
     if (el instanceof HTMLElement) el.focus();
   };
 
-  const reset = (next: V = initial) => {
+  /** Back to `next` (by default the current baseline), which becomes the baseline `dirty` compares against. */
+  const reset = (next: V = baseline) => {
+    setBaseline(next);
     setValues(next);
     setVisited({});
     setSubmitted(false);
   };
 
-  const dirty = (Object.keys(initial) as (keyof V)[]).some((k) => String(values[k]) !== String(initial[k]));
+  const dirty = (Object.keys(baseline) as (keyof V)[]).some((k) => String(values[k]) !== String(baseline[k]));
 
   return { values, field, error, set, submit, reset, dirty };
 }
