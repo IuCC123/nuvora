@@ -16,6 +16,7 @@ import { Shell } from "./components/Shell";
 import { Home } from "./screens/Home";
 import { LibraryScreen } from "./screens/Library";
 import { MovieScreen } from "./screens/Movie";
+import { Search } from "./screens/Search";
 import { EpisodePlayer, Player } from "./screens/Player";
 import { ShowScreen } from "./screens/Show";
 import { ErrorState, MissingEpisode, MissingLibrary, MissingMovie, MissingShow } from "./screens/ErrorState";
@@ -169,6 +170,13 @@ const library = createRoute({
   errorComponent: Unreachable,
 });
 
+const search = createRoute({
+  getParentRoute: () => shell,
+  path: "/search",
+  validateSearch: (s: Record<string, unknown>): { q?: string } => (typeof s.q === "string" && s.q !== "" ? { q: s.q.slice(0, 200) } : {}),
+  component: Search,
+});
+
 const settings = createRoute({ getParentRoute: () => shell, path: "/settings", component: Outlet });
 
 const settingsIndex = createRoute({
@@ -260,7 +268,7 @@ export const router = createRouter({
     welcome,
     welcomeLibrary,
     signin,
-    shell.addChildren([home, movie, show, library, settings.addChildren([settingsIndex, settingsGeneral, settingsLibraries, settingsUsers, settingsAccount])]),
+    shell.addChildren([home, movie, show, library, search, settings.addChildren([settingsIndex, settingsGeneral, settingsLibraries, settingsUsers, settingsAccount])]),
     play,
     playEpisode,
   ]),

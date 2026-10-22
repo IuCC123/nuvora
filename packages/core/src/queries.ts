@@ -11,6 +11,7 @@ import type {
   LibraryIndex,
   LibraryPage,
   LibrarySummary,
+  SearchResponse,
   NuvoraClient,
   PosterCard,
   RowKind,
@@ -66,6 +67,7 @@ export const queryKeys = {
   adminServer: ["admin", "server"] as const,
   adminMetadata: ["admin", "metadata"] as const,
   homeLayout: ["home-layout"] as const,
+  search: (q: string) => ["search", q] as const,
 };
 
 /**
@@ -120,6 +122,8 @@ export interface Queries {
   adminServer(): QueryDef<ServerInfo>;
   adminMetadata(): QueryDef<MetadataSettings>;
   homeLayout(): QueryDef<HomeLayout>;
+  /** `q` as typed; callers skip blank queries. */
+  search(q: string): QueryDef<SearchResponse>;
 }
 
 /** Long enough that the screen's mount reuses its loader's request, short enough that a revisit shows other admins' changes. */
@@ -145,6 +149,7 @@ export function createQueries(client: NuvoraClient): Queries {
     }),
     episodes: (id) => ({ queryKey: [...queryKeys.episodes, id], queryFn: ({ signal }) => client.episodes(id, signal), staleTime: 30_000 }),
     libraries: () => ({ queryKey: queryKeys.libraries, queryFn: ({ signal }) => client.libraries(signal), staleTime: 60_000 }),
+    search: (q) => ({ queryKey: queryKeys.search(q), queryFn: ({ signal }) => client.search(q, signal), staleTime: 30_000 }),
     libraryIndex: (id, query) => ({
       queryKey: [...queryKeys.library, id, "index", query],
       queryFn: ({ signal }) => client.libraryIndex(id, query, signal),

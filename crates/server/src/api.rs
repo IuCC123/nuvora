@@ -10,6 +10,7 @@
 //! | GET    | /api/home                   | Home (first page of each row)            |
 //! | GET    | /api/rows/{row}             | Later pages of one home row              |
 //! | GET    | /api/items/{id}             | Movie, show, season or episode detail    |
+//! | GET    | /api/search?q=              | Titles, episodes and people ([`search`]) |
 //! | PUT    | /api/items/{id}/progress    | Report where playback is                 |
 //! | PUT    | /api/items/{id}/watched     | Mark watched                             |
 //! | DELETE | /api/items/{id}/watched     | Mark unwatched                           |
@@ -35,6 +36,7 @@ mod browse;
 mod hls;
 mod home;
 mod metadata;
+mod search;
 mod subtitles;
 #[cfg(test)]
 mod test_app;
@@ -154,6 +156,7 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(get_home))
         .routes(routes!(get_row))
         .routes(routes!(get_item))
+        .routes(routes!(search::search))
         .routes(routes!(browse::get_episodes))
         .routes(routes!(browse::get_libraries))
         .routes(routes!(browse::get_library_items))

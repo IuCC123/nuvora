@@ -647,6 +647,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/setup": {
         parameters: {
             query?: never;
@@ -1283,6 +1299,37 @@ export interface components {
             removed: number;
             /** Format: int32 */
             unchanged: number;
+        };
+        SearchEpisode: {
+            /** Format: int32 */
+            episode: number;
+            /** Format: int64 */
+            id: number;
+            poster?: null | components["schemas"]["Image"];
+            /** Format: int32 */
+            season: number;
+            /** Format: int64 */
+            show_id: number;
+            show_title: string;
+            title: string;
+        };
+        SearchPerson: {
+            image?: null | components["schemas"]["Image"];
+            name: string;
+            roles: components["schemas"]["SearchRole"][];
+        };
+        SearchResponse: {
+            /** @description Episodes whose own title matches. */
+            episodes: components["schemas"]["SearchEpisode"][];
+            /** @description Actors and voice actors, each with what they are in. */
+            people: components["schemas"]["SearchPerson"][];
+            /** @description Movies and shows, best match first. */
+            titles: components["schemas"]["PosterCard"][];
+        };
+        SearchRole: {
+            card: components["schemas"]["PosterCard"];
+            /** @description Who they play or voice there. */
+            character?: string | null;
         };
         /**
          * @description `GET /api/items/{id}` of a season id. Its episodes come from
@@ -3443,6 +3490,48 @@ export interface operations {
             };
             /** @description Not an admin */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    search: {
+        parameters: {
+            query: {
+                /**
+                 * @description What was typed. Matching is per word, from the start of each word,
+                 *     ignoring case and accents. At most 200 characters.
+                 */
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

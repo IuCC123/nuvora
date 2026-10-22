@@ -2755,6 +2755,62 @@
         ]
       }
     },
+    "/api/search": {
+      "get": {
+        "operationId": "search",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "What was typed. Matching is per word, from the start of each word,\nignoring case and accents. At most 200 characters.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/setup": {
       "post": {
         "summary": "Creates the first admin and signs them in (sets the session cookie). 409\n`setup_done` once any user exists.",
@@ -4695,6 +4751,131 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "SearchEpisode": {
+        "type": "object",
+        "required": [
+          "id",
+          "show_id",
+          "show_title",
+          "season",
+          "episode",
+          "title"
+        ],
+        "properties": {
+          "episode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "poster": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image",
+                "description": "The show's poster."
+              }
+            ]
+          },
+          "season": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "show_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "show_title": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "SearchPerson": {
+        "type": "object",
+        "required": [
+          "name",
+          "roles"
+        ],
+        "properties": {
+          "image": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchRole"
+            }
+          }
+        }
+      },
+      "SearchResponse": {
+        "type": "object",
+        "required": [
+          "titles",
+          "episodes",
+          "people"
+        ],
+        "properties": {
+          "episodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchEpisode"
+            },
+            "description": "Episodes whose own title matches."
+          },
+          "people": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchPerson"
+            },
+            "description": "Actors and voice actors, each with what they are in."
+          },
+          "titles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PosterCard"
+            },
+            "description": "Movies and shows, best match first."
+          }
+        }
+      },
+      "SearchRole": {
+        "type": "object",
+        "required": [
+          "card"
+        ],
+        "properties": {
+          "card": {
+            "$ref": "#/components/schemas/PosterCard"
+          },
+          "character": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who they play or voice there."
           }
         }
       },

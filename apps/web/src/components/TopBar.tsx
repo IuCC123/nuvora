@@ -7,6 +7,7 @@ import { useStartScan } from "../lib/useStartScan";
 import { useUser } from "../lib/session";
 import { AccountMenu } from "./AccountMenu";
 import { MarkIcon, RefreshIcon, SpinIcon } from "./Icon";
+import { SearchBox } from "./SearchBox";
 
 const PHASE_LABEL: Record<Extract<ScanStatus, { state: "running" }>["phase"], string> = {
   discovering: "Finding files",
@@ -24,6 +25,7 @@ export function TopBar() {
         <MarkIcon />
         <span aria-hidden>nuvora</span>
       </Link>
+      <SearchBox />
       <div className="topbar-spacer" />
       {status?.state === "running" && (
         <div className="scan-pill">

@@ -36,7 +36,11 @@ pub struct Credit {
     pub character_image: Option<Artwork>,
 }
 
-fn art(hash: Option<Vec<u8>>, aspect: Option<f64>, ph: Option<Vec<u8>>) -> Option<Artwork> {
+pub(crate) fn art(
+    hash: Option<Vec<u8>>,
+    aspect: Option<f64>,
+    ph: Option<Vec<u8>>,
+) -> Option<Artwork> {
     let hash: [u8; 16] = hash?.try_into().ok()?;
     let aspect = aspect.unwrap_or(2.0 / 3.0);
     Some(Artwork {

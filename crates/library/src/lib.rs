@@ -13,6 +13,7 @@ mod ids;
 mod libraries;
 mod metadata;
 mod scan;
+mod search;
 mod shows;
 #[cfg(test)]
 mod shows_tests;
@@ -43,6 +44,7 @@ pub use ids::{ArtworkId, FileId, ItemId, LibraryId, ParseIdError, UserId};
 pub use libraries::{LibraryError, LibraryInfo};
 pub use metadata::read::{Credit, Extras};
 pub use scan::{ScanIssue, ScanPhase, ScanProgress, ScanState, ScanStatus, ScanSummary};
+pub use search::{EpisodeHit, PersonHit, PersonRole, SearchResults};
 pub use shows::{Episode, EpisodeRef, Season, SeasonSummary, Show};
 pub use subtitles::SubtitleSource;
 pub use views::{

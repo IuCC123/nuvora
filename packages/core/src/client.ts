@@ -25,6 +25,9 @@ export type LibrarySummary = Schemas["LibrarySummary"];
 export type LibraryKind = Schemas["LibraryKind"];
 export type LibraryPage = Schemas["LibraryPage"];
 export type LibraryIndex = Schemas["LibraryIndex"];
+export type SearchResponse = Schemas["SearchResponse"];
+export type SearchEpisode = Schemas["SearchEpisode"];
+export type SearchPerson = Schemas["SearchPerson"];
 export type IndexGroup = Schemas["IndexGroup"];
 export type FsInspect = Schemas["FsInspect"];
 export type Version = Schemas["Version"];
@@ -97,6 +100,8 @@ export interface NuvoraClient {
   libraryItems(id: number, query: Record<string, string>, after: string | null, limit: number, signal?: AbortSignalLike): Promise<LibraryPage>;
   /** The grid's group headers for the same query: letters, decades or months. */
   libraryIndex(id: number, query: Record<string, string>, signal?: AbortSignalLike): Promise<LibraryIndex>;
+  /** Titles, episodes and people matching `q`, across every library. */
+  search(q: string, signal?: AbortSignalLike): Promise<SearchResponse>;
   scanStatus(signal?: AbortSignalLike): Promise<ScanStatus>;
   /** Idempotent; returns the status after queuing. */
   startScan(): Promise<ScanStatus>;
@@ -219,6 +224,7 @@ export function createClient(options: ClientOptions): NuvoraClient {
     libraryItems: (id, query, after, limit, signal) =>
       get<LibraryPage>("/api/libraries/{id}/items", { id }, signal, { ...query, ...(after !== null && { after }), limit: String(limit) }),
     libraryIndex: (id, query, signal) => get<LibraryIndex>("/api/libraries/{id}/index", { id }, signal, query),
+    search: (q, signal) => get<SearchResponse>("/api/search", {}, signal, { q }),
     scanStatus: (signal) => get<ScanStatus>("/api/scan", {}, signal),
     startScan: () => post<ScanStatus>("/api/scan"),
     authState: (signal) => get<AuthState>("/api/auth/state", {}, signal),
