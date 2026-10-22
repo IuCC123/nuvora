@@ -343,9 +343,14 @@ async fn scan(
 
     for mv in plan.moved {
         let name = MovieName::parse(Path::new(&mv.to.rel.0));
-        ctx.db
+        let path = mv.to.rel.0.clone();
+        let moved = ctx
+            .db
             .write(move |tx| write::move_file(tx, &mv, &name, now_ms))
-            .await?;
+            .await;
+        if let Err(message) = orphaned(moved)? {
+            tally.failed(path, message);
+        }
     }
 
     let total = plan.to_probe.len();
@@ -355,18 +360,27 @@ async fn scan(
         .buffer_unordered(ctx.probe_concurrency.get());
     let mut done = 0;
     while let Some((job, fingerprint, probe)) = probed.next().await {
-        if let Err(e) = &probe {
-            tally.failed(job.disk.rel.0.clone(), e.to_string());
-        }
-        if job.existing.is_some() {
-            tally.summary.changed += 1;
-        } else {
-            tally.summary.added += 1;
-        }
+        let path = job.disk.rel.0.clone();
+        let existing = job.existing.is_some();
+        let probe_error = probe.as_ref().err().map(ToString::to_string);
         let name = MovieName::parse(Path::new(&job.disk.rel.0));
-        ctx.db
+        let written = ctx
+            .db
             .write(move |tx| write::upsert_file(tx, &job, fingerprint, &name, &probe, now_ms))
-            .await?;
+            .await;
+        match (orphaned(written)?, probe_error) {
+            (Err(message), _) => tally.failed(path, message),
+            (Ok(_), probe_error) => {
+                if let Some(message) = probe_error {
+                    tally.failed(path, message);
+                }
+                if existing {
+                    tally.summary.changed += 1;
+                } else {
+                    tally.summary.added += 1;
+                }
+            }
+        }
         done += 1;
         progress.set(ScanPhase::Reading, done, total);
     }
@@ -388,11 +402,16 @@ async fn scan(
     while let Some(result) = rendered.next().await {
         match result {
             Ok((job, id, art)) => {
-                ctx.db
+                let path = job_path(&job);
+                let set = ctx
+                    .db
                     .write(move |tx| {
                         write::set_artwork(tx, job.item, job.role, &job.source, id, &art)
                     })
-                    .await?;
+                    .await;
+                if let Err(message) = orphaned(set)? {
+                    tally.issue(path, message);
+                }
             }
             Err((job, message)) => tally.issue(job_path(&job), message),
         }
@@ -509,6 +528,26 @@ fn render_and_store(
             .map_err(|e| format!("cannot store artwork: {e}"))?;
     }
     Ok((id, art))
+}
+
+/// A per-file write whose library, folder or item was deleted while the scan
+/// ran (the admin panel removed it) fails that file only. Any other database
+/// error stops the scan.
+fn orphaned<T>(written: Result<T, DbError>) -> Result<Result<T, String>, DbError> {
+    use rusqlite::{Error, ffi};
+    match written {
+        Ok(value) => Ok(Ok(value)),
+        Err(DbError::Sqlite(e))
+            if matches!(&e, Error::QueryReturnedNoRows)
+                || matches!(&e, Error::SqliteFailure(f, _)
+                    if f.extended_code == ffi::SQLITE_CONSTRAINT_FOREIGNKEY) =>
+        {
+            Ok(Err(
+                "its library or folder was removed during the scan".into()
+            ))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 fn job_path(job: &RenderJob) -> String {

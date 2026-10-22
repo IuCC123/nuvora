@@ -711,6 +711,56 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn deleting_a_library_mid_scan_fails_its_files_not_the_scan() {
+        let dir = tempfile::tempdir().unwrap();
+        let (root, other, data) = (
+            dir.path().join("Movies"),
+            dir.path().join("Other"),
+            dir.path().join("data"),
+        );
+        for i in 0..8 {
+            sdr_movie(&root.join(format!("Movie {i} (200{i})/Movie {i} (200{i}).mp4")));
+        }
+        for i in 0..3 {
+            sdr_movie(&other.join(format!("Keep {i} (199{i})/Keep {i} (199{i}).mp4")));
+        }
+        let lib = open(&root, &data).await;
+        let movies = lib.libraries().await.unwrap().remove(0);
+        lib.create_library("Other".into(), LibraryKind::Movies, vec![other])
+            .await
+            .unwrap();
+
+        let mut status = lib.watch_scan();
+        lib.request_scan();
+        status
+            .wait_for(|s| {
+                matches!(&s.state, ScanState::Running { progress, .. }
+                    if progress.phase == ScanPhase::Reading && progress.done >= 1)
+            })
+            .await
+            .unwrap();
+        lib.delete_library(movies.id).await.unwrap();
+        let summary = status
+            .wait_for(|s| matches!(s.state, ScanState::Idle) && s.last.is_some())
+            .await
+            .unwrap()
+            .last
+            .clone()
+            .unwrap();
+        assert!(
+            summary
+                .issues
+                .iter()
+                .all(|i| !i.message.contains("scan aborted")),
+            "{:?}",
+            summary.issues
+        );
+        assert!(summary.failed >= 1, "{summary:?}");
+        assert_eq!(summary.added + summary.failed, 11, "{summary:?}");
+        assert_eq!(home_titles(&lib).await, ["Keep 0", "Keep 1", "Keep 2"]);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn scan_requests_coalesce_into_one_follow_up() {
         let dir = tempfile::tempdir().unwrap();
         let (root, data) = (dir.path().join("Movies"), dir.path().join("data"));
