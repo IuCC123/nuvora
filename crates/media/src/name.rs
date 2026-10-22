@@ -1,8 +1,17 @@
-//! Filename knowledge: which paths are movies, which are extras or artwork, and
-//! what title/year a movie path names. Pure functions over relative paths.
+//! Filename knowledge: which paths are movies, which are extras or artwork,
+//! what title/year a movie path names, and which show, season and episode an
+//! episode path names. Pure functions over relative paths.
 
 use std::path::Path;
+use std::sync::LazyLock;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use regex::Regex;
+
+/// Bumped whenever a change in this file can change what a stored path
+/// parses to. The scanner re-derives every file stored with an older version,
+/// so a parser fix reaches files that were already cataloged.
+pub const PARSE_VERSION: u32 = 1;
 
 /// What a path under a library root is, decided by name alone (no I/O).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -217,22 +226,291 @@ impl MovieName {
 
     /// `"<casefolded alnum title>|<year or ''>"`. Diacritics folded, `&` -> `and`.
     pub fn identity_key(&self) -> IdentityKey {
-        let mut key = String::with_capacity(self.title.len() + 5);
-        for c in self.title.chars() {
-            if c == '&' {
-                key.push_str("and");
-            } else if let Some(folded) = fold_diacritic(c) {
-                key.push_str(folded);
-            } else if c.is_alphanumeric() {
-                key.extend(c.to_lowercase());
-            }
-        }
-        key.push('|');
-        if let Some(year) = self.year {
-            key.push_str(&year.to_string());
-        }
-        IdentityKey(key)
+        IdentityKey(title_key(&self.title, self.year))
     }
+}
+
+/// `title` lowercased with diacritics folded (`Amélie` -> `amelie`), for
+/// sorting and for grouping by first letter: `Ñ` files under N, not after Z.
+pub fn fold_for_sort(title: &str) -> String {
+    let mut out = String::with_capacity(title.len());
+    for c in title.chars() {
+        match fold_diacritic(c) {
+            Some(folded) => out.push_str(folded),
+            None => out.extend(c.to_lowercase()),
+        }
+    }
+    out
+}
+
+fn title_key(title: &str, year: Option<u16>) -> String {
+    let mut key = String::with_capacity(title.len() + 5);
+    for c in title.chars() {
+        if c == '&' {
+            key.push_str("and");
+        } else if let Some(folded) = fold_diacritic(c) {
+            key.push_str(folded);
+        } else if c.is_alphanumeric() {
+            key.extend(c.to_lowercase());
+        }
+    }
+    key.push('|');
+    if let Some(year) = year {
+        key.push_str(&year.to_string());
+    }
+    key
+}
+
+/// Show, season and episode parsed from an episode's path. `None` from
+/// [`EpisodeName::parse`] means the name carries no episode number.
+///
+/// Before matching, every `[...]` segment (release group, resolution, CRC)
+/// and every `(...)` segment without a year is dropped. Episode patterns, in
+/// priority order:
+/// 1. `S01E02`, `s1e2`, multi-episode `S01E02E03` / `S01E02-E03` (the first
+///    episode counts).
+/// 2. `1x02`.
+/// 3. `Episode 2`, `Ep 2` or `E02` inside a `Season N` folder.
+/// 4. The anime absolute number: the last ` - 02` (or `- 02v2`) with 1 to 4
+///    digits, at the end of the name or before release tokens.
+/// 5. `Ep02` or `Episode 02` anywhere.
+///
+/// Without a season in the token, the season comes from a `Season N`/`S1`
+/// folder, else 1. `S00` or a `Specials` folder is season 0.
+///
+/// The show is the first folder under the library root that is not a season
+/// folder, when there is one, so episodes named slightly differently group
+/// together. Otherwise it is the text before the episode token.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EpisodeName {
+    pub show: ShowName,
+    pub season: u32,
+    pub episode: u32,
+    /// The text after the episode token (`S01E02 - The Title`), if any.
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShowName {
+    pub title: String,
+    /// Title with a leading article moved to the end, for sorting.
+    pub sort_title: String,
+    pub year: Option<u16>,
+}
+
+impl EpisodeName {
+    pub fn parse(rel: &Path) -> Option<EpisodeName> {
+        let parts: Vec<String> = rel
+            .iter()
+            .map(|c| c.to_string_lossy().into_owned())
+            .collect();
+        let (file, folders) = parts.split_last()?;
+        let stem = file
+            .rsplit_once('.')
+            .map_or(file.as_str(), |(stem, _)| stem);
+        let folder_season = folders.last().and_then(|f| season_folder(f));
+        let show_folder = folders.iter().find(|f| season_folder(f).is_none());
+
+        let clean = strip_tags(stem);
+        let found = find_episode(&clean, folder_season.is_some())?;
+        let season = found.season.or(folder_season).unwrap_or(1);
+        let show = match show_folder {
+            Some(folder) => show_name(&strip_tags(folder)),
+            None => show_name(&clean[..found.start]),
+        }?;
+        Some(EpisodeName {
+            show,
+            season,
+            episode: found.episode,
+            title: episode_title(&clean[found.end..]),
+        })
+    }
+
+    /// `"show:<casefolded alnum title>|<year or ''>"`, unique within a library.
+    pub fn show_key(&self) -> IdentityKey {
+        IdentityKey(format!(
+            "show:{}",
+            title_key(&self.show.title, self.show.year)
+        ))
+    }
+
+    /// The show key plus `|s<season>`.
+    pub fn season_key(&self) -> IdentityKey {
+        IdentityKey(format!("{}|s{}", self.show_key().0, self.season))
+    }
+
+    /// The season key plus `|e<episode>`.
+    pub fn episode_key(&self) -> IdentityKey {
+        IdentityKey(format!("{}|e{}", self.season_key().0, self.episode))
+    }
+}
+
+/// Where the episode token sits in the cleaned stem, and what it says.
+struct Found {
+    start: usize,
+    end: usize,
+    season: Option<u32>,
+    episode: u32,
+}
+
+static SXXEXX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?:^|[^a-z0-9])(s(\d{1,3})[ ._-]?e(\d{1,4})(?:[ ._]?-?[ ._]?e\d{1,4})*)")
+        .expect("valid")
+});
+static CROSS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?:^|[^a-z0-9])((\d{1,2})x(\d{2,3}))(?:[^a-z0-9]|$)").expect("valid")
+});
+static IN_SEASON: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?:^|[^a-z0-9])((?:episode|ep|e)[ ._]?(\d{1,4}))(?:[^a-z0-9]|$)")
+        .expect("valid")
+});
+static ABSOLUTE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\s-\s*((\d{1,4})(?:v\d{1,2})?)(?:\s|$)").expect("valid"));
+static EPISODE_WORD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?:^|[^a-z0-9])((?:episode|ep)[ ._]?(\d{1,4}))(?:[^a-z0-9]|$)").expect("valid")
+});
+
+fn find_episode(stem: &str, in_season_folder: bool) -> Option<Found> {
+    let numbered = |re: &Regex, season_group: Option<usize>, episode_group: usize| {
+        re.captures_iter(stem).find_map(|c| {
+            let token = c.get(1)?;
+            Some(Found {
+                start: token.start(),
+                end: token.end(),
+                season: season_group.and_then(|g| c.get(g)?.as_str().parse().ok()),
+                episode: c.get(episode_group)?.as_str().parse().ok()?,
+            })
+        })
+    };
+    numbered(&SXXEXX, Some(2), 3)
+        .or_else(|| numbered(&CROSS, Some(2), 3))
+        .or_else(|| {
+            in_season_folder
+                .then(|| numbered(&IN_SEASON, None, 2))
+                .flatten()
+        })
+        .or_else(|| absolute_number(stem))
+        .or_else(|| numbered(&EPISODE_WORD, None, 2))
+}
+
+/// The last ` - NN` whose remainder is empty or release tokens only. A
+/// four-digit number that reads as a year is a year, not an episode.
+fn absolute_number(stem: &str) -> Option<Found> {
+    let last = ABSOLUTE.captures_iter(stem).filter_map(|c| {
+        let token = c.get(1)?;
+        let digits = c.get(2)?.as_str();
+        let rest = &stem[token.end()..];
+        let only_tags = tokens(rest).iter().all(|t| is_release_token(t));
+        let year = digits.len() == 4 && year_of(digits).is_some();
+        let episode = digits.parse().ok()?;
+        (only_tags && !year).then(|| Found {
+            start: c.get(0).map_or(token.start(), |m| m.start()),
+            end: token.end(),
+            season: None,
+            episode,
+        })
+    });
+    last.last()
+}
+
+/// `Season 1`, `Season 01`, `Series 2`, `S1`, `S01` give the number;
+/// `Specials` (and `Season 0`) give 0.
+fn season_folder(name: &str) -> Option<u32> {
+    static SEASON: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?i)^\s*(?:season|series|s)[ ._-]*(\d{1,3})\s*$").expect("valid")
+    });
+    if name.trim().eq_ignore_ascii_case("specials") || name.trim().eq_ignore_ascii_case("special") {
+        return Some(0);
+    }
+    SEASON.captures(name)?.get(1)?.as_str().parse().ok()
+}
+
+/// Drops every `[...]` segment and every `(...)` segment that holds no year,
+/// then collapses whitespace.
+fn strip_tags(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find(['[', '(']) {
+        out.push_str(&rest[..open]);
+        let close = if rest[open..].starts_with('[') {
+            ']'
+        } else {
+            ')'
+        };
+        let Some(len) = rest[open..].find(close) else {
+            out.push_str(&rest[open..]);
+            rest = "";
+            break;
+        };
+        let inner = &rest[open + 1..open + len];
+        if close == ')' && year_of(inner.trim()).is_some() {
+            out.push_str(&rest[open..=open + len]);
+        }
+        out.push(' ');
+        rest = &rest[open + len + 1..];
+    }
+    out.push_str(rest);
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// A show title and year from a folder name or the text before the episode
+/// token: scene dots become spaces, the title ends at the first year or
+/// release token, and inner hyphens are kept (`Tower of God 2 - Ouji no
+/// Kikan`). `None` when nothing is left.
+fn show_name(text: &str) -> Option<ShowName> {
+    let text = scene_spaces(text);
+    let mut title_words = Vec::new();
+    let mut year = None;
+    for (i, word) in text.split(' ').enumerate() {
+        let bare = word.trim_matches(|c| c == '(' || c == ')');
+        if i > 0
+            && let Some(y) = year_of(bare)
+        {
+            year = Some(y);
+            break;
+        }
+        if i > 0 && is_release_token(bare) {
+            break;
+        }
+        title_words.push(word);
+    }
+    let title = title_words
+        .join(" ")
+        .trim_matches(|c: char| c.is_whitespace() || matches!(c, '-' | '_' | '.' | ':'))
+        .to_owned();
+    if title.is_empty() {
+        return None;
+    }
+    Some(ShowName {
+        sort_title: sort_title(&title),
+        title,
+        year,
+    })
+}
+
+/// The text after the episode token, without separators and release tokens.
+fn episode_title(text: &str) -> Option<String> {
+    let text = scene_spaces(text);
+    let words: Vec<&str> = text
+        .split(' ')
+        .take_while(|w| !is_release_token(w))
+        .collect();
+    let title = words
+        .join(" ")
+        .trim_matches(|c: char| c.is_whitespace() || matches!(c, '-' | '_' | '.' | ':'))
+        .to_owned();
+    (!title.is_empty()).then_some(title)
+}
+
+/// `The.Office.US` reads as `The Office US`: dots and underscores are word
+/// breaks unless the text already has spaces (then only underscores are).
+fn scene_spaces(text: &str) -> String {
+    let spaced = if text.contains(' ') {
+        text.replace('_', " ")
+    } else {
+        text.replace(['.', '_'], " ")
+    };
+    spaced.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// `Title (Year)` or `Title [Year]`, with anything after the year ignored.
@@ -254,7 +532,8 @@ fn folder_title_year(folder: &str) -> Option<(String, u16)> {
 }
 
 fn stem_title_year(stem: &str) -> (String, Option<u16>) {
-    let tokens = tokens(stem);
+    let stem = strip_bracket_tags(stem);
+    let tokens = tokens(&stem);
     let end = tokens
         .iter()
         .enumerate()
@@ -268,6 +547,29 @@ fn stem_title_year(stem: &str) -> (String, Option<u16>) {
         None if tokens.is_empty() => (stem.trim().to_owned(), None),
         None => (title_of(&tokens), None),
     }
+}
+
+/// Drops `[...]` segments that hold no year (`[Group]`, `[1080p]`, CRCs);
+/// `[2001]` stays, since a movie's year is often written that way.
+fn strip_bracket_tags(stem: &str) -> String {
+    let mut out = String::with_capacity(stem.len());
+    let mut rest = stem;
+    while let Some(open) = rest.find('[') {
+        out.push_str(&rest[..open]);
+        let Some(len) = rest[open..].find(']') else {
+            out.push_str(&rest[open..]);
+            return out;
+        };
+        let inner = &rest[open + 1..open + len];
+        if year_of(inner.trim()).is_some() {
+            out.push_str(&rest[open..=open + len]);
+        } else {
+            out.push(' ');
+        }
+        rest = &rest[open + len + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// A one-word title written in CamelCase (`BigBuckBunny`) is split into its
@@ -496,6 +798,16 @@ mod tests {
         ("WALL-E.2008.mkv", "WALL-E", Some(2008)),
         ("WALL-E.mkv", "WALL-E", None),
         ("The.Matrix.1999.1080p.mkv", "The Matrix", Some(1999)),
+        (
+            "[Group] Some Movie (2020) [1080p].mkv",
+            "Some Movie",
+            Some(2020),
+        ),
+        (
+            "[Ñ] Tower of God 2 - Ouji no Kikan - 01 [1080p] [080DD9EA].mkv",
+            "Tower of God 2 Ouji no Kikan 01",
+            None,
+        ),
     ];
 
     #[test]
@@ -503,6 +815,253 @@ mod tests {
         for (path, title, year) in CASES {
             let n = MovieName::parse(Path::new(path));
             assert_eq!((n.title.as_str(), n.year), (*title, *year), "{path}");
+        }
+    }
+
+    const TOWER: &str = "Tower of God 2 - Ouji no Kikan";
+
+    /// (relative path, show, show year, season, episode, episode title).
+    type EpisodeRow = (
+        &'static str,
+        &'static str,
+        Option<u16>,
+        u32,
+        u32,
+        Option<&'static str>,
+    );
+
+    /// Every pattern of the episode spec has a row; every misparsed episode
+    /// name reported later becomes one.
+    const EPISODES: &[EpisodeRow] = &[
+        (
+            "[Ñ] Tower of God 2 - Ouji no Kikan [1080p]/[Ñ] Tower of God 2 - Ouji no Kikan - 01 [1080p] [080DD9EA].mkv",
+            TOWER,
+            None,
+            1,
+            1,
+            None,
+        ),
+        (
+            "[Ñ] Tower of God 2 - Ouji no Kikan - 13 [1080p] [B8B1B2BC].mkv",
+            TOWER,
+            None,
+            1,
+            13,
+            None,
+        ),
+        (
+            "[SubsPlease] Frieren - 02v2 (1080p) [ABCD1234].mkv",
+            "Frieren",
+            None,
+            1,
+            2,
+            None,
+        ),
+        (
+            "Frieren/Season 2/Frieren - 03.mkv",
+            "Frieren",
+            None,
+            2,
+            3,
+            None,
+        ),
+        (
+            "One Piece - 1089 [1080p].mkv",
+            "One Piece",
+            None,
+            1,
+            1089,
+            None,
+        ),
+        (
+            "The.Office.US.S02E03.720p.HDTV.x264-GRP.mkv",
+            "The Office US",
+            None,
+            2,
+            3,
+            None,
+        ),
+        (
+            "Breaking.Bad.S01E02.Cats.in.the.Bag.1080p.BluRay.x264.mkv",
+            "Breaking Bad",
+            None,
+            1,
+            2,
+            Some("Cats in the Bag"),
+        ),
+        ("Show Name s1e2.mkv", "Show Name", None, 1, 2, None),
+        (
+            "Show Name - S01E02 - The Title.mkv",
+            "Show Name",
+            None,
+            1,
+            2,
+            Some("The Title"),
+        ),
+        (
+            "Show Name - S01E02E03 - Double.mkv",
+            "Show Name",
+            None,
+            1,
+            2,
+            Some("Double"),
+        ),
+        ("Show.Name.S01E02-E03.mkv", "Show Name", None, 1, 2, None),
+        (
+            "Show Name - 1x02 - The Title.mkv",
+            "Show Name",
+            None,
+            1,
+            2,
+            Some("The Title"),
+        ),
+        (
+            "Show Name/Season 2/Episode 5.mkv",
+            "Show Name",
+            None,
+            2,
+            5,
+            None,
+        ),
+        (
+            "Show Name/Season 02/E07 - The Title.mkv",
+            "Show Name",
+            None,
+            2,
+            7,
+            Some("The Title"),
+        ),
+        (
+            "Show Name (2019)/Season 1/Show Name - S01E04.mkv",
+            "Show Name",
+            Some(2019),
+            1,
+            4,
+            None,
+        ),
+        (
+            "Doctor Who (2005)/Season 1/doctor.who.2005.s01e01.rose.mkv",
+            "Doctor Who",
+            Some(2005),
+            1,
+            1,
+            Some("rose"),
+        ),
+        (
+            "Show Name/S3/Show Name 3x04.mkv",
+            "Show Name",
+            None,
+            3,
+            4,
+            None,
+        ),
+        (
+            "Show Name/Specials/Show Name - S00E01 - Pilot.mkv",
+            "Show Name",
+            None,
+            0,
+            1,
+            Some("Pilot"),
+        ),
+        (
+            "Show Name/Specials/Episode 2.mkv",
+            "Show Name",
+            None,
+            0,
+            2,
+            None,
+        ),
+        (
+            "Show Name/Show Name S00E05.mkv",
+            "Show Name",
+            None,
+            0,
+            5,
+            None,
+        ),
+        ("Show Name Ep02.mkv", "Show Name", None, 1, 2, None),
+        (
+            "Show Name Episode 12 - Finale.mkv",
+            "Show Name",
+            None,
+            1,
+            12,
+            Some("Finale"),
+        ),
+        (
+            "Mr. Robot/Season 1/Mr. Robot - S01E01 - eps1.0.mkv",
+            "Mr. Robot",
+            None,
+            1,
+            1,
+            Some("eps1.0"),
+        ),
+    ];
+
+    #[test]
+    fn parses_episodes() {
+        for (path, show, year, season, episode, title) in EPISODES {
+            let n = EpisodeName::parse(Path::new(path)).unwrap_or_else(|| panic!("{path}"));
+            assert_eq!(
+                (
+                    n.show.title.as_str(),
+                    n.show.year,
+                    n.season,
+                    n.episode,
+                    n.title.as_deref()
+                ),
+                (*show, *year, *season, *episode, *title),
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_owners_release_is_one_show_with_thirteen_episodes() {
+        let crcs = [
+            "080DD9EA", "C6F9D246", "D982D152", "48791899", "297EA1D8", "5537BCD7", "F6F792C3",
+            "BEC05FB0", "AD306291", "D725D91F", "29C0F0E6", "DB5520A3", "B8B1B2BC",
+        ];
+        let folder = "[Ñ] Tower of God 2 - Ouji no Kikan [1080p]";
+        let parsed: Vec<EpisodeName> = crcs
+            .iter()
+            .enumerate()
+            .map(|(i, crc)| {
+                let path = format!(
+                    "{folder}/[Ñ] Tower of God 2 - Ouji no Kikan - {:02} [1080p] [{crc}].mkv",
+                    i + 1
+                );
+                EpisodeName::parse(Path::new(&path)).unwrap()
+            })
+            .collect();
+        for (i, n) in parsed.iter().enumerate() {
+            assert_eq!(
+                (n.show.title.as_str(), n.season, n.episode),
+                (TOWER, 1, i as u32 + 1)
+            );
+            assert_eq!(n.show_key(), parsed[0].show_key());
+        }
+        assert_eq!(
+            parsed[0].show_key().as_str(),
+            "show:towerofgod2oujinokikan|"
+        );
+        assert_eq!(
+            parsed[4].episode_key().as_str(),
+            "show:towerofgod2oujinokikan||s1|e5"
+        );
+    }
+
+    #[test]
+    fn names_without_an_episode_number_are_not_episodes() {
+        for path in [
+            "Heat (1995)/Heat (1995).mkv",
+            "BigBuckBunny_512kb.mp4",
+            "Show - 2019.mkv",
+            "Movie.1920x1080.mkv",
+            "The.Matrix.1999.1080p.BluRay.x264-GRP.mkv",
+            "Season 1/S01E02.mkv",
+        ] {
+            assert_eq!(EpisodeName::parse(Path::new(path)), None, "{path}");
         }
     }
 

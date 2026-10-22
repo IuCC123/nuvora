@@ -3,22 +3,23 @@
 //! changes what clients see calls [`bump_rev`] in the same transaction.
 
 use std::collections::HashSet;
-use std::path::Path;
 
 use nuvora_media::{
-    ArtworkRole, HdrFormat, MediaInfo, MovieName, PROBE_VERSION, ProbeError, RenderedArtwork,
+    ArtworkRole, HdrFormat, MediaInfo, PARSE_VERSION, PROBE_VERSION, ProbeError, RenderedArtwork,
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
+use super::place::{self, Placement};
 use super::plan::{
-    FileForArtwork, ItemFiles, KnownFile, Move, ProbeJob, StoredArtwork, WantedSource,
+    ArtKind, FileForArtwork, ItemFiles, KnownFile, Move, ProbeJob, StoredArtwork, WantedSource,
 };
 use super::walk::{RelPath, RootId};
-use crate::{ArtworkId, FileId, ItemId, LibrarySpec};
+use crate::{ArtworkId, FileId, ItemId, LibraryKind, LibrarySpec};
 
 pub(crate) struct RootRow {
     pub id: RootId,
     pub library_id: i64,
+    pub kind: LibraryKind,
     pub path: std::path::PathBuf,
 }
 
@@ -48,7 +49,7 @@ pub(crate) fn add_libraries(tx: &Transaction<'_>, specs: &[LibrarySpec]) -> rusq
         }
         tx.execute(
             "INSERT INTO library (key, name, kind) VALUES (?1, ?2, ?3) ON CONFLICT(key) DO NOTHING",
-            params![spec.key, spec.name, "movies"],
+            params![spec.key, spec.name, spec.kind.as_str()],
         )?;
         let library_id: i64 =
             tx.query_row("SELECT id FROM library WHERE key = ?1", [&spec.key], |r| {
@@ -65,15 +66,26 @@ pub(crate) fn add_libraries(tx: &Transaction<'_>, specs: &[LibrarySpec]) -> rusq
 }
 
 pub(crate) fn load_roots(conn: &Connection) -> rusqlite::Result<Vec<RootRow>> {
-    conn.prepare_cached("SELECT id, library_id, path FROM library_root ORDER BY id")?
-        .query_map([], |r| {
-            Ok(RootRow {
-                id: RootId(r.get(0)?),
-                library_id: r.get(1)?,
-                path: r.get::<_, String>(2)?.into(),
-            })
-        })?
-        .collect()
+    conn.prepare_cached(
+        "SELECT r.id, r.library_id, r.path, l.kind FROM library_root r JOIN library l ON l.id = r.library_id \
+         ORDER BY r.id",
+    )?
+    .query_map([], |r| {
+        let kind: String = r.get(3)?;
+        Ok(RootRow {
+            id: RootId(r.get(0)?),
+            library_id: r.get(1)?,
+            kind: LibraryKind::from_name(&kind).ok_or_else(|| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    3,
+                    rusqlite::types::Type::Text,
+                    format!("unknown library kind {kind:?}").into(),
+                )
+            })?,
+            path: r.get::<_, String>(2)?.into(),
+        })
+    })?
+    .collect()
 }
 
 /// One SELECT over `media_file` for the given roots.
@@ -82,7 +94,9 @@ pub(crate) fn load_known_files(
     roots: &[RootId],
 ) -> rusqlite::Result<Vec<KnownFile>> {
     let rows = conn
-        .prepare_cached("SELECT id, root_id, rel_path, size, mtime_ns, fingerprint, probe_version FROM media_file")?
+        .prepare_cached(
+            "SELECT id, root_id, rel_path, size, mtime_ns, fingerprint, probe_version, parse_version FROM media_file",
+        )?
         .query_map([], |r| {
             Ok(KnownFile {
                 id: FileId(r.get(0)?),
@@ -92,6 +106,7 @@ pub(crate) fn load_known_files(
                 mtime_ns: r.get(4)?,
                 fingerprint: blob16(r.get(5)?),
                 probe_version: r.get::<_, i64>(6)? as u32,
+                parse_version: r.get::<_, i64>(7)? as u32,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -109,26 +124,32 @@ fn blob16(blob: Vec<u8>) -> [u8; 16] {
 }
 
 /// Insert or update one probed file and everything derived from it:
-/// 1. find-or-create the item by `(library_id, name.identity_key())`, clearing
-///    `missing_since` (a returning file revives its old item and id);
+/// 1. place it: find-or-create its movie, or its show, season and episode,
+///    by the name's identity keys, clearing `missing_since` (a returning file
+///    revives its old items and ids);
 /// 2. upsert the `media_file` row (by `(root, rel_path)`, so a crash-and-retry
 ///    of the same insert updates instead of duplicating);
 /// 3. replace its `media_stream` rows (or set `probe_error` on failure, with
 ///    a stale `probe_version` when the failure is transient);
-/// 4. rewrite the item's `filename` metadata layer from the item's *oldest*
-///    file, so which version was probed last never changes the title.
+/// 4. rewrite the `filename` metadata layers from the *oldest* files, so
+///    which version was probed last never changes a title.
 ///
 /// If the file moved to a different item (its name now parses differently),
-/// the old item is marked missing when it has no files left.
+/// the old item is marked missing when it has no files left. `None`, with
+/// nothing written, when the name does not fit the library's type (the
+/// library's type changed during the scan).
 pub(crate) fn upsert_file(
     tx: &Transaction<'_>,
     job: &ProbeJob,
     fingerprint: [u8; 16],
-    name: &MovieName,
     probe: &Result<MediaInfo, ProbeError>,
     now_ms: i64,
-) -> rusqlite::Result<FileId> {
-    let item_id = find_or_create_item(tx, job.library_id, name.identity_key().as_str(), now_ms)?;
+) -> rusqlite::Result<Option<FileId>> {
+    let kind = place::library_kind(tx, job.library_id)?;
+    let Some(placement) = Placement::of(kind, &job.disk.rel.0) else {
+        return Ok(None);
+    };
+    let item_id = place::place(tx, job.library_id, &placement, now_ms)?;
     let existing: Option<(i64, i64)> = tx
         .query_row(
             "SELECT id, item_id FROM media_file WHERE root_id = ?1 AND rel_path = ?2",
@@ -154,7 +175,7 @@ pub(crate) fn upsert_file(
         Some((id, _)) => {
             tx.execute(
                 "UPDATE media_file SET item_id = ?1, size = ?2, mtime_ns = ?3, fingerprint = ?4, probe_version = ?5, \
-                 probe_error = ?6, container = ?7, duration_ms = ?8, bitrate = ?9 WHERE id = ?10",
+                 probe_error = ?6, container = ?7, duration_ms = ?8, bitrate = ?9, parse_version = ?11 WHERE id = ?10",
                 params![
                     item_id,
                     job.disk.size as i64,
@@ -165,7 +186,8 @@ pub(crate) fn upsert_file(
                     container,
                     duration_ms.map(|d| d as i64),
                     bitrate.map(|b| b as i64),
-                    id
+                    id,
+                    PARSE_VERSION,
                 ],
             )?;
             id
@@ -173,7 +195,8 @@ pub(crate) fn upsert_file(
         None => {
             tx.execute(
                 "INSERT INTO media_file (item_id, root_id, rel_path, size, mtime_ns, fingerprint, added_at, probe_version, \
-                 probe_error, container, duration_ms, bitrate) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                 probe_error, container, duration_ms, bitrate, parse_version) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 params![
                     item_id,
                     job.root.0,
@@ -187,6 +210,7 @@ pub(crate) fn upsert_file(
                     container,
                     duration_ms.map(|d| d as i64),
                     bitrate.map(|b| b as i64),
+                    PARSE_VERSION,
                 ],
             )?;
             tx.last_insert_rowid()
@@ -196,15 +220,15 @@ pub(crate) fn upsert_file(
     if let Ok(info) = probe {
         insert_streams(tx, file_id, info)?;
     }
-    write_filename_layer(tx, item_id, now_ms)?;
+    place::write_filename_layers(tx, item_id, now_ms)?;
     if let Some((_, old_item)) = existing
         && old_item != item_id
     {
-        write_filename_layer(tx, old_item, now_ms)?;
-        mark_item_missing_if_empty(tx, old_item, now_ms)?;
+        place::write_filename_layers(tx, old_item, now_ms)?;
+        place::mark_missing_if_empty(tx, old_item, now_ms)?;
     }
     bump_rev(tx)?;
-    Ok(FileId(file_id))
+    Ok(Some(FileId(file_id)))
 }
 
 fn insert_streams(tx: &Transaction<'_>, file_id: i64, info: &MediaInfo) -> rusqlite::Result<()> {
@@ -305,101 +329,12 @@ fn insert_streams(tx: &Transaction<'_>, file_id: i64, info: &MediaInfo) -> rusql
     Ok(())
 }
 
-/// The item owning `(library, identity_key)`, revived if it was missing, or a
-/// new one.
-fn find_or_create_item(
-    tx: &Transaction<'_>,
-    library_id: i64,
-    key: &str,
-    now_ms: i64,
-) -> rusqlite::Result<i64> {
-    let found: Option<(i64, Option<i64>)> = tx
-        .query_row(
-            "SELECT id, missing_since FROM item WHERE library_id = ?1 AND identity_key = ?2",
-            params![library_id, key],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
-        .optional()?;
-    match found {
-        Some((id, missing_since)) => {
-            if missing_since.is_some() {
-                tx.execute("UPDATE item SET missing_since = NULL WHERE id = ?1", [id])?;
-            }
-            Ok(id)
-        }
-        None => {
-            tx.execute(
-                "INSERT INTO item (library_id, kind, identity_key, added_at) VALUES (?1, 'movie', ?2, ?3)",
-                params![library_id, key, now_ms],
-            )?;
-            Ok(tx.last_insert_rowid())
-        }
-    }
-}
-
-/// The `filename` metadata layer of `item`, parsed from its oldest file.
-/// Written only when it differs, so an unchanged title is not a write.
-fn write_filename_layer(tx: &Transaction<'_>, item: i64, now_ms: i64) -> rusqlite::Result<()> {
-    let oldest: Option<String> = tx
-        .query_row(
-            "SELECT rel_path FROM media_file WHERE item_id = ?1 ORDER BY added_at, id LIMIT 1",
-            [item],
-            |r| r.get(0),
-        )
-        .optional()?;
-    let Some(rel) = oldest else {
-        return Ok(());
-    };
-    let name = MovieName::parse(Path::new(&rel));
-    tx.execute(
-        "INSERT INTO item_metadata (item_id, source, title, sort_title, year, updated_at) \
-         VALUES (?1, 'filename', ?2, ?3, ?4, ?5) \
-         ON CONFLICT(item_id, source) DO UPDATE SET title = excluded.title, sort_title = excluded.sort_title, \
-         year = excluded.year, updated_at = excluded.updated_at \
-         WHERE title IS NOT excluded.title OR sort_title IS NOT excluded.sort_title OR year IS NOT excluded.year",
-        params![item, name.title, name.sort_title, name.year, now_ms],
-    )?;
-    Ok(())
-}
-
-fn mark_item_missing_if_empty(
-    tx: &Transaction<'_>,
-    item: i64,
-    now_ms: i64,
-) -> rusqlite::Result<()> {
-    tx.execute(
-        "UPDATE item SET missing_since = ?1 WHERE id = ?2 AND missing_since IS NULL \
-         AND NOT EXISTS (SELECT 1 FROM media_file WHERE item_id = ?2)",
-        params![now_ms, item],
-    )?;
-    Ok(())
-}
-
-pub(crate) fn mark_empty_items_missing(
-    tx: &Transaction<'_>,
-    now_ms: i64,
-) -> rusqlite::Result<usize> {
-    tx.execute(
-        "UPDATE item SET missing_since = ?1 WHERE missing_since IS NULL \
-         AND NOT EXISTS (SELECT 1 FROM media_file f WHERE f.item_id = item.id)",
-        [now_ms],
-    )
-}
-
 /// Apply a rename/move: update `root_id`, `rel_path`, `mtime_ns`; keep the id,
-/// streams and artwork. Then re-derive the item from the new name:
-/// - same identity key => nothing else changes;
-/// - new key owned by another item => re-parent the file (becomes a version
-///   there); the old item is marked missing if now empty;
-/// - new key unowned and the file is its item's only file => re-key the item in
-///   place and rewrite its filename layer (the user fixed a typo; the id survives);
-/// - otherwise => create the new item and re-parent.
-pub(crate) fn move_file(
-    tx: &Transaction<'_>,
-    mv: &Move,
-    name: &MovieName,
-    now_ms: i64,
-) -> rusqlite::Result<()> {
+/// streams and artwork. Then place the file by its new name
+/// ([`place::repoint`]): same key, nothing else changes; a typo fix re-keys
+/// the item in place, so its id survives. A name that no longer fits the
+/// library's type takes the file out of the catalog.
+pub(crate) fn move_file(tx: &Transaction<'_>, mv: &Move, now_ms: i64) -> rusqlite::Result<()> {
     let old_item: i64 = tx.query_row(
         "SELECT item_id FROM media_file WHERE id = ?1",
         [mv.id.0],
@@ -409,59 +344,40 @@ pub(crate) fn move_file(
         "UPDATE media_file SET root_id = ?1, rel_path = ?2, mtime_ns = ?3 WHERE id = ?4",
         params![mv.to_root.0, mv.to.rel.0, mv.to.mtime_ns, mv.id.0],
     )?;
-    let (old_library, old_key): (i64, String) = tx.query_row(
-        "SELECT library_id, identity_key FROM item WHERE id = ?1",
-        [old_item],
-        |r| Ok((r.get(0)?, r.get(1)?)),
-    )?;
-    let key = name.identity_key();
-    if old_library == mv.to_library_id && old_key == key.as_str() {
-        return bump_rev(tx);
-    }
-    let owner: Option<i64> = tx
-        .query_row(
-            "SELECT id FROM item WHERE library_id = ?1 AND identity_key = ?2",
-            params![mv.to_library_id, key.as_str()],
-            |r| r.get(0),
-        )
-        .optional()?;
-    let files_in_old: i64 = tx.query_row(
-        "SELECT count(*) FROM media_file WHERE item_id = ?1",
-        [old_item],
-        |r| r.get(0),
-    )?;
-    let target = match owner {
-        Some(id) => {
-            tx.execute(
-                "UPDATE item SET missing_since = NULL WHERE id = ?1 AND missing_since IS NOT NULL",
-                [id],
-            )?;
-            id
-        }
-        None if files_in_old == 1 => {
-            tx.execute(
-                "UPDATE item SET library_id = ?1, identity_key = ?2 WHERE id = ?3",
-                params![mv.to_library_id, key.as_str(), old_item],
-            )?;
-            old_item
+    let kind = place::library_kind(tx, mv.to_library_id)?;
+    match Placement::of(kind, &mv.to.rel.0) {
+        Some(placement) => {
+            place::repoint(tx, mv.id.0, old_item, mv.to_library_id, &placement, now_ms)?
         }
         None => {
-            tx.execute(
-                "INSERT INTO item (library_id, kind, identity_key, added_at) VALUES (?1, 'movie', ?2, ?3)",
-                params![mv.to_library_id, key.as_str(), now_ms],
-            )?;
-            tx.last_insert_rowid()
+            tx.execute("DELETE FROM media_file WHERE id = ?1", [mv.id.0])?;
+            place::mark_missing_if_empty(tx, old_item, now_ms)?;
         }
-    };
-    if target != old_item {
-        tx.execute(
-            "UPDATE media_file SET item_id = ?1 WHERE id = ?2",
-            params![target, mv.id.0],
-        )?;
-        write_filename_layer(tx, old_item, now_ms)?;
-        mark_item_missing_if_empty(tx, old_item, now_ms)?;
     }
-    write_filename_layer(tx, target, now_ms)?;
+    bump_rev(tx)
+}
+
+/// Places a stored, unchanged file again with the current parser (its
+/// `parse_version` is older than [`PARSE_VERSION`]): its titles are
+/// rewritten, and it moves to another item only when its name now parses
+/// to one. Nothing is probed.
+pub(crate) fn rederive(tx: &Transaction<'_>, file: FileId, now_ms: i64) -> rusqlite::Result<()> {
+    let Some((item, library, rel)): Option<(i64, i64, String)> = tx
+        .query_row(
+            "SELECT f.item_id, r.library_id, f.rel_path FROM media_file f \
+             JOIN library_root r ON r.id = f.root_id WHERE f.id = ?1",
+            [file.0],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()?
+    else {
+        return Ok(());
+    };
+    let kind = place::library_kind(tx, library)?;
+    let Some(placement) = Placement::of(kind, &rel) else {
+        return Ok(());
+    };
+    place::repoint(tx, file.0, item, library, &placement, now_ms)?;
     bump_rev(tx)
 }
 
@@ -491,39 +407,95 @@ pub(crate) fn load_artwork_sigs(conn: &Connection) -> rusqlite::Result<Vec<Store
         .collect())
 }
 
-/// Present items with their files, for artwork planning. A file is SDR when it
-/// probed and its primary video stream is not HDR.
+/// Per show while loading: `(specials last, season, episode)` of its first
+/// episode, that episode's files, and the first folder every episode file so
+/// far shares.
+type FirstEpisode = ((bool, i64, i64), Vec<FileForArtwork>, Option<String>);
+
+/// Present items with their files, for artwork planning: movies and
+/// episodes with all their files, and shows with their first episode's (in
+/// order, specials last) and the folder every episode of the show is under.
+/// A file is SDR when it probed and its primary video stream is not HDR.
 pub(crate) fn load_present_items(conn: &Connection) -> rusqlite::Result<Vec<ItemFiles>> {
     let mut stmt = conn.prepare_cached(
-        "SELECT i.id, f.id, f.root_id, f.rel_path, f.fingerprint, f.duration_ms, f.probe_error, \
+        "SELECT i.id, i.kind, f.id, f.root_id, f.rel_path, f.fingerprint, f.duration_ms, f.probe_error, \
          (SELECT s.hdr FROM media_stream s WHERE s.file_id = f.id AND s.kind = 'video' ORDER BY s.stream_index LIMIT 1), \
-         (SELECT s.height FROM media_stream s WHERE s.file_id = f.id AND s.kind = 'video' ORDER BY s.stream_index LIMIT 1) \
-         FROM item i JOIN media_file f ON f.item_id = i.id \
+         (SELECT s.height FROM media_stream s WHERE s.file_id = f.id AND s.kind = 'video' ORDER BY s.stream_index LIMIT 1), \
+         se.parent_id, se.index_number, i.index_number \
+         FROM item i JOIN media_file f ON f.item_id = i.id LEFT JOIN item se ON se.id = i.parent_id \
          WHERE i.missing_since IS NULL ORDER BY i.id, f.id",
     )?;
     let mut items: Vec<ItemFiles> = Vec::new();
+    // Per show: (season, episode) of the first episode, its files, and the
+    // common first folder of every episode file so far.
+    let mut shows: std::collections::BTreeMap<i64, FirstEpisode> =
+        std::collections::BTreeMap::new();
     let mut rows = stmt.query([])?;
     while let Some(r) = rows.next()? {
         let item = ItemId(r.get(0)?);
-        let probe_error: Option<String> = r.get(6)?;
-        let hdr: Option<String> = r.get(7)?;
+        let episode = r.get_ref(1)?.as_str()? == "episode";
+        let probe_error: Option<String> = r.get(7)?;
+        let hdr: Option<String> = r.get(8)?;
         let file = FileForArtwork {
-            id: FileId(r.get(1)?),
-            root: RootId(r.get(2)?),
-            rel: RelPath(r.get(3)?),
-            fingerprint: blob16(r.get(4)?),
-            duration_ms: r.get::<_, Option<i64>>(5)?.map(|d| d as u64),
+            id: FileId(r.get(2)?),
+            root: RootId(r.get(3)?),
+            rel: RelPath(r.get(4)?),
+            fingerprint: blob16(r.get(5)?),
+            duration_ms: r.get::<_, Option<i64>>(6)?.map(|d| d as u64),
             sdr: probe_error.is_none() && hdr.as_deref().is_none_or(|h| h == "sdr"),
-            height: r.get::<_, Option<u32>>(8)?.unwrap_or(0),
+            height: r.get::<_, Option<u32>>(9)?.unwrap_or(0),
+        };
+        if let (true, Some(show)) = (episode, r.get::<_, Option<i64>>(10)?) {
+            let season: i64 = r.get::<_, Option<i64>>(11)?.unwrap_or(0);
+            let order = (
+                season == 0,
+                season,
+                r.get::<_, Option<i64>>(12)?.unwrap_or(0),
+            );
+            let top = file.rel.0.split_once('/').map(|(top, _)| top.to_owned());
+            match shows.get_mut(&show) {
+                None => {
+                    shows.insert(show, (order, vec![file.clone()], top));
+                }
+                Some((first, files, folder)) => {
+                    if *folder != top {
+                        *folder = None;
+                    }
+                    if order < *first {
+                        *first = order;
+                        files.clear();
+                    }
+                    if order == *first {
+                        files.push(file.clone());
+                    }
+                }
+            }
+        }
+        let kind = if episode {
+            ArtKind::Episode
+        } else {
+            ArtKind::Movie
         };
         match items.last_mut() {
             Some(last) if last.item == item => last.files.push(file),
             _ => items.push(ItemFiles {
                 item,
+                kind,
                 files: vec![file],
             }),
         }
     }
+    items.extend(
+        shows
+            .into_iter()
+            .map(|(show, (_, files, folder))| ItemFiles {
+                item: ItemId(show),
+                kind: ArtKind::Show {
+                    folder: folder.map(RelPath),
+                },
+                files,
+            }),
+    );
     Ok(items)
 }
 
@@ -571,7 +543,7 @@ pub(crate) fn remove_gone(
         changes += tx.execute("DELETE FROM media_file WHERE id = ?1", [id.0])?;
     }
     if changes > 0 {
-        changes += mark_empty_items_missing(tx, now_ms)?;
+        changes += place::mark_empty_items_missing(tx, now_ms)?;
     }
     for (item, role, source) in stale_artwork {
         changes += tx.execute(
@@ -658,8 +630,7 @@ mod tests {
                 },
                 existing: None,
             };
-            let name = MovieName::parse(Path::new(&job.disk.rel.0));
-            upsert_file(tx, &job, [0; 16], &name, &Ok(info), 0)
+            upsert_file(tx, &job, [0; 16], &Ok(info), 0)
         })
         .await
         .unwrap();

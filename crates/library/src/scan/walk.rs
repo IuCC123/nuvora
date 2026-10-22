@@ -5,7 +5,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-use nuvora_media::{PathClass, classify_path, is_skipped_dir};
+use nuvora_media::{EpisodeName, PathClass, classify_path, is_skipped_dir};
 
 /// A `/`-separated path relative to a library root. Stored as-is in
 /// `media_file.rel_path`. Non-UTF-8 names are reported as issues and skipped.
@@ -159,6 +159,19 @@ pub(crate) fn walk_root(root: RootId, library_id: i64, abs: &Path) -> RootWalk {
     walk.images.sort_by(|a, b| a.rel.cmp(&b.rel));
     walk.unreadable.sort();
     walk
+}
+
+/// In a TV library, a video whose name has no episode number is left out
+/// of the walk, as if it were not there, with an issue saying why.
+pub(crate) fn keep_episodes(walk: &mut RootWalk, why: &str) {
+    let RootWalk { videos, issues, .. } = walk;
+    videos.retain(|video| {
+        let episode = EpisodeName::parse(Path::new(&video.rel.0)).is_some();
+        if !episode {
+            issues.push((video.rel.0.clone(), why.to_owned()));
+        }
+        episode
+    });
 }
 
 /// Errors that mean the share itself went away mid-walk, not one bad entry.

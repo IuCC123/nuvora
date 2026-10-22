@@ -154,10 +154,47 @@ pub(crate) fn load(c: &Connection, user: UserId, item: ItemId) -> rusqlite::Resu
     .unwrap_or_default())
 }
 
+fn store(
+    tx: &Connection,
+    user: UserId,
+    item: ItemId,
+    new: WatchState,
+    now_ms: i64,
+) -> rusqlite::Result<()> {
+    if new == WatchState::default() {
+        tx.execute(
+            "DELETE FROM watch_state WHERE user_id = ?1 AND item_id = ?2",
+            [user.0, item.0],
+        )?;
+        return Ok(());
+    }
+    let resume = new.resume;
+    tx.execute(
+        "INSERT INTO watch_state (user_id, item_id, file_id, position_ms, duration_ms, \
+         play_count, last_watched_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
+         ON CONFLICT (user_id, item_id) DO UPDATE SET file_id = excluded.file_id, \
+         position_ms = excluded.position_ms, duration_ms = excluded.duration_ms, \
+         play_count = excluded.play_count, last_watched_at = excluded.last_watched_at, \
+         updated_at = excluded.updated_at",
+        params![
+            user.0,
+            item.0,
+            resume.map(|r| r.file_id.0),
+            resume.map(|r| r.position_ms as i64),
+            resume.map(|r| r.duration_ms as i64),
+            new.play_count,
+            new.last_watched_at,
+            now_ms,
+        ],
+    )?;
+    Ok(())
+}
+
 impl Library {
     /// Applies `event` to `user`'s state for `item` and bumps the user's
-    /// [`WatchRev`] in the same transaction. An event that changes nothing
-    /// writes nothing.
+    /// [`WatchRev`] in the same transaction. On a show or a season, a mark
+    /// applies to each of its present episodes (progress is refused: no file
+    /// belongs to one). An event that changes nothing writes nothing.
     pub async fn record_watch(
         &self,
         user: UserId,
@@ -168,13 +205,14 @@ impl Library {
         self.inner
             .db
             .write(move |tx| {
-                let exists = tx
-                    .query_row("SELECT 1 FROM item WHERE id = ?1", [item.0], |_| Ok(()))
-                    .optional()?
-                    .is_some();
-                if !exists {
+                let kind: Option<String> = tx
+                    .query_row("SELECT kind FROM item WHERE id = ?1", [item.0], |r| {
+                        r.get(0)
+                    })
+                    .optional()?;
+                let Some(kind) = kind else {
                     return Ok(Err(WatchError::ItemNotFound));
-                }
+                };
                 if let WatchEvent::Progress { file_id, .. } = event {
                     let owner: Option<i64> = tx
                         .query_row(
@@ -187,38 +225,57 @@ impl Library {
                         return Ok(Err(WatchError::FileNotOnItem));
                     }
                 }
-                let old = load(tx, user, item)?;
-                let new = apply(old, event, now_ms);
-                if new == old {
+                let episodes = match kind.as_str() {
+                    "show" => Some(
+                        "SELECT e.id FROM item e JOIN item se ON se.id = e.parent_id \
+                         WHERE se.parent_id = ?1 AND e.missing_since IS NULL",
+                    ),
+                    "season" => {
+                        Some("SELECT id FROM item WHERE parent_id = ?1 AND missing_since IS NULL")
+                    }
+                    _ => None,
+                };
+                let targets: Vec<(ItemId, WatchState)> = match episodes {
+                    // A bulk mark makes every episode watched (or not); an
+                    // episode already watched keeps its count.
+                    Some(sql) => {
+                        let ids: Vec<i64> = tx
+                            .prepare_cached(sql)?
+                            .query_map([item.0], |r| r.get(0))?
+                            .collect::<rusqlite::Result<_>>()?;
+                        let mut targets = Vec::with_capacity(ids.len());
+                        for id in ids {
+                            let old = load(tx, user, ItemId(id))?;
+                            let new = match event {
+                                WatchEvent::Watched if old.watched() && old.resume.is_none() => old,
+                                _ => apply(old, event, now_ms),
+                            };
+                            if new != old {
+                                targets.push((ItemId(id), new));
+                            }
+                        }
+                        targets
+                    }
+                    None => {
+                        let old = load(tx, user, item)?;
+                        let new = apply(old, event, now_ms);
+                        if new == old {
+                            Vec::new()
+                        } else {
+                            vec![(item, new)]
+                        }
+                    }
+                };
+                if targets.is_empty() {
                     return Ok(Ok(()));
                 }
-                if new == WatchState::default() {
-                    tx.execute(
-                        "DELETE FROM watch_state WHERE user_id = ?1 AND item_id = ?2",
-                        [user.0, item.0],
-                    )?;
-                } else {
-                    let resume = new.resume;
-                    tx.execute(
-                        "INSERT INTO watch_state (user_id, item_id, file_id, position_ms, duration_ms, \
-                         play_count, last_watched_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
-                         ON CONFLICT (user_id, item_id) DO UPDATE SET file_id = excluded.file_id, \
-                         position_ms = excluded.position_ms, duration_ms = excluded.duration_ms, \
-                         play_count = excluded.play_count, last_watched_at = excluded.last_watched_at, \
-                         updated_at = excluded.updated_at",
-                        params![
-                            user.0,
-                            item.0,
-                            resume.map(|r| r.file_id.0),
-                            resume.map(|r| r.position_ms as i64),
-                            resume.map(|r| r.duration_ms as i64),
-                            new.play_count,
-                            new.last_watched_at,
-                            now_ms,
-                        ],
-                    )?;
+                for (target, new) in targets {
+                    store(tx, user, target, new, now_ms)?;
                 }
-                tx.execute("UPDATE catalog SET watch_seq = watch_seq + 1 WHERE id = 1", [])?;
+                tx.execute(
+                    "UPDATE catalog SET watch_seq = watch_seq + 1 WHERE id = 1",
+                    [],
+                )?;
                 tx.execute(
                     "UPDATE user SET watch_rev = (SELECT watch_seq FROM catalog WHERE id = 1) \
                      WHERE id = ?1",
@@ -429,7 +486,10 @@ mod tests {
                 .item(ItemId(item), DeviceProfile::baseline(), user)
                 .await
                 .unwrap()
-                .unwrap();
+                .unwrap()
+            else {
+                panic!("a movie")
+            };
             movie.watch
         }
 
@@ -480,7 +540,10 @@ mod tests {
             let home = lib.home(bo).await.unwrap();
             assert_eq!(
                 home.rows.iter().map(|r| r.kind).collect::<Vec<_>>(),
-                [RowKind::RecentlyAdded, RowKind::AllMovies]
+                [
+                    RowKind::RecentlyAdded,
+                    RowKind::Library(crate::LibraryId(1))
+                ]
             );
             let cards: Vec<(i64, bool)> = home.rows[1]
                 .cards

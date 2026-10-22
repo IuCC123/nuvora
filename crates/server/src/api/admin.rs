@@ -5,10 +5,11 @@
 //! |--------|----------------------------------|----------------------------------|
 //! | GET    | /api/admin/libraries             | List libraries                   |
 //! | POST   | /api/admin/libraries             | Add a library, starts a scan     |
-//! | PATCH  | /api/admin/libraries/{id}        | Rename, change folders           |
+//! | PATCH  | /api/admin/libraries/{id}        | Rename, change folders or type   |
 //! | DELETE | /api/admin/libraries/{id}        | Remove a library and its items   |
 //! | POST   | /api/admin/libraries/{id}/scan   | Scan now                         |
 //! | GET    | /api/admin/fs                    | Folder picker                    |
+//! | GET    | /api/admin/fs/inspect            | Suggest a library type           |
 //! | GET    | /api/admin/users                 | List users                       |
 //! | POST   | /api/admin/users                 | Add a user                       |
 //! | PATCH  | /api/admin/users/{id}            | Role, disable, reset password    |
@@ -45,10 +46,14 @@ pub struct AdminLibrary {
     pub missing_paths: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, ToSchema, Clone, Copy)]
+/// Chosen when the library is added. Changing it later rebuilds the
+/// library's items.
+#[derive(Serialize, Deserialize, ToSchema, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum LibraryKind {
     Movies,
+    /// TV Shows: files are episodes, grouped into shows and seasons.
+    Shows,
 }
 
 /// `paths` are absolute folders that exist on the server; at least one, and
@@ -62,12 +67,15 @@ pub struct CreateLibraryRequest {
 }
 
 /// Every field is optional. `paths` replaces the whole list; removing a folder
-/// removes its items from the catalog (never from disk).
+/// removes its items from the catalog (never from disk). A different `kind`
+/// rebuilds every item of the library and resets watch progress in it (ask
+/// first); a scan then fills in artwork.
 #[derive(Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateLibraryRequest {
     pub name: Option<String>,
     pub paths: Option<Vec<String>>,
+    pub kind: Option<LibraryKind>,
 }
 
 #[derive(Deserialize, IntoParams)]
@@ -87,6 +95,26 @@ pub struct FsListing {
     pub parent: Option<String>,
     /// Sorted by name, ignoring case.
     pub dirs: Vec<FsDir>,
+}
+
+#[derive(Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct FsInspectQuery {
+    /// An absolute folder.
+    pub path: String,
+}
+
+/// A quick look at a folder before adding it as a library: video files under
+/// it, and how many of them are named like episodes. Counts at most 2,000
+/// video files.
+#[derive(Serialize, ToSchema)]
+pub struct FsInspect {
+    pub video_files: u32,
+    pub episode_like: u32,
+    /// `shows` when more than half of the video files look like episodes.
+    pub suggested_kind: LibraryKind,
+    /// The count stopped at 2,000 files.
+    pub truncated: bool,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -184,9 +212,7 @@ pub(super) async fn create_library(
 ) -> Result<(StatusCode, Json<AdminLibrary>), ApiError> {
     let name = valid_library_name(&body.name)?;
     let roots = valid_folders(body.paths).await?;
-    let kind = match body.kind {
-        LibraryKind::Movies => nuvora_library::LibraryKind::Movies,
-    };
+    let kind = body.kind.into();
     let library = state
         .library
         .create_library(name, kind, roots)
@@ -196,7 +222,7 @@ pub(super) async fn create_library(
     Ok((StatusCode::CREATED, Json(admin_library(library).await)))
 }
 
-/// Starts a scan when `paths` changed.
+/// Starts a scan when `paths` or `kind` changed.
 #[utoipa::path(
     patch,
     path = "/api/admin/libraries/{id}",
@@ -220,7 +246,13 @@ pub(super) async fn update_library(
     };
     let (library, folders_changed) = state
         .library
-        .update_library(LibraryId::from_raw(id), name, roots, state.auth.now_ms())
+        .update_library(
+            LibraryId::from_raw(id),
+            name,
+            roots,
+            body.kind.map(LibraryKind::into),
+            state.auth.now_ms(),
+        )
         .await
         .map_err(library_error)?;
     if folders_changed {
@@ -285,6 +317,85 @@ pub(super) async fn list_dirs(Query(query): Query<FsQuery>) -> Result<Json<FsLis
         .await
         .map_err(ApiError::internal)?
         .map(Json)
+}
+
+/// Suggests a library type for a folder the admin is about to add.
+#[utoipa::path(
+    get,
+    path = "/api/admin/fs/inspect",
+    params(FsInspectQuery),
+    responses((status = 200, body = FsInspect), (status = 400, body = ErrorBody)),
+)]
+pub(super) async fn inspect_dir(
+    Query(query): Query<FsInspectQuery>,
+) -> Result<Json<FsInspect>, ApiError> {
+    tokio::task::spawn_blocking(move || inspect_folder(&query.path))
+        .await
+        .map_err(ApiError::internal)?
+        .map(Json)
+}
+
+/// Video files counted by [`inspect_folder`] before it stops.
+const INSPECT_FILES: u32 = 2_000;
+/// Directory entries read before it stops, whatever they are, so a huge
+/// tree (or a symlink loop) cannot keep the request open.
+const INSPECT_ENTRIES: u32 = 50_000;
+
+/// Counts video files under `path` as a scan would see them (hidden and
+/// extras folders skipped) and how many are named like episodes.
+fn inspect_folder(path: &str) -> Result<FsInspect, ApiError> {
+    use nuvora_media::{EpisodeName, PathClass, classify_path, is_skipped_dir};
+    let requested = PathBuf::from(path);
+    if !requested.is_absolute() {
+        return Err(ApiError::validation("path", "Use an absolute path"));
+    }
+    let root = requested
+        .canonicalize()
+        .ok()
+        .filter(|p| p.is_dir())
+        .ok_or_else(|| ApiError::validation("path", "That folder doesn't exist"))?;
+    let (mut video_files, mut episode_like, mut entries) = (0, 0, 0);
+    let mut truncated = false;
+    let mut folders = vec![root.clone()];
+    'walk: while let Some(folder) = folders.pop() {
+        let Ok(listing) = std::fs::read_dir(&folder) else {
+            continue;
+        };
+        for entry in listing.flatten() {
+            entries += 1;
+            if video_files >= INSPECT_FILES || entries >= INSPECT_ENTRIES {
+                truncated = true;
+                break 'walk;
+            }
+            let path = entry.path();
+            let Ok(rel) = path.strip_prefix(&root) else {
+                continue;
+            };
+            let Ok(meta) = std::fs::metadata(&path) else {
+                continue;
+            };
+            if meta.is_dir() {
+                if !is_skipped_dir(rel) {
+                    folders.push(path);
+                }
+            } else if classify_path(rel) == PathClass::Video {
+                video_files += 1;
+                if EpisodeName::parse(rel).is_some() {
+                    episode_like += 1;
+                }
+            }
+        }
+    }
+    Ok(FsInspect {
+        video_files,
+        episode_like,
+        suggested_kind: if episode_like * 2 > video_files {
+            LibraryKind::Shows
+        } else {
+            LibraryKind::Movies
+        },
+        truncated,
+    })
 }
 
 #[utoipa::path(get, path = "/api/admin/users", responses((status = 200, body = Vec<AdminUser>)))]
@@ -470,9 +581,7 @@ async fn admin_library(library: LibraryInfo) -> AdminLibrary {
     AdminLibrary {
         id: library.id.raw(),
         name: library.name,
-        kind: match library.kind {
-            nuvora_library::LibraryKind::Movies => LibraryKind::Movies,
-        },
+        kind: library.kind.into(),
         paths: library
             .roots
             .iter()
@@ -480,6 +589,24 @@ async fn admin_library(library: LibraryInfo) -> AdminLibrary {
             .collect(),
         item_count: library.item_count,
         missing_paths: missing.iter().map(|p| p.display().to_string()).collect(),
+    }
+}
+
+impl From<LibraryKind> for nuvora_library::LibraryKind {
+    fn from(kind: LibraryKind) -> Self {
+        match kind {
+            LibraryKind::Movies => nuvora_library::LibraryKind::Movies,
+            LibraryKind::Shows => nuvora_library::LibraryKind::Shows,
+        }
+    }
+}
+
+impl From<nuvora_library::LibraryKind> for LibraryKind {
+    fn from(kind: nuvora_library::LibraryKind) -> Self {
+        match kind {
+            nuvora_library::LibraryKind::Movies => LibraryKind::Movies,
+            nuvora_library::LibraryKind::Shows => LibraryKind::Shows,
+        }
     }
 }
 
@@ -848,7 +975,14 @@ mod tests {
         }
         assert_eq!(libraries[1]["item_count"], 1, "{libraries}");
         let home = app.get("/api/home", &admin).await.json();
-        assert_eq!(home["rows"][1]["items"][0]["title"], "Big Buck");
+        assert_eq!(
+            (
+                &home["rows"][2]["library_id"],
+                &home["rows"][2]["items"][0]["title"]
+            ),
+            (&created["id"], &json!("Big Buck")),
+            "the new library has its own row"
+        );
 
         let again = app
             .call(
@@ -875,7 +1009,8 @@ mod tests {
             .await;
         assert_eq!(deleted.status, StatusCode::NO_CONTENT);
         let home = app.get("/api/home", &admin).await.json();
-        assert_eq!(home["rows"][1]["total"], 0);
+        assert_eq!(home["rows"][0]["total"], 0, "nothing recently added");
+        assert_eq!(home["rows"].as_array().unwrap().len(), 2, "its row is gone");
         assert!(movie.is_file(), "files on disk are untouched");
     }
 

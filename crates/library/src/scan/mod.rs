@@ -31,25 +31,26 @@
 //! - An unchanged library does: one walk, one SELECT of stored files, one SELECT
 //!   of artwork sigs, zero writes. Target < 2 s for 2,000 files (walk-bound).
 
+pub(crate) mod place;
 mod plan;
 mod walk;
 pub(crate) mod write;
 
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use futures::StreamExt;
 use nuvora_media::{
-    ArtworkRole, ArtworkSource, MediaInfo, MediaTools, MovieName, ProbeError, RenderedArtwork,
+    ArtworkRole, ArtworkSource, MediaInfo, MediaTools, ProbeError, RenderedArtwork,
 };
 use tokio::sync::{mpsc, watch};
 
-use crate::ArtworkId;
 use crate::db::{Db, DbError};
 use crate::store::ArtworkStore;
+use crate::{ArtworkId, LibraryKind};
 use plan::{RenderJob, WantedSource};
 use walk::{RootId, RootWalk};
 
@@ -113,6 +114,10 @@ pub struct ScanIssue {
 }
 
 const MAX_ISSUES: usize = 100;
+
+/// Why a video in a TV library is not in it.
+const NOT_AN_EPISODE: &str =
+    "skipped: the name has no episode number (for example S01E02, 1x02 or \" - 02\")";
 
 /// Owned by `Library`. Requests go in through `requests`; status comes out of
 /// `status`. The worker is the only `watch::Sender`: one owner for scan state.
@@ -289,7 +294,7 @@ async fn scan(
 
     let roots = ctx.db.read(write::load_roots).await?;
     progress.set(ScanPhase::Discovering, 0, roots.len());
-    let walks = futures::future::join_all(roots.iter().map(|root| {
+    let mut walks = futures::future::join_all(roots.iter().map(|root| {
         let (id, library_id, path) = (root.id, root.library_id, root.path.clone());
         async move {
             let walked = path.clone();
@@ -300,6 +305,11 @@ async fn scan(
     }))
     .await;
     progress.set(ScanPhase::Discovering, roots.len(), roots.len());
+    for (walk, root) in walks.iter_mut().zip(&roots) {
+        if root.kind == LibraryKind::Shows {
+            walk::keep_episodes(walk, NOT_AN_EPISODE);
+        }
+    }
     for walk in &walks {
         for (path, message) in &walk.issues {
             tally.issue(path.clone(), message.clone());
@@ -315,7 +325,7 @@ async fn scan(
         .await?;
     let plan = plan::diff(known.clone(), &walks, now, ctx.settle_window);
     let abs_for_pairing = root_abs.clone();
-    let plan = tokio::task::spawn_blocking(move || {
+    let mut plan = tokio::task::spawn_blocking(move || {
         plan::pair_moves(plan, &known, |job| {
             walk::fingerprint(
                 &abs_for_pairing[&job.root].join(&job.disk.rel.0),
@@ -326,6 +336,7 @@ async fn scan(
     .await
     .map_err(|_| DbError::Panicked)?;
     tally.summary.unchanged = plan.unchanged;
+    let reparse = std::mem::take(&mut plan.reparse);
     tally.summary.settling = plan.settling;
     tally.summary.moved = plan.moved.len() as u32;
     for rel in &plan.future {
@@ -342,14 +353,22 @@ async fn scan(
     }
 
     for mv in plan.moved {
-        let name = MovieName::parse(Path::new(&mv.to.rel.0));
         let path = mv.to.rel.0.clone();
         let moved = ctx
             .db
-            .write(move |tx| write::move_file(tx, &mv, &name, now_ms))
+            .write(move |tx| write::move_file(tx, &mv, now_ms))
             .await;
         if let Err(message) = orphaned(moved)? {
             tally.failed(path, message);
+        }
+    }
+    for file in reparse {
+        let rederived = ctx
+            .db
+            .write(move |tx| write::rederive(tx, file, now_ms))
+            .await;
+        if let Err(message) = orphaned(rederived)? {
+            tally.issue(format!("file {}", file.0), message);
         }
     }
 
@@ -363,14 +382,14 @@ async fn scan(
         let path = job.disk.rel.0.clone();
         let existing = job.existing.is_some();
         let probe_error = probe.as_ref().err().map(ToString::to_string);
-        let name = MovieName::parse(Path::new(&job.disk.rel.0));
         let written = ctx
             .db
-            .write(move |tx| write::upsert_file(tx, &job, fingerprint, &name, &probe, now_ms))
+            .write(move |tx| write::upsert_file(tx, &job, fingerprint, &probe, now_ms))
             .await;
         match (orphaned(written)?, probe_error) {
             (Err(message), _) => tally.failed(path, message),
-            (Ok(_), probe_error) => {
+            (Ok(None), _) => tally.issue(path, NOT_AN_EPISODE),
+            (Ok(Some(_)), probe_error) => {
                 if let Some(message) = probe_error {
                     tally.failed(path, message);
                 }

@@ -18,7 +18,10 @@ pub use artwork::{
     ArtworkError, ArtworkRole, ArtworkSource, Frame, ImageSize, PIPELINE_VERSION, Placeholder,
     RenderedArtwork,
 };
-pub use name::{IdentityKey, MovieName, PathClass, classify_path, is_skipped_dir};
+pub use name::{
+    EpisodeName, IdentityKey, MovieName, PARSE_VERSION, PathClass, ShowName, classify_path,
+    fold_for_sort, is_skipped_dir,
+};
 pub use playback::{AudioSupport, DeviceProfile, Incompatibility, PlaybackDecision, VideoSupport};
 pub use probe::{
     AudioCodec, AudioStream, ColorInfo, Container, HdrFormat, MediaInfo, PROBE_VERSION, ProbeError,

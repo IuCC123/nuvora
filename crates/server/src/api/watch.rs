@@ -17,7 +17,7 @@ use utoipa::ToSchema;
 use super::{ApiError, AppState, ErrorBody, JsonBody};
 use crate::auth::SignedIn;
 
-/// The signed-in user's state for one movie.
+/// The signed-in user's state for one movie or episode.
 #[derive(Serialize, ToSchema)]
 pub struct WatchState {
     /// Where to resume. `None` unless the movie is in progress.
@@ -77,7 +77,9 @@ pub(super) async fn put_progress(
     record(&state, &me, id, event).await
 }
 
-/// Marks the movie watched, like finishing it.
+/// Marks the movie or episode watched, like finishing it. On a show or a
+/// season, marks every episode in it watched; episodes already watched keep
+/// their play count.
 #[utoipa::path(
     put,
     path = "/api/items/{id}/watched",
@@ -92,8 +94,8 @@ pub(super) async fn put_watched(
     record(&state, &me, id, WatchEvent::Watched).await
 }
 
-/// Marks the movie unwatched: clears the position, the play count and the
-/// last finish.
+/// Marks the movie or episode unwatched: clears the position, the play
+/// count and the last finish. On a show or a season, every episode in it.
 #[utoipa::path(
     delete,
     path = "/api/items/{id}/watched",
@@ -220,13 +222,13 @@ mod tests {
             .collect()
     }
 
-    /// `(id, progress, watched)` of every card in the All Movies row.
+    /// `(id, progress, watched)` of every card in the Movies library row.
     fn cards(home: &Value) -> Vec<(i64, Value, bool)> {
         let all = home["rows"]
             .as_array()
             .unwrap()
             .iter()
-            .find(|r| r["kind"] == "all_movies")
+            .find(|r| r["kind"] == "library")
             .unwrap();
         all["items"]
             .as_array()
@@ -254,7 +256,7 @@ mod tests {
         let home = app.get("/api/home", &admin).await.json();
         assert_eq!(
             row_kinds(&home),
-            ["recently_added", "all_movies"],
+            ["recently_added", "library"],
             "30 s is ignored"
         );
         assert_eq!(watch(&app, &admin, 1).await["position_ms"], Value::Null);
@@ -266,7 +268,7 @@ mod tests {
         let home = app.get("/api/home", &admin).await.json();
         assert_eq!(
             row_kinds(&home),
-            ["continue_watching", "recently_added", "all_movies"]
+            ["continue_watching", "recently_added", "library"]
         );
         assert_eq!(home["rows"][0]["title"], "Continue Watching");
         assert_eq!(home["rows"][0]["items"][0]["id"], 1);
@@ -280,7 +282,7 @@ mod tests {
         );
 
         let theirs = app.get("/api/home", &member).await.json();
-        assert_eq!(row_kinds(&theirs), ["recently_added", "all_movies"]);
+        assert_eq!(row_kinds(&theirs), ["recently_added", "library"]);
         assert_eq!(
             cards(&theirs),
             [(1, Value::Null, false), (2, Value::Null, false)]
@@ -316,7 +318,7 @@ mod tests {
         let home = app.get("/api/home", &admin).await.json();
         assert_eq!(
             row_kinds(&home),
-            ["recently_added", "all_movies"],
+            ["recently_added", "library"],
             "watched leaves Continue Watching"
         );
         assert_eq!(cards(&home)[1], (2, Value::Null, true));
@@ -460,7 +462,7 @@ mod tests {
             StatusCode::OK,
             "the admin's tag never matches the member"
         );
-        assert_eq!(row_kinds(&reply.json()), ["recently_added", "all_movies"]);
+        assert_eq!(row_kinds(&reply.json()), ["recently_added", "library"]);
 
         report(&app, &member, 2, 2, 10 * 60_000).await;
         let member_rev = etag(&app.get("/api/home", &member).await);

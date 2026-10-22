@@ -76,6 +76,73 @@
         ]
       }
     },
+    "/api/admin/fs/inspect": {
+      "get": {
+        "summary": "Suggests a library type for a folder the admin is about to add.",
+        "operationId": "inspect_dir",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "description": "An absolute folder.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FsInspect"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/admin/libraries": {
       "get": {
         "operationId": "list_libraries",
@@ -247,7 +314,7 @@
         ]
       },
       "patch": {
-        "summary": "Starts a scan when `paths` changed.",
+        "summary": "Starts a scan when `paths` or `kind` changed.",
         "operationId": "update_library",
         "parameters": [
           {
@@ -1220,6 +1287,81 @@
         ]
       }
     },
+    "/api/items/{id}/episodes": {
+      "get": {
+        "summary": "A season's episodes in order, with the signed-in user's watch state and a\nplayback decision per version for the requesting device. 404 unless `id`\nis a season. ETag as `GET /api/items/{id}`.",
+        "operationId": "get_episodes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "Nuvora-Device",
+            "in": "header",
+            "description": "JSON DeviceProfile",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Episode"
+                  }
+                }
+              }
+            }
+          },
+          "304": {
+            "description": ""
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/items/{id}/progress": {
       "put": {
         "summary": "Reports where playback is; the server decides what it means. Under 60 s\nstores nothing and clears earlier progress. From 60 s to under 90% of the\nduration stores the position. From 90% the movie counts as watched once and\nthe position is cleared; another report at 90% or more within 3 hours of\nthat does not count again.",
@@ -1292,7 +1434,7 @@
     },
     "/api/items/{id}/watched": {
       "put": {
-        "summary": "Marks the movie watched, like finishing it.",
+        "summary": "Marks the movie or episode watched, like finishing it. On a show or a\nseason, marks every episode in it watched; episodes already watched keep\ntheir play count.",
         "operationId": "put_watched",
         "parameters": [
           {
@@ -1340,7 +1482,7 @@
         ]
       },
       "delete": {
-        "summary": "Marks the movie unwatched: clears the position, the play count and the\nlast finish.",
+        "summary": "Marks the movie or episode unwatched: clears the position, the play\ncount and the last finish. On a show or a season, every episode in it.",
         "operationId": "delete_watched",
         "parameters": [
           {
@@ -1388,9 +1530,280 @@
         ]
       }
     },
+    "/api/libraries": {
+      "get": {
+        "summary": "Every library, in the order they were added. Any member may list them.",
+        "operationId": "get_libraries",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LibrarySummary"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/libraries/{id}/index": {
+      "get": {
+        "summary": "Group headers for the library page: letters for the title sort (`#`,\nthen A to Z), decades for year, months for added. Same filters and ETag\nas the items.",
+        "operationId": "get_library_index",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/LibrarySort"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SortOrder"
+            }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/WatchFilter"
+            }
+          },
+          {
+            "name": "res",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Resolution"
+            }
+          },
+          {
+            "name": "hdr",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryIndex"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": ""
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/libraries/{id}/items": {
+      "get": {
+        "summary": "The library page grid. Per user, with the home ETag\n(`\"<catalog_rev>.<watch_rev>\"`). A malformed cursor, or one minted for\nanother sort or order, is 400.",
+        "operationId": "get_library_items",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/LibrarySort"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SortOrder"
+            }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "description": "Default `all`.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/WatchFilter"
+            }
+          },
+          {
+            "name": "res",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Resolution"
+            }
+          },
+          {
+            "name": "hdr",
+            "in": "query",
+            "description": "`true`: only movies with an HDR version. Ignored for TV libraries.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "`next` from the previous page, or a group's `after` from the index.\nOnly valid with the same `sort` and `order`; anything else is 400.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Default 60, clamped to 1..=200.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryPage"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": ""
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/rows/{row}": {
       "get": {
-        "summary": "Keyset paging on the row's sort key. A malformed cursor, or one from\nanother row, is 400. Per user, with the same ETag as home.",
+        "summary": "Keyset paging on the row's sort key. A malformed cursor, or one from\nanother row (or library), is 400. Per user, with the same ETag as home.\nA library row needs `?library=`; an unknown library is an empty row.",
         "operationId": "get_row",
         "parameters": [
           {
@@ -1419,6 +1832,16 @@
               "type": "integer",
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "library",
+            "in": "query",
+            "description": "The library of a `library` row (`library_id` on the home row).\nRequired for that row, ignored for the others.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
             }
           }
         ],
@@ -1843,6 +2266,243 @@
           }
         }
       },
+      "Episode": {
+        "type": "object",
+        "description": "One row of a season's episode list.",
+        "required": [
+          "id",
+          "index",
+          "title",
+          "label",
+          "watch",
+          "versions"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "label": {
+            "type": "string",
+            "description": "`\"S1 · E5\"`, or `\"Special 2\"`."
+          },
+          "runtime_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "thumb": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image",
+                "description": "16:9 frame at 10% of the episode, SDR only."
+              }
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "From the file name, else `\"Episode 5\"` (`\"Special 2\"` in Specials)."
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Version"
+            },
+            "description": "Best first, each with its playback decision for the requesting device,\nas on `MovieDetail`. Empty when every file of the episode is missing."
+          },
+          "watch": {
+            "$ref": "#/components/schemas/WatchState"
+          }
+        }
+      },
+      "EpisodeDetail": {
+        "type": "object",
+        "description": "`GET /api/items/{id}` of an episode id: what the player and an episode\npage need, with the show around it.",
+        "required": [
+          "id",
+          "show_id",
+          "season_id",
+          "show_title",
+          "season",
+          "index",
+          "title",
+          "label",
+          "versions",
+          "watch"
+        ],
+        "properties": {
+          "backdrop": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image",
+                "description": "The show's."
+              }
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "label": {
+            "type": "string"
+          },
+          "next": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EpisodeRef",
+                "description": "The episode after this one in order, for \"Next episode\" in the player.\n`None` after the last one."
+              }
+            ]
+          },
+          "overview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "poster": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image",
+                "description": "The show's."
+              }
+            ]
+          },
+          "runtime_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "season": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "season_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "show_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "show_title": {
+            "type": "string"
+          },
+          "thumb": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Version"
+            }
+          },
+          "watch": {
+            "$ref": "#/components/schemas/WatchState"
+          }
+        }
+      },
+      "EpisodeRef": {
+        "type": "object",
+        "description": "A pointer to one episode, for \"Play S1 E5\" buttons and \"next episode\".",
+        "required": [
+          "id",
+          "season_id",
+          "season",
+          "index",
+          "title",
+          "label"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Episode number within the season.",
+            "minimum": 0
+          },
+          "label": {
+            "type": "string",
+            "description": "`\"S1 · E5\"`, or `\"Special 2\"`."
+          },
+          "position_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Where the signed-in user stopped; `None` unless in progress.",
+            "minimum": 0
+          },
+          "season": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Season number, 0 for Specials.",
+            "minimum": 0
+          },
+          "season_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "thumb": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image",
+                "description": "16:9 frame at 10% of the episode, SDR only."
+              }
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "From the file name, else `\"Episode 5\"` (`\"Special 2\"` in Specials)."
+          }
+        }
+      },
       "ErrorBody": {
         "type": "object",
         "description": "Every API error answers with this body. `code` is stable; `message` is\nwritten for people and may change.",
@@ -1896,6 +2556,36 @@
           "path": {
             "type": "string",
             "description": "Absolute; pass it back as `?path=` to open the folder."
+          }
+        }
+      },
+      "FsInspect": {
+        "type": "object",
+        "description": "A quick look at a folder before adding it as a library: video files under\nit, and how many of them are named like episodes. Counts at most 2,000\nvideo files.",
+        "required": [
+          "video_files",
+          "episode_like",
+          "suggested_kind",
+          "truncated"
+        ],
+        "properties": {
+          "episode_like": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "suggested_kind": {
+            "$ref": "#/components/schemas/LibraryKind",
+            "description": "`shows` when more than half of the video files look like episodes."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "The count stopped at 2,000 files."
+          },
+          "video_files": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },
@@ -1983,12 +2673,20 @@
           "kind": {
             "$ref": "#/components/schemas/RowKind"
           },
+          "library_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Set on `library` rows: the library page to open from \"See all\"."
+          },
           "next": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Opaque cursor for `GET /api/rows/{row}?after=`. `None` when `items` is the whole row."
+            "description": "Opaque cursor for `GET /api/rows/{row}?after=` (plus `&library=` for a\nlibrary row). `None` when `items` is the whole row."
           },
           "title": {
             "type": "string"
@@ -2033,6 +2731,36 @@
           "large"
         ]
       },
+      "IndexGroup": {
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "count"
+        ],
+        "properties": {
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass as `?after=` (with the same sort, order and filters) to load the\npage that starts with this group. `None` for the first group."
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "key": {
+            "type": "string",
+            "description": "Stable: `\"#\"` and `\"A\"` to `\"Z\"` for the title sort, `\"1990\"` (the\ndecade) or `\"unknown\"` for year, `\"2026-10\"` or `\"unknown\"` for added."
+          },
+          "label": {
+            "type": "string",
+            "description": "For the header: `\"A\"`, `\"1990s\"`, `\"October 2026\"`, `\"Unknown year\"`."
+          }
+        }
+      },
       "ItemDetail": {
         "oneOf": [
           {
@@ -2055,20 +2783,171 @@
                 }
               }
             ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ShowDetail"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "show"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SeasonDetail"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "season"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EpisodeDetail"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "episode"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         ]
       },
       "ItemKind": {
         "type": "string",
         "enum": [
-          "movie"
+          "movie",
+          "show",
+          "season",
+          "episode"
         ]
+      },
+      "LibraryIndex": {
+        "type": "object",
+        "description": "The library grid's group headers, in grid order. Only groups with items.\nSorts without groups (`watched`, `runtime`) answer with no groups.",
+        "required": [
+          "groups"
+        ],
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IndexGroup"
+            }
+          }
+        }
       },
       "LibraryKind": {
         "type": "string",
+        "description": "Chosen when the library is added. Changing it later rebuilds the\nlibrary's items.",
         "enum": [
-          "movies"
+          "movies",
+          "shows"
         ]
+      },
+      "LibraryPage": {
+        "type": "object",
+        "description": "One page of the library grid: movies, or shows for a TV library.",
+        "required": [
+          "total",
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PosterCard"
+            }
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cursor for `?after=`; `None` on the last page."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cards matching the filters, across every page.",
+            "minimum": 0
+          }
+        }
+      },
+      "LibrarySort": {
+        "type": "string",
+        "description": "Library page sort. Default `title`.",
+        "enum": [
+          "title",
+          "year",
+          "added",
+          "watched",
+          "runtime"
+        ]
+      },
+      "LibrarySummary": {
+        "type": "object",
+        "description": "A library as every member sees it, for the nav rail and the library page header.",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "item_count"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "item_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Movies, or shows for a TV library, with at least one file present.",
+            "minimum": 0
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LibraryKind"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
       },
       "LoginRequest": {
         "type": "object",
@@ -2274,6 +3153,7 @@
       },
       "PosterCard": {
         "type": "object",
+        "description": "A movie, a show, or (in Continue Watching) an episode. An episode card\ncarries its show's title, year and poster, `subtitle` names the episode,\n`id` is the episode to play and `show_id` the show to open.",
         "required": [
           "id",
           "kind",
@@ -2304,14 +3184,38 @@
               "null"
             ],
             "format": "float",
-            "description": "How far the signed-in user is into the movie, 0 to 1. `None` unless\nit is in progress."
+            "description": "How far the signed-in user is into the movie or episode, 0 to 1.\n`None` unless it is in progress; a Next Up episode has none."
+          },
+          "show_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "On episode cards: the show the episode belongs to."
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A second line under the title: `\"S1 · E4\"` on an episode in progress,\n`\"Next episode · S1 · E5\"` on a Next Up entry, `\"3 new episodes\"` on a\nshow in Recently Added."
           },
           "title": {
             "type": "string"
           },
+          "unwatched_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "On show cards: episodes the signed-in user has not watched.",
+            "minimum": 0
+          },
           "watched": {
             "type": "boolean",
-            "description": "The signed-in user has finished the movie at least once."
+            "description": "The signed-in user has finished the movie or episode at least once,\nor every episode of the show."
           },
           "year": {
             "type": [
@@ -2351,6 +3255,16 @@
         },
         "additionalProperties": false
       },
+      "Resolution": {
+        "type": "string",
+        "description": "A movie matches when any of its versions does. Ignored for TV libraries.",
+        "enum": [
+          "4k",
+          "1080p",
+          "720p",
+          "sd"
+        ]
+      },
       "Role": {
         "type": "string",
         "enum": [
@@ -2363,7 +3277,8 @@
         "enum": [
           "continue_watching",
           "recently_added",
-          "all_movies"
+          "all_movies",
+          "library"
         ]
       },
       "RowPage": {
@@ -2546,6 +3461,107 @@
           }
         }
       },
+      "SeasonDetail": {
+        "type": "object",
+        "description": "`GET /api/items/{id}` of a season id. Its episodes come from\n`GET /api/items/{id}/episodes`.",
+        "required": [
+          "id",
+          "show_id",
+          "show_title",
+          "index",
+          "title",
+          "episode_count",
+          "watched_count"
+        ],
+        "properties": {
+          "backdrop": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image"
+              }
+            ]
+          },
+          "episode_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "poster": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image",
+                "description": "The show's."
+              }
+            ]
+          },
+          "show_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "show_title": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "watched_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "SeasonSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "index",
+          "title",
+          "episode_count",
+          "watched_count"
+        ],
+        "properties": {
+          "episode_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "description": "0 for Specials.",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string",
+            "description": "`\"Season 1\"` or `\"Specials\"`."
+          },
+          "watched_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "ServerInfo": {
         "type": "object",
         "required": [
@@ -2605,6 +3621,97 @@
         },
         "additionalProperties": false
       },
+      "ShowDetail": {
+        "type": "object",
+        "description": "A show's page. `next` is what Play starts.",
+        "required": [
+          "id",
+          "title",
+          "seasons",
+          "watched_count",
+          "episode_count"
+        ],
+        "properties": {
+          "backdrop": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image"
+              }
+            ]
+          },
+          "episode_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Episodes with a file present, specials included.",
+            "minimum": 0
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "next": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EpisodeRef",
+                "description": "The first unwatched episode after the last watched one, in order.\nS1 E1 when nothing is watched; `None` when every episode is watched.\nSpecials never come next."
+              }
+            ]
+          },
+          "overview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "poster": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image"
+              }
+            ]
+          },
+          "seasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeasonSummary"
+            },
+            "description": "Numbered seasons in order, then Specials (season 0) last."
+          },
+          "title": {
+            "type": "string"
+          },
+          "watched_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The signed-in user's watched episodes, out of `episode_count`.",
+            "minimum": 0
+          },
+          "year_range": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`\"2024\"`, or `\"2019–2024\"` once episodes carry years. `None` when no\nyear is known."
+          }
+        }
+      },
+      "SortOrder": {
+        "type": "string",
+        "description": "Default `asc` for `title`, `desc` for every other sort.",
+        "enum": [
+          "asc",
+          "desc"
+        ]
+      },
       "SubtitleTrack": {
         "type": "object",
         "required": [
@@ -2660,8 +3767,18 @@
       },
       "UpdateLibraryRequest": {
         "type": "object",
-        "description": "Every field is optional. `paths` replaces the whole list; removing a folder\nremoves its items from the catalog (never from disk).",
+        "description": "Every field is optional. `paths` replaces the whole list; removing a folder\nremoves its items from the catalog (never from disk). A different `kind`\nrebuilds every item of the library and resets watch progress in it (ask\nfirst); a scan then fills in artwork.",
         "properties": {
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LibraryKind"
+              }
+            ]
+          },
           "name": {
             "type": [
               "string",
@@ -2907,9 +4024,19 @@
           }
         }
       },
+      "WatchFilter": {
+        "type": "string",
+        "description": "Watch filter, for the signed-in user. A show is `watched` when every\nepisode is, `in_progress` when some are watched or started but not all,\n`unwatched` when none is.",
+        "enum": [
+          "all",
+          "unwatched",
+          "in_progress",
+          "watched"
+        ]
+      },
       "WatchState": {
         "type": "object",
-        "description": "The signed-in user's state for one movie.",
+        "description": "The signed-in user's state for one movie or episode.",
         "required": [
           "watched",
           "play_count"
