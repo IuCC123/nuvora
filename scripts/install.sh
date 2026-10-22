@@ -124,9 +124,17 @@ lan_ip() {
   printf '%s' "${ip:-localhost}"
 }
 
+answers() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$PORT/"
+  else
+    (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null
+  fi
+}
+
 echo "Waiting for port $PORT"
 for _ in $(seq 1 60); do
-  if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
+  if answers; then
     printf 'Nuvora is running at http://%s:%s\n' "$(lan_ip)" "$PORT"
     exit 0
   fi
