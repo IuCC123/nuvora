@@ -209,3 +209,122 @@
     display: none;
   }
 }
+
+/* Account button and menu */
+
+.account {
+  position: relative;
+}
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-color-surface-raised);
+  color: var(--nv-color-text-primary);
+  font-size: var(--nv-type-small-size);
+  font-weight: var(--nv-font-weight-semibold);
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+.avatar-button {
+  box-shadow: inset 0 0 0 1px var(--nv-color-hairline);
+  transition: box-shadow var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.avatar-button:hover,
+.avatar-button[aria-expanded="true"] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nv-color-text-muted) 70%, transparent);
+}
+
+.avatar-button:focus-visible {
+  border-radius: var(--nv-radius-pill);
+}
+
+.avatar-large {
+  width: 40px;
+  height: 40px;
+  font-size: var(--nv-type-body-large-size);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 5;
+  width: 248px;
+  padding: 6px;
+  border-radius: var(--nv-radius-lg);
+  background: var(--nv-color-surface-raised);
+  border: 1px solid var(--nv-color-hairline);
+  box-shadow: var(--nv-shadow-lift);
+  transform-origin: top right;
+  animation: menu-in var(--nv-motion-duration-fast) var(--nv-motion-easing-enter);
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+.menu-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px 12px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--nv-color-hairline);
+}
+
+.menu-head .avatar {
+  background: var(--nv-color-hairline);
+}
+
+.menu-who {
+  min-width: 0;
+}
+
+.menu-name,
+.menu-handle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-name {
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.menu-handle {
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: var(--nv-radius-md);
+  color: var(--nv-color-text-primary);
+  text-align: left;
+}
+
+.menu-item svg {
+  color: var(--nv-color-text-secondary);
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--nv-color-hairline);
+  outline: none;
+}

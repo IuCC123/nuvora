@@ -8,9 +8,13 @@ export interface AbortSignalLike {
   readonly aborted: boolean;
 }
 
+export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
+
 export interface RequestInitLike {
-  method: "GET" | "POST";
+  method: HttpMethod;
   headers: Record<string, string>;
+  /** JSON text. State-changing requests always send `content-type: application/json` (the server's CSRF rule). */
+  body?: string;
   signal?: AbortSignalLike;
 }
 
@@ -22,11 +26,20 @@ export interface ResponseLike {
 
 export type FetchLike = (url: string, init: RequestInitLike) => Promise<ResponseLike>;
 
-/** A non-2xx answer. `status === 404` on an item means "deleted", not "broken". */
+/**
+ * A non-2xx answer. `status === 404` on an item means "deleted", not "broken".
+ * `code` is the server's stable error code (`bad_credentials`, `last_admin`,
+ * ...) when the body carried one; `describeError` turns it into a sentence.
+ */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly code: string | null = null,
+    /** The server's own explanation, when it sent one. */
+    readonly detail: string | null = null,
+    /** The request field a `validation` error is about (`"username"`, `"paths"`). */
+    readonly field: string | null = null,
   ) {
     super(message);
   }

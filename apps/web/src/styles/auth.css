@@ -1,0 +1,163 @@
+/* Sign in and welcome: one card, centered, over a dim wall of drifting title cards. */
+.auth {
+  position: relative;
+  min-height: 100dvh;
+  display: grid;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.drift {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* The scrim keeps the card's surroundings quiet and lets the wall fade into the canvas at the edges. */
+.drift::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(42% 60% at 50% 50%, color-mix(in srgb, var(--nv-color-canvas) 78%, transparent) 0%, transparent 100%),
+    radial-gradient(120% 90% at 50% 50%, transparent 40%, var(--nv-color-canvas) 100%);
+}
+
+.drift-wall {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 150vw;
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  opacity: 0.3;
+  transform: translate(-50%, -50%) rotate(-8deg);
+}
+
+.drift-column {
+  flex: none;
+  width: 168px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  animation: drift-up var(--drift-duration) linear var(--drift-offset) infinite;
+  will-change: transform;
+}
+
+.drift-down {
+  animation-name: drift-down;
+}
+
+@keyframes drift-up {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(-50% - 9px));
+  }
+}
+
+@keyframes drift-down {
+  from {
+    transform: translateY(calc(-50% - 9px));
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.auth-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 32px 20px;
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--nv-font-family-display);
+  font-stretch: 112%;
+  font-weight: var(--nv-font-weight-bold);
+  font-size: var(--nv-type-wordmark-size);
+  line-height: var(--nv-type-wordmark-line);
+  letter-spacing: 0.01em;
+}
+
+.auth-brand svg {
+  color: var(--nv-color-accent);
+}
+
+.auth-card {
+  box-sizing: border-box;
+  width: min(100%, 400px);
+  padding: 32px;
+  border-radius: var(--nv-radius-lg);
+  background: var(--nv-color-surface);
+  border: 1px solid var(--nv-color-hairline);
+  box-shadow: var(--nv-shadow-rest);
+}
+
+.auth-card-wide {
+  width: min(100%, 520px);
+}
+
+.auth-card h1 {
+  font-size: var(--nv-type-heading-size);
+  line-height: var(--nv-type-heading-line);
+  font-weight: var(--nv-font-weight-bold);
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.auth-lede {
+  margin: 8px 0 26px;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-body-large-size);
+  line-height: var(--nv-type-body-large-line);
+  text-wrap: pretty;
+}
+
+.auth-foot {
+  max-width: 400px;
+  color: var(--nv-color-text-muted);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* Welcome progress: two segments, amber up to the current step. */
+.steps {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 24px;
+}
+
+.steps span {
+  flex: 1;
+  height: 3px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-color-hairline);
+}
+
+.steps span[data-done="true"] {
+  background: var(--nv-color-accent);
+}
+
+@media (max-width: 520px) {
+  .auth-card {
+    padding: 24px 20px;
+  }
+}
+
+.welcome-existing {
+  margin: -10px 0 22px;
+  color: var(--nv-color-text-secondary);
+}
