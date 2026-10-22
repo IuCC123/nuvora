@@ -141,6 +141,44 @@ impl TestApp {
         reply.cookie()
     }
 
+    /// One second of video per folder name (`"Title (Year)"`) in the movies
+    /// folder, then a scan; returns when the scan is done.
+    pub async fn add_movies(&self, folders: &[&str]) {
+        let movies = self.path("movies");
+        let first = movies.join(folders[0]).join(format!("{}.mp4", folders[0]));
+        std::fs::create_dir_all(first.parent().unwrap()).unwrap();
+        let ffmpeg = std::process::Command::new("ffmpeg")
+            .args(["-y", "-nostdin", "-v", "error", "-f", "lavfi", "-i"])
+            .args([
+                "testsrc2=size=320x180:rate=24:duration=1",
+                "-c:v",
+                "libx264",
+            ])
+            .args(["-preset", "ultrafast", "-pix_fmt", "yuv420p"])
+            .arg(&first)
+            .status()
+            .unwrap();
+        assert!(ffmpeg.success());
+        for (i, folder) in folders.iter().enumerate().skip(1) {
+            let file = movies.join(folder).join(format!("{folder}.mp4"));
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            let mut bytes = std::fs::read(&first).unwrap();
+            // Distinct bytes, or the scan would see one file under two names.
+            bytes.extend(i.to_le_bytes());
+            std::fs::write(file, bytes).unwrap();
+        }
+        let before = std::time::SystemTime::now();
+        let mut status = self.state.library.watch_scan();
+        self.state.library.request_scan();
+        status
+            .wait_for(|s| {
+                matches!(s.state, nuvora_library::ScanState::Idle)
+                    && s.last.as_ref().is_some_and(|l| l.started_at >= before)
+            })
+            .await
+            .unwrap();
+    }
+
     pub async fn login(&self, username: &str, password: &str) -> Reply {
         self.call(
             "POST",

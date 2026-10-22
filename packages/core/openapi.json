@@ -1462,6 +1462,7 @@
     },
     "/api/scan": {
       "get": {
+        "summary": "`issues` name server paths, so only admins see them.",
         "operationId": "get_scan",
         "responses": {
           "200": {
@@ -1510,6 +1511,16 @@
           },
           "401": {
             "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
             "content": {
               "application/json": {
                 "schema": {
@@ -2515,7 +2526,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ScanIssue"
-            }
+            },
+            "description": "Files the scan could not read. Empty unless the signed-in user is an admin."
           },
           "moved": {
             "type": "integer",

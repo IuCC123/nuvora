@@ -367,6 +367,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** `issues` name server paths, so only admins see them. */
         get: operations["get_scan"];
         put?: never;
         /** Idempotent: while a scan runs, repeated calls queue at most one more. */
@@ -692,6 +693,7 @@ export interface components {
              * @description Unix ms.
              */
             finished_at: number;
+            /** @description Files the scan could not read. Empty unless the signed-in user is an admin. */
             issues: components["schemas"]["ScanIssue"][];
             /** Format: int32 */
             moved: number;
@@ -1964,6 +1966,15 @@ export interface operations {
             };
             /** @description No valid session */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -628,6 +628,46 @@ mod tests {
             StatusCode::OK,
             "bearer works like the cookie"
         );
+        let basic = app
+            .send(
+                Request::builder()
+                    .uri("/api/home")
+                    .header(AUTHORIZATION, "Basic YWxpY2U6c2VjcmV0")
+                    .header(COOKIE, &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(
+            basic.status,
+            StatusCode::OK,
+            "a proxy's Basic auth falls through to the cookie"
+        );
+        let lowercase = app
+            .send(
+                Request::builder()
+                    .uri("/api/home")
+                    .header(AUTHORIZATION, format!("bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(lowercase.status, StatusCode::OK, "the scheme ignores case");
+        let forged = app
+            .send(
+                Request::builder()
+                    .uri("/api/home")
+                    .header(AUTHORIZATION, "Bearer forged")
+                    .header(COOKIE, &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(
+            forged.status,
+            StatusCode::UNAUTHORIZED,
+            "a bearer token is used even when a cookie is present"
+        );
         assert_eq!(
             app.call("GET", "/api/health", None, None).await.json(),
             json!({"status": "ok", "version": env!("CARGO_PKG_VERSION")})

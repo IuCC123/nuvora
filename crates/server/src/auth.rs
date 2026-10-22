@@ -18,7 +18,7 @@ use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, COOKIE, HOST, ORIGIN, SET_
 use axum::http::{HeaderMap, HeaderValue, Method, request::Parts};
 use axum::middleware::Next;
 use axum::response::Response;
-use nuvora_library::{Role, TokenHash, User};
+use nuvora_library::{Role, TokenHash, User, WatchRev};
 use password_hash::rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
@@ -182,10 +182,15 @@ enum Carrier {
 }
 
 /// The token a request carries (raw text, as the client holds it), from the
-/// `Authorization: Bearer` header or else the session cookie.
+/// `Authorization: Bearer` header or else the session cookie. Another
+/// `Authorization` scheme (a proxy's Basic auth) is not ours and is ignored.
 fn presented_token(headers: &HeaderMap) -> Option<(String, Carrier)> {
-    if let Some(auth) = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok()) {
-        let token = auth.strip_prefix("Bearer ")?;
+    let bearer = headers
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().split_once(' '))
+        .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"));
+    if let Some((_, token)) = bearer {
         return Some((token.trim().to_owned(), Carrier::Bearer));
     }
     headers
@@ -226,6 +231,8 @@ pub fn session_cookie(token: Option<&str>, headers: &HeaderMap) -> HeaderValue {
 pub struct SignedIn {
     pub user: User,
     pub token: TokenHash,
+    /// Read with the session, so never newer than anything read after it.
+    pub watch_rev: WatchRev,
 }
 
 impl<S: Send + Sync> FromRequestParts<S> for SignedIn {
@@ -255,6 +262,7 @@ pub async fn current_session(
     Ok(session.map(|s| SignedIn {
         user: s.user,
         token,
+        watch_rev: s.watch_rev,
     }))
 }
 
@@ -307,6 +315,7 @@ async fn authenticate(
     req.extensions_mut().insert(SignedIn {
         user: session.user,
         token,
+        watch_rev: session.watch_rev,
     });
     let mut response = next.run(req).await;
     if resend_cookie && !response.headers().contains_key(SET_COOKIE) {

@@ -16,12 +16,13 @@
 //! | GET    | /api/images/{id}/{size}     | Artwork, immutable                       |
 //! | GET    | /api/files/{id}/stream      | Direct play, HTTP Range                  |
 //! | GET    | /api/scan                   | Scan status                              |
-//! | POST   | /api/scan                   | Request a scan (idempotent, coalescing)  |
+//! | POST   | /api/scan                   | Request a scan (admin; coalescing)       |
 //! | GET    | /api/openapi.json           | The spec                                 |
 //!
-//! Accounts and admin routes live in [`accounts`] and [`admin`]. Access is set
-//! by the group a route is registered in ([`Access`]), which decides both the
-//! middleware and the spec's `security`, so the two cannot disagree.
+//! Accounts, admin and watch routes live in [`accounts`], [`admin`] and
+//! [`watch`]. Access is set by the group a route is registered in
+//! ([`Access`]), which decides both the middleware and the spec's `security`,
+//! so the two cannot disagree.
 //!
 //! Every error body is [`ErrorBody`]. State-changing requests (anything but
 //! GET/HEAD/OPTIONS) must send `Content-Type: application/json`, even with an
@@ -31,6 +32,7 @@ mod accounts;
 mod admin;
 #[cfg(test)]
 mod test_app;
+mod watch;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -44,7 +46,7 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode, request::Parts};
 use axum::response::{IntoResponse, Response};
 use nuvora_library::{
     ArtworkId, CatalogRev, Cursor, FileId, HOME_ROW_LIMIT, ItemId, Library, ScanPhase, ScanState,
-    ScanStatus, VersionMedia,
+    ScanStatus, VersionMedia, WatchRev,
 };
 use nuvora_media::{
     AudioCodec, AudioSupport, Container, DeviceProfile, HdrFormat, Incompatibility, MediaInfo,
@@ -57,6 +59,8 @@ use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityRequirement
 use utoipa::openapi::{ContentBuilder, Ref, ResponseBuilder};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
+
+use crate::auth::SignedIn;
 
 #[derive(OpenApi)]
 #[openapi(
@@ -127,17 +131,18 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(get_home))
         .routes(routes!(get_row))
         .routes(routes!(get_item))
-        .routes(routes!(put_progress))
-        .routes(routes!(put_watched, delete_watched))
+        .routes(routes!(watch::put_progress))
+        .routes(routes!(watch::put_watched, watch::delete_watched))
         .routes(routes!(get_image))
         .routes(routes!(stream_file))
-        .routes(routes!(get_scan, post_scan))
+        .routes(routes!(get_scan))
         .routes(routes!(accounts::logout))
         .routes(routes!(accounts::update_me));
     let mut admin = OpenApiRouter::new()
         .routes(routes!(admin::list_libraries, admin::create_library))
         .routes(routes!(admin::update_library, admin::delete_library))
         .routes(routes!(admin::scan_library))
+        .routes(routes!(post_scan))
         .routes(routes!(admin::list_dirs))
         .routes(routes!(admin::list_users, admin::create_user))
         .routes(routes!(admin::update_user, admin::delete_user))
@@ -263,12 +268,12 @@ pub enum RowKind {
     AllMovies,
 }
 
-impl RowKind {
-    fn catalog(self) -> Option<nuvora_library::RowKind> {
-        match self {
-            RowKind::ContinueWatching => None,
-            RowKind::RecentlyAdded => Some(nuvora_library::RowKind::RecentlyAdded),
-            RowKind::AllMovies => Some(nuvora_library::RowKind::AllMovies),
+impl From<RowKind> for nuvora_library::RowKind {
+    fn from(k: RowKind) -> Self {
+        match k {
+            RowKind::ContinueWatching => nuvora_library::RowKind::ContinueWatching,
+            RowKind::RecentlyAdded => nuvora_library::RowKind::RecentlyAdded,
+            RowKind::AllMovies => nuvora_library::RowKind::AllMovies,
         }
     }
 }
@@ -349,33 +354,7 @@ pub struct MovieDetail {
     pub backdrop: Option<Image>,
     /// Best first. Empty when every file of the movie is currently missing.
     pub versions: Vec<Version>,
-    pub watch: WatchState,
-}
-
-/// The signed-in user's state for one movie.
-#[derive(Serialize, ToSchema)]
-pub struct WatchState {
-    /// Where to resume. `None` unless the movie is in progress.
-    pub position_ms: Option<u64>,
-    /// The version `position_ms` belongs to.
-    pub file_id: Option<i64>,
-    /// Finished at least once.
-    pub watched: bool,
-    pub play_count: u32,
-    /// Unix ms of the last finish.
-    pub last_watched_at: Option<i64>,
-}
-
-/// Where playback is. Clients send it every 10 s while playing, on pause,
-/// after a seek settles and when leaving the player.
-#[derive(Deserialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ProgressRequest {
-    /// The version playing. Must be a version of this item.
-    pub file_id: i64,
-    pub position_ms: u64,
-    /// At least 1. `position_ms` may exceed it by at most 5 s.
-    pub duration_ms: u64,
+    pub watch: watch::WatchState,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -493,6 +472,7 @@ pub struct ScanSummaryWire {
     pub removed: u32,
     pub unchanged: u32,
     pub failed: u32,
+    /// Files the scan could not read. Empty unless the signed-in user is an admin.
     pub issues: Vec<ScanIssueWire>,
 }
 
@@ -569,13 +549,17 @@ impl<S: Send + Sync> FromRequestParts<S> for Device {
 /// `"<catalog_rev>.<watch_rev>"`, so one user's progress never makes another
 /// user's copy stale.
 #[utoipa::path(get, path = "/api/home", responses((status = 200, body = HomeResponse), (status = 304)))]
-async fn get_home(State(lib): State<Library>, headers: HeaderMap) -> Result<Response, ApiError> {
-    if if_none_match(&headers, &rev_etag(lib.rev())) {
+async fn get_home(
+    State(lib): State<Library>,
+    me: SignedIn,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    if if_none_match(&headers, &rev_etag(lib.rev(), me.watch_rev)) {
         return Ok(StatusCode::NOT_MODIFIED.into_response());
     }
-    let home = lib.home().await.map_err(ApiError::internal)?;
+    let home = lib.home(me.user.id).await.map_err(ApiError::internal)?;
     Ok(json_with_etag(
-        &rev_etag(home.rev),
+        &rev_etag(home.rev, me.watch_rev),
         &HomeResponse::from(home),
     ))
 }
@@ -590,16 +574,15 @@ async fn get_home(State(lib): State<Library>, headers: HeaderMap) -> Result<Resp
 )]
 async fn get_row(
     State(lib): State<Library>,
+    me: SignedIn,
     Path(row): Path<RowKind>,
     Query(query): Query<RowQuery>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    if if_none_match(&headers, &rev_etag(lib.rev())) {
+    if if_none_match(&headers, &rev_etag(lib.rev(), me.watch_rev)) {
         return Ok(StatusCode::NOT_MODIFIED.into_response());
     }
-    let Some(kind) = row.catalog() else {
-        return Ok(StatusCode::NOT_IMPLEMENTED.into_response());
-    };
+    let kind: nuvora_library::RowKind = row.into();
     let after = query
         .after
         .as_deref()
@@ -607,14 +590,19 @@ async fn get_row(
         .transpose()
         .map_err(|_| ApiError::bad_request("invalid cursor for this row"))?;
     let page = lib
-        .row(kind, after, query.limit.unwrap_or(HOME_ROW_LIMIT))
+        .row(
+            kind,
+            after,
+            query.limit.unwrap_or(HOME_ROW_LIMIT),
+            me.user.id,
+        )
         .await
         .map_err(ApiError::internal)?;
     let body = RowPage {
         items: page.cards.into_iter().map(PosterCard::from).collect(),
         next: page.next.map(|c| c.to_string()),
     };
-    Ok(json_with_etag(&rev_etag(page.rev), &body))
+    Ok(json_with_etag(&rev_etag(page.rev, me.watch_rev), &body))
 }
 
 /// Per user: `watch` is the signed-in user's state. The ETag is
@@ -630,16 +618,17 @@ async fn get_row(
 )]
 async fn get_item(
     State(lib): State<Library>,
+    me: SignedIn,
     Path(id): Path<i64>,
     device: Device,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    let etag = item_etag(lib.rev(), &device);
+    let etag = item_etag(lib.rev(), me.watch_rev, &device);
     let mut response = if if_none_match(&headers, &etag) {
         StatusCode::NOT_MODIFIED.into_response()
     } else {
         let item = lib
-            .item(ItemId::from_raw(id), device.profile)
+            .item(ItemId::from_raw(id), device.profile, me.user.id)
             .await
             .map_err(ApiError::internal)?;
         json_with_etag(&etag, &ItemDetail::from(item.ok_or(ApiError::not_found())?))
@@ -648,70 +637,6 @@ async fn get_item(
         .headers_mut()
         .insert(VARY, HeaderValue::from_static("Nuvora-Device"));
     Ok(response)
-}
-
-/// Reports where playback is; the server decides what it means. Under 60 s
-/// stores nothing and clears earlier progress. From 60 s to under 90% of the
-/// duration stores the position. From 90% the movie counts as watched once and
-/// the position is cleared; another report at 90% or more within 3 hours of
-/// that does not count again.
-#[utoipa::path(
-    put,
-    path = "/api/items/{id}/progress",
-    params(("id" = i64, Path)),
-    request_body = ProgressRequest,
-    responses((status = 204), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody)),
-)]
-async fn put_progress(
-    Path(_id): Path<i64>,
-    JsonBody(body): JsonBody<ProgressRequest>,
-) -> Result<StatusCode, ApiError> {
-    valid_progress(&body)?;
-    let _ = body.file_id;
-    Ok(StatusCode::NOT_IMPLEMENTED)
-}
-
-/// How far past the reported duration a position may be: players report the
-/// duration rounded, and the last report lands a little after the end.
-const PAST_END_SLACK_MS: u64 = 5_000;
-
-fn valid_progress(body: &ProgressRequest) -> Result<(), ApiError> {
-    if body.duration_ms == 0 {
-        return Err(ApiError::validation(
-            "duration_ms",
-            "Duration must be at least 1 ms",
-        ));
-    }
-    if body.position_ms > body.duration_ms + PAST_END_SLACK_MS {
-        return Err(ApiError::validation(
-            "position_ms",
-            "Position is past the end of the movie",
-        ));
-    }
-    Ok(())
-}
-
-/// Marks the movie watched, like finishing it.
-#[utoipa::path(
-    put,
-    path = "/api/items/{id}/watched",
-    params(("id" = i64, Path)),
-    responses((status = 204), (status = 404, body = ErrorBody)),
-)]
-async fn put_watched(Path(_id): Path<i64>) -> StatusCode {
-    StatusCode::NOT_IMPLEMENTED
-}
-
-/// Marks the movie unwatched: clears the position, the play count and the
-/// last finish.
-#[utoipa::path(
-    delete,
-    path = "/api/items/{id}/watched",
-    params(("id" = i64, Path)),
-    responses((status = 204), (status = 404, body = ErrorBody)),
-)]
-async fn delete_watched(Path(_id): Path<i64>) -> StatusCode {
-    StatusCode::NOT_IMPLEMENTED
 }
 
 /// Reads the WebP from the store (tens of KB) and answers with
@@ -774,9 +699,18 @@ async fn stream_file(
     Ok(response.into_response())
 }
 
+/// `issues` name server paths, so only admins see them.
 #[utoipa::path(get, path = "/api/scan", responses((status = 200, body = ScanStatusResponse)))]
-async fn get_scan(State(lib): State<Library>) -> Json<ScanStatusResponse> {
-    Json(scan_status_wire(lib.scan_status()))
+async fn get_scan(State(lib): State<Library>, me: SignedIn) -> Json<ScanStatusResponse> {
+    let mut status = scan_status_wire(lib.scan_status());
+    if me.user.role != nuvora_library::Role::Admin {
+        let (ScanStatusResponse::Idle { last } | ScanStatusResponse::Running { last, .. }) =
+            &mut status;
+        if let Some(last) = last {
+            last.issues.clear();
+        }
+    }
+    Json(status)
 }
 
 /// Idempotent: while a scan runs, repeated calls queue at most one more.
@@ -793,6 +727,7 @@ async fn post_scan(State(lib): State<Library>) -> (StatusCode, Json<ScanStatusRe
 /// Row titles are display strings, so they live here, not in the catalog.
 fn row_title(kind: nuvora_library::RowKind) -> &'static str {
     match kind {
+        nuvora_library::RowKind::ContinueWatching => "Continue Watching",
         nuvora_library::RowKind::RecentlyAdded => "Recently Added",
         nuvora_library::RowKind::AllMovies => "All Movies",
     }
@@ -863,6 +798,7 @@ impl From<nuvora_library::Home> for HomeResponse {
 impl From<nuvora_library::RowKind> for RowKind {
     fn from(k: nuvora_library::RowKind) -> Self {
         match k {
+            nuvora_library::RowKind::ContinueWatching => RowKind::ContinueWatching,
             nuvora_library::RowKind::RecentlyAdded => RowKind::RecentlyAdded,
             nuvora_library::RowKind::AllMovies => RowKind::AllMovies,
         }
@@ -879,8 +815,11 @@ impl From<nuvora_library::Card> for PosterCard {
             title: card.title,
             year: card.year,
             poster: card.poster.map(Image::from),
-            progress: None,
-            watched: false,
+            progress: card
+                .watch
+                .resume
+                .map(|r| (r.position_ms as f64 / r.duration_ms.max(1) as f64).min(1.0) as f32),
+            watched: card.watch.watched(),
         }
     }
 }
@@ -907,13 +846,7 @@ impl From<nuvora_library::Item> for ItemDetail {
                 poster: movie.poster.map(Image::from),
                 backdrop: movie.backdrop.map(Image::from),
                 versions: movie.versions.into_iter().map(Version::from).collect(),
-                watch: WatchState {
-                    position_ms: None,
-                    file_id: None,
-                    watched: false,
-                    play_count: 0,
-                    last_watched_at: None,
-                },
+                watch: movie.watch.into(),
             }),
         }
     }
@@ -1208,14 +1141,17 @@ fn base64(bytes: &[u8]) -> String {
     out
 }
 
-/// `"<rev>"`: the ETag of home and row pages.
-fn rev_etag(rev: CatalogRev) -> String {
-    format!("\"{}\"", rev.get())
+/// `"<catalog rev>.<watch rev>"`: the ETag of home and row pages. The watch
+/// rev is the signed-in user's, read with their session, so it is never newer
+/// than the body it labels.
+fn rev_etag(rev: CatalogRev, watch: WatchRev) -> String {
+    format!("\"{}.{}\"", rev.get(), watch.get())
 }
 
-/// `"<rev>-<profile hash>"`: an item's body depends on the catalog and the device.
-fn item_etag(rev: CatalogRev, device: &Device) -> String {
-    format!("\"{}-{}\"", rev.get(), device.hash)
+/// `"<catalog rev>.<watch rev>-<profile hash>"`: an item's body also depends
+/// on the device.
+fn item_etag(rev: CatalogRev, watch: WatchRev, device: &Device) -> String {
+    format!("\"{}.{}-{}\"", rev.get(), watch.get(), device.hash)
 }
 
 /// True when the request's `If-None-Match` lists `etag`; the caller answers 304
@@ -1491,7 +1427,7 @@ mod tests {
         let cookie = app.setup_admin().await;
         let reply = app.get("/api/home", &cookie).await;
         assert_eq!(reply.status, StatusCode::OK);
-        assert_eq!(reply.headers.get(header::ETAG).unwrap(), "\"0\"");
+        assert_eq!(reply.headers.get(header::ETAG).unwrap(), "\"0.0\"");
         assert_eq!(
             reply.headers.get(header::CACHE_CONTROL).unwrap(),
             "no-cache"
@@ -1503,7 +1439,7 @@ mod tests {
         let request = axum::http::Request::builder()
             .uri("/api/home")
             .header(header::COOKIE, &cookie)
-            .header(header::IF_NONE_MATCH, "\"0\"");
+            .header(header::IF_NONE_MATCH, "\"0.0\"");
         let reply = app
             .send(request.body(axum::body::Body::empty()).unwrap())
             .await;
@@ -1592,5 +1528,39 @@ mod tests {
         assert_eq!(status["state"], "idle");
         assert_eq!(status["last"]["added"], 0);
         assert!(status["last"]["finished_at"].as_i64().unwrap() > 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn only_admins_scan_or_see_scan_issues() {
+        let app = TestApp::new().await;
+        let admin = app.setup_admin().await;
+        let created = app
+            .call(
+                "POST",
+                "/api/admin/users",
+                Some(&admin),
+                Some(serde_json::json!({"username": "bo", "display_name": "Bo", "password": "password bo", "role": "member"})),
+            )
+            .await;
+        assert_eq!(created.status, StatusCode::CREATED);
+        let member = app.login("bo", "password bo").await.cookie();
+        let junk = app.path("movies/Junk (2001)/Junk (2001).mp4");
+        std::fs::create_dir_all(junk.parent().unwrap()).unwrap();
+        std::fs::write(&junk, b"not a movie").unwrap();
+
+        let refused = app.call("POST", "/api/scan", Some(&member), None).await;
+        assert_eq!(refused.status, StatusCode::FORBIDDEN);
+        assert_eq!(refused.json()["code"], "forbidden");
+        app.add_movies(&["Big Buck (2008)"]).await;
+
+        let seen = app.get("/api/scan", &admin).await.json();
+        assert_eq!(seen["last"]["failed"], 1);
+        assert_eq!(
+            seen["last"]["issues"][0]["path"],
+            "Junk (2001)/Junk (2001).mp4"
+        );
+        let hidden = app.get("/api/scan", &member).await.json();
+        assert_eq!(hidden["last"]["failed"], 1);
+        assert_eq!(hidden["last"]["issues"], serde_json::json!([]));
     }
 }
