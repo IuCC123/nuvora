@@ -1,0 +1,148 @@
+---
+name: Nuvora
+description: A self-hosted media server with Plex's look and noticeably faster screens.
+colors:
+  canvas: "#0f1012"
+  surface: "#1a1c1f"
+  surface-raised: "#24272b"
+  hairline: "#2c2f34"
+  text-primary: "#f2f2f2"
+  text-secondary: "#a6a8ab"
+  text-muted: "#85888d"
+  accent: "#e5a00d"
+  accent-hover: "#f0b232"
+  accent-text: "#141414"
+  danger: "#e5534b"
+typography:
+  ui:
+    fontFamily: "'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontSize: "14px"
+    fontWeight: 400
+    lineHeight: 1.43
+  title:
+    fontFamily: "'Inter Variable', Inter, system-ui, sans-serif"
+    fontSize: "20px"
+    fontWeight: 600
+    lineHeight: 1.4
+  headline:
+    fontFamily: "'Inter Variable', Inter, system-ui, sans-serif"
+    fontSize: "40px"
+    fontWeight: 700
+    lineHeight: 1.1
+    letterSpacing: "-0.02em"
+  card-title:
+    fontFamily: "'Archivo', 'Arial Narrow', sans-serif"
+    fontSize: "22px"
+    fontWeight: 800
+    lineHeight: 0.95
+    letterSpacing: "-0.01em"
+rounded:
+  sm: "4px"
+  md: "6px"
+  lg: "10px"
+  pill: "999px"
+spacing:
+  "1": "4px"
+  "2": "8px"
+  "3": "12px"
+  "4": "16px"
+  "5": "24px"
+  "6": "32px"
+  "7": "48px"
+components:
+  button-primary:
+    backgroundColor: "{colors.accent}"
+    textColor: "{colors.accent-text}"
+    rounded: "{rounded.md}"
+    padding: "0 22px"
+    height: "44px"
+  button-primary-hover:
+    backgroundColor: "{colors.accent-hover}"
+  poster:
+    backgroundColor: "{colors.surface}"
+    rounded: "{rounded.sm}"
+    width: "150px"
+  chip:
+    textColor: "{colors.text-secondary}"
+    rounded: "{rounded.sm}"
+    padding: "2px 6px"
+---
+
+# Design
+
+Tokens above are provisional until the Step 1 web build settles them. `packages/tokens` is the code source of truth, and this file must match it.
+
+## Overview
+
+Nuvora follows Plex's interface language on purpose: a near-black canvas, a left navigation rail, horizontal poster rows, full-bleed detail pages with an ambient backdrop, and one warm amber accent for the primary action and focus. People use it at home in the evening, often with the lights low, so the interface is dark and lets artwork carry the color. It is an Operate surface. Familiarity is a feature, and delight lives in the artwork, the speed, and the details.
+
+## Colors
+
+### Primary
+
+Amber `#e5a00d` marks the primary action (Play), the current selection, focus rings and progress. It never decorates.
+
+### Neutral
+
+Three stacked neutrals: `canvas` for the page, `surface` for posters and panels, `surface-raised` for menus, hovered rows and the active nav item. Body text uses `text-primary`. Metadata uses `text-secondary`. `text-muted` is the floor for small text and still clears 4.5:1 on the canvas.
+
+### Named Rules
+
+- **Artwork owns the color.** The chrome stays neutral. Color on a screen comes from posters, backdrops, and the ambient wash behind a detail page.
+- **One accent.** Nothing else in the chrome is saturated, except `danger` for destructive actions.
+
+## Typography
+
+Inter carries the whole interface on a fixed px scale (12, 14, 16, 20, 28, 40). Archivo Condensed is used only for the title card, the poster a movie gets when it has no artwork, where it plays the role of poster lettering. Numerals in runtimes, sizes, and bitrates use tabular figures.
+
+### Hierarchy
+
+- Row titles are 20/600.
+- Detail titles are 40/700 at -0.02em.
+- Poster captions are 14/500 for the title and 13/400 `text-secondary` for the year, on one line each and truncated.
+
+## Layout
+
+The top bar is 56px. It holds the wordmark, a centered search field, and status and settings on the right. The left navigation rail is 232px and collapses to icons under 1024px. Content has 40px side padding. Poster rows scroll horizontally, with a 150px card and a 16px gap. Each row shows its first page from the server and loads more as it scrolls.
+
+## Elevation & Depth
+
+The interface is flat by default. A hovered or focused poster lifts with a soft shadow (`0 12px 28px rgba(0,0,0,.45)`) and a 2px amber ring offset by 2px. Detail pages layer the backdrop under two scrims: one from the left and one from the bottom, both into `canvas`.
+
+## Shapes
+
+Posters use 4px corners, and buttons and fields use 6px. The scan pill and avatar are fully rounded.
+
+## Components
+
+### Buttons
+
+- **Primary.** Amber with dark text, 44px tall, a play icon plus "Play".
+- **Secondary.** Uses `surface-raised` with primary text.
+- **Disabled.** The primary button drops to `surface-raised` with `text-muted`, and an inline notice explains why.
+
+### Chips
+
+Technical badges (1080p, HEVC, HDR10, 5.1) are 11px uppercase-free text in a 1px `hairline` border.
+
+### Navigation
+
+Nav items are 40px rows with an icon and a label. The active item uses `surface-raised` with an amber icon. There is no colored side border.
+
+### Title card (signature component)
+
+A movie without poster artwork gets a title card, never a cropped video frame. It is a deep two-stop gradient picked from eight cinematic palettes by a hash of the title, with a soft light bloom, a vignette, and fine film grain. The title is set bottom-left in Archivo Condensed 800, with the year below it in tabular Inter. The same palette tints the ambient wash on the detail page, so the card and the page belong together.
+
+## Do's and Don'ts
+
+### Do:
+
+- Paint every poster in the first frame, using the title card or the ThumbHash placeholder.
+- Keep motion to state changes (150 to 240 ms, standard easing), and respect reduced motion.
+- Theme the browser parts too: selection, scrollbars, focus rings and caret.
+
+### Don't:
+
+- Use spinners where a placeholder can stand in.
+- Put the accent on inactive or decorative elements.
+- Add an eyebrow label above a heading, gradient text, or a glass effect.

@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!--
+THESIS: Plex's own grammar, made faster to the eye. Refuses the blank grey poster: every movie paints a designed card in the first frame.
+OWN-WORLD: Near-black canvas #0f1012, two neutral surfaces, one amber #e5a00d for Play, focus and progress. Inter for UI; Archivo Condensed only as poster lettering on title cards. Artwork owns the color.
+STORY: The owner opens Nuvora, sees the library as rows of posters, hovers one, opens it, presses Play, or learns exactly why a file can't play yet.
+FIRST VIEWPORT: 56px top bar (wordmark left, scan status right), 232px nav rail, two horizontal poster rows of 150px cards.
+FORM: Pinned by the brief (Plex). No concept roll; seed key n/a.
+Sample content: Blender Studio open movies, titles and years only. Runtimes, sizes and codecs are invented for illustration.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..900&family=Inter:wght@400..700&display=swap" rel="stylesheet">
+<style>
+  .page { display: flex; flex-direction: column; gap: 22px; }
+  .caption { margin: 0 0 8px; font: 500 13px/1.45 var(--font-sans); color: var(--muted-foreground); }
+  .caption b { color: var(--foreground); font-weight: 600; }
+  .shot { position: relative; width: 100%; overflow: hidden; border-radius: var(--radius); box-shadow: 0 0 0 1px var(--border); }
+  .shot > .win { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+
+  .win {
+    --canvas: #0f1012; --surface: #1a1c1f; --raised: #24272b; --hairline: #2c2f34;
+    --text: #f2f2f2; --text-2: #a6a8ab; --text-3: #85888d;
+    --accent: #e5a00d; --accent-text: #141414;
+    --ui: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    width: 1280px; background: var(--canvas); color: var(--text);
+    font: 400 14px/1.43 var(--ui); -webkit-font-smoothing: antialiased;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .win ::selection { background: rgba(229,160,13,.35); }
+  .chrome { height: 38px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #18191c; border-bottom: 1px solid #222428; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: #3a3c40; }
+  .url { margin: 0 auto; width: 360px; height: 24px; border-radius: 6px; background: #222428; color: #8d9095; font: 500 12px/24px var(--ui); text-align: center; }
+  .app { flex: 1; display: grid; grid-template-columns: 232px 1fr; grid-template-rows: 56px 1fr; min-height: 0; }
+
+  .top { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 0 20px 0 22px; border-bottom: 1px solid #1d1f22; position: relative; z-index: 2; background: var(--canvas); }
+  .mark { display: flex; align-items: center; gap: 8px; font-family: 'Archivo', sans-serif; font-variation-settings: "wdth" 112; font-weight: 700; font-size: 19px; letter-spacing: .01em; }
+  .mark svg { color: var(--accent); }
+  .top .spacer { flex: 1; }
+  .scan { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 14px 0 12px; border-radius: 999px; background: var(--surface); color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .scan .bar { width: 72px; height: 3px; border-radius: 3px; background: #33363b; overflow: hidden; }
+  .scan .bar i { display: block; height: 100%; width: 80%; background: var(--accent); border-radius: 3px; }
+  .scan svg { color: var(--accent); }
+  .iconbtn { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 6px; color: var(--text-2); }
+  .iconbtn:hover { background: var(--raised); color: var(--text); }
+
+  .nav { padding: 18px 12px; border-right: 1px solid #1d1f22; display: flex; flex-direction: column; gap: 2px; }
+  .nav .item { display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 6px; color: var(--text-2); font-weight: 500; }
+  .nav .item.on { background: var(--raised); color: var(--text); }
+  .nav .item.on svg { color: var(--accent); }
+  .nav .count { margin-left: auto; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .nav .group { margin: 18px 12px 6px; font-size: 12px; font-weight: 600; color: var(--text-3); }
+
+  .main { position: relative; overflow: hidden; }
+  .home { padding: 28px 0 0 40px; }
+  .row + .row { margin-top: 30px; }
+  .rowhead { display: flex; align-items: center; gap: 6px; padding-right: 40px; margin-bottom: 14px; }
+  .rowhead h2 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -.005em; }
+  .rowhead .chev { color: var(--text-3); margin-top: 2px; }
+  .rowhead .n { margin-left: 10px; color: var(--text-3); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .rowhead .arrows { margin-left: auto; display: flex; gap: 8px; }
+  .round { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); color: var(--text-2); }
+  .round.off { color: #4a4d52; }
+  .strip { display: flex; gap: 16px; }
+  .card { width: 150px; flex: none; }
+  .cap { margin-top: 10px; }
+  .cap .t { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cap .y { color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+  .tc { position: relative; aspect-ratio: 2 / 3; border-radius: 4px; overflow: hidden; isolation: isolate;
+    background:
+      radial-gradient(85% 55% at var(--bx) var(--by), color-mix(in srgb, var(--c0) 85%, transparent) 0%, transparent 72%),
+      linear-gradient(168deg, var(--c1) 0%, var(--c2) 78%); }
+  .tc::before { content: ""; position: absolute; inset: 0; z-index: 0; opacity: .2; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+  .tc::after { content: ""; position: absolute; inset: 0; z-index: 0; border-radius: inherit;
+    background: radial-gradient(130% 95% at 50% 30%, transparent 52%, rgba(0,0,0,.6));
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+  .tc .lt { position: absolute; left: 12px; right: 12px; bottom: 13px; z-index: 1; }
+  .tc h3 { margin: 0; font-family: 'Archivo', 'Arial Narrow', sans-serif; font-variation-settings: "wdth" 64; font-weight: 800;
+    font-size: 23px; line-height: .93; letter-spacing: .004em; text-transform: uppercase; color: #f7f2ea; text-wrap: balance; }
+  .tc .yr { margin-top: 8px; font: 600 10.5px/1 var(--ui); letter-spacing: .08em; font-variant-numeric: tabular-nums; color: rgba(247,242,234,.7); }
+
+  .card.hover .tc { box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px var(--accent), 0 14px 30px rgba(0,0,0,.5); transform: translateY(-3px); }
+  .card.hover .tc .ov { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; background: rgba(8,9,10,.38); }
+  .card.hover .tc .ov span { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-text); box-shadow: 0 6px 18px rgba(0,0,0,.45); }
+  .card.hover .cap .t { color: #fff; }
+
+  .detail { position: relative; height: 100%; }
+  .wash { position: absolute; inset: 0; z-index: 0;
+    background:
+      radial-gradient(55% 75% at 78% 28%, color-mix(in srgb, var(--c0) 70%, transparent), transparent 70%),
+      radial-gradient(45% 60% at 100% 95%, color-mix(in srgb, var(--c1) 90%, transparent), transparent 70%),
+      linear-gradient(160deg, var(--c1), var(--c2)); filter: saturate(.9); }
+  .wash::before { content: ""; position: absolute; inset: 0; opacity: .16; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+  .wash::after { content: ""; position: absolute; inset: 0;
+    background:
+      linear-gradient(90deg, var(--canvas) 0%, rgba(15,16,18,.88) 34%, rgba(15,16,18,.35) 72%, rgba(15,16,18,.15) 100%),
+      linear-gradient(0deg, var(--canvas) 0%, rgba(15,16,18,0) 45%); }
+  .dcontent { position: relative; z-index: 1; display: grid; grid-template-columns: 232px 1fr; gap: 40px; padding: 44px 40px 0; }
+  .dcontent .tc h3 { font-size: 36px; }
+  .dcontent .tc .lt { left: 18px; right: 18px; bottom: 20px; }
+  .dcontent .tc .yr { font-size: 12px; margin-top: 10px; }
+  .poster { box-shadow: 0 18px 40px rgba(0,0,0,.5); border-radius: 4px; }
+  .info { padding-top: 6px; max-width: 640px; }
+  .info h1 { margin: 0; font-size: 40px; line-height: 44px; font-weight: 700; letter-spacing: -.02em; text-wrap: balance; }
+  .meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; color: var(--text-2); font-size: 16px; font-variant-numeric: tabular-nums; }
+  .meta .sep { color: #55585d; }
+  .chip { display: inline-flex; align-items: center; height: 22px; padding: 0 7px; border-radius: 4px; border: 1px solid rgba(255,255,255,.18); color: #cfd1d4; font-size: 11.5px; font-weight: 600; letter-spacing: .02em; }
+  .chips { display: flex; gap: 6px; margin-left: 6px; }
+  .actions { display: flex; gap: 10px; margin-top: 26px; }
+  .btn { display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 22px 0 18px; border-radius: 6px; font-weight: 600; font-size: 15px; }
+  .btn.primary { background: var(--accent); color: var(--accent-text); box-shadow: 0 6px 16px rgba(0,0,0,.35); }
+  .btn.disabled { background: rgba(36,39,43,.85); color: #7d8086; }
+  .notice { display: flex; gap: 12px; align-items: flex-start; margin-top: 16px; max-width: 520px; padding: 12px 14px; border-radius: 6px; background: rgba(26,28,31,.82); border: 1px solid rgba(255,255,255,.08); }
+  .notice svg { flex: none; color: var(--accent); margin-top: 1px; }
+  .notice p { margin: 0; color: var(--text); }
+  .notice p + p { margin-top: 2px; color: var(--text-2); font-size: 13px; }
+  .facts { margin-top: 38px; }
+  .facts h2 { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
+  .facts dl { display: grid; grid-template-columns: 104px 1fr; row-gap: 9px; margin: 0; }
+  .facts dt { color: var(--text-3); font-size: 13px; line-height: 20px; }
+  .facts dd { margin: 0; color: var(--text); font-variant-numeric: tabular-nums; }
+  .facts dd .q { color: var(--text-2); }
+</style>
+</head>
+<body>
+<div class="page">
+  <section>
+    <p class="caption"><b>Home.</b> Two rows from one request. Movies without a local poster get a title card, painted in the first frame. The scan runs in the top bar while rows fill in.</p>
+    <div class="shot"><div class="win" data-w="1280" data-h="800" id="home"></div></div>
+  </section>
+  <section>
+    <p class="caption"><b>Movie detail.</b> The page takes its ambient color from the title card. Play is the only amber element.</p>
+    <div class="shot"><div class="win" data-w="1280" data-h="620" id="detail"></div></div>
+  </section>
+  <section>
+    <p class="caption"><b>When the browser can't play a file.</b> The server checks codecs against what this browser reports and says why, instead of a broken player.</p>
+    <div class="shot"><div class="win" data-w="1280" data-h="520" id="blocked"></div></div>
+  </section>
+</div>
+<script>
+const I = {
+  play: '<svg width="18" height="18" viewBox="0 0 24 24"><path d="M7 4.5v15a1 1 0 0 0 1.52.85l12.2-7.5a1 1 0 0 0 0-1.7L8.52 3.65A1 1 0 0 0 7 4.5z" fill="currentColor"/></svg>',
+  house: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  film: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18M3 7.5h4M3 12h18M3 16.5h4M17 3v18M17 7.5h4M17 16.5h4"/></svg>',
+  refresh: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>',
+  spin: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"/></svg>',
+  chevR: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
+  chevL: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>',
+  alert: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>',
+  mark: '<svg width="16" height="18" viewBox="0 0 16 18"><path d="M1.5 1.6v14.8a1 1 0 0 0 1.5.86l12-7.4a1 1 0 0 0 0-1.72L3 .74A1 1 0 0 0 1.5 1.6z" fill="currentColor"/></svg>',
+};
+
+const PALETTES = [
+  ['#2f8f8a', '#0f4448', '#05181b'], ['#b2433b', '#5b1a1f', '#18070a'], ['#4b67c9', '#1c2b62', '#070b1d'], ['#d39a2e', '#6e4b12', '#1c1205'],
+  ['#9a4fb0', '#45204f', '#12081a'], ['#6f9a3f', '#2f4a24', '#0b1408'], ['#8a9bb3', '#3a4350', '#0e1116'], ['#df6a2b', '#7a3418', '#200c05'],
+  ['#3a8fc4', '#123d5a', '#051521'], ['#c2457a', '#5a1838', '#17060f'], ['#3fae7a', '#14503a', '#04170f'], ['#7a6cd6', '#2c2566', '#0b0920'],
+];
+function hash(s) {
+  let h = 2166136261;
+  for (const c of s) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); }
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
+  return h >>> 0;
+}
+function look(title) {
+  const h = hash(title), p = PALETTES[h % PALETTES.length];
+  return `--c0:${p[0]};--c1:${p[1]};--c2:${p[2]};--bx:${18 + (h >>> 5) % 64}%;--by:${8 + (h >>> 11) % 36}%`;
+}
+function titleCard(m, overlay = '') {
+  return `<div class="tc" style="${look(m.t)}"><div class="lt"><h3>${m.t}</h3><div class="yr">${m.y}</div></div>${overlay}</div>`;
+}
+function card(m, hovered) {
+  const ov = hovered ? `<div class="ov"><span>${I.play.replace('width="18" height="18"', 'width="22" height="22"')}</span></div>` : '';
+  return `<div class="card${hovered ? ' hover' : ''}">${titleCard(m, ov)}<div class="cap"><div class="t">${m.t}</div><div class="y">${m.y}</div></div></div>`;
+}
+
+const ALL = [
+  { t: 'Agent 327: Operation Barbershop', y: 2017 }, { t: 'Big Buck Bunny', y: 2008 },
+  { t: 'Caminandes: Llama Drama', y: 2013 }, { t: 'Charge', y: 2022 }, { t: 'Coffee Run', y: 2020 },
+  { t: 'Cosmos Laundromat', y: 2015 }, { t: 'Elephants Dream', y: 2006 }, { t: 'Glass Half', y: 2015 },
+  { t: 'Hero', y: 2018 }, { t: 'Sintel', y: 2010 }, { t: 'Spring', y: 2019 }, { t: 'Sprite Fright', y: 2021 },
+  { t: 'Tears of Steel', y: 2012 }, { t: 'Wing It!', y: 2023 },
+];
+const RECENT = ['Wing It!', 'Tears of Steel', 'Sprite Fright', 'Coffee Run', 'Spring', 'Hero', 'Charge'].map(t => ALL.find(m => m.t === t));
+
+const chrome = `<div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">127.0.0.1:8640</div><span style="width:57px"></span></div>`;
+const topBar = (scanning) => `<header class="top"><div class="mark">${I.mark}nuvora</div><div class="spacer"></div>
+  ${scanning ? `<div class="scan">${I.spin}<span>Scanning Movies</span><span style="color:var(--text)">12 of 15 files</span><span class="bar"><i></i></span></div>` : ''}
+  <div class="iconbtn" title="Scan library">${I.refresh}</div></header>`;
+const nav = (active) => `<nav class="nav">
+  <div class="item ${active === 'home' ? 'on' : ''}">${I.house}Home</div>
+  <div class="group">Libraries</div>
+  <div class="item ${active === 'movies' ? 'on' : ''}">${I.film}Movies<span class="count">14</span></div></nav>`;
+
+document.getElementById('home').innerHTML = chrome + `<div class="app">${topBar(true)}${nav('home')}
+  <main class="main"><div class="home">
+    <section class="row"><div class="rowhead"><h2>Recently Added</h2><span class="chev">${I.chevR}</span>
+      <div class="arrows"><span class="round off">${I.chevL}</span><span class="round">${I.chevR}</span></div></div>
+      <div class="strip">${RECENT.map((m, i) => card(m, i === 1)).join('')}</div></section>
+    <section class="row"><div class="rowhead"><h2>All Movies</h2><span class="chev">${I.chevR}</span><span class="n">14</span>
+      <div class="arrows"><span class="round off">${I.chevL}</span><span class="round">${I.chevR}</span></div></div>
+      <div class="strip">${ALL.slice(0, 7).map(m => card(m)).join('')}</div></section>
+  </div></main></div>`;
+
+function detail(m, body) {
+  return chrome + `<div class="app">${topBar(false)}${nav('movies')}
+  <main class="main"><div class="detail" style="${look(m.t)}"><div class="wash"></div>
+    <div class="dcontent"><div class="poster">${titleCard(m)}</div><div class="info">${body}</div></div>
+  </div></main></div>`;
+}
+const tos = ALL.find(m => m.t === 'Tears of Steel');
+document.getElementById('detail').innerHTML = detail(tos, `
+  <h1>Tears of Steel</h1>
+  <div class="meta"><span>2012</span><span class="sep">·</span><span>12 min</span>
+    <span class="chips"><span class="chip">1080p</span><span class="chip">VP9</span><span class="chip">Opus 2.0</span><span class="chip">WebM</span></span></div>
+  <div class="actions"><span class="btn primary">${I.play}Play</span></div>
+  <div class="facts"><h2>File</h2><dl>
+    <dt>Video</dt><dd>1920 × 800 <span class="q">· VP9 Profile 0 · 24 fps · SDR</span></dd>
+    <dt>Audio</dt><dd>English <span class="q">· Opus · Stereo</span></dd>
+    <dt>Subtitles</dt><dd>English, Spanish <span class="q">· SubRip</span></dd>
+    <dt>Length</dt><dd>12 min 14 s <span class="q">· 7.9 Mb/s</span></dd>
+    <dt>Location</dt><dd>Movies/Tears of Steel (2012)/Tears of Steel (2012).webm <span class="q">· 726 MB</span></dd>
+  </dl></div>`);
+
+const sintel = ALL.find(m => m.t === 'Sintel');
+document.getElementById('blocked').innerHTML = detail(sintel, `
+  <h1>Sintel</h1>
+  <div class="meta"><span>2010</span><span class="sep">·</span><span>15 min</span>
+    <span class="chips"><span class="chip">1080p</span><span class="chip">H.264</span><span class="chip">AC3 5.1</span><span class="chip">MKV</span></span></div>
+  <div class="actions"><span class="btn disabled">${I.play}Play</span></div>
+  <div class="notice">${I.alert}<div><p>Chrome can't decode this file's AC3 audio.</p><p>It will play once Nuvora can convert audio on the fly.</p></div></div>`);
+
+function fit() {
+  document.querySelectorAll('.shot').forEach(s => {
+    const w = s.querySelector('.win'), W = +w.dataset.w, H = +w.dataset.h, k = s.clientWidth / W;
+    w.style.height = H + 'px'; w.style.transform = `scale(${k})`; s.style.height = (H * k) + 'px';
+  });
+}
+addEventListener('resize', fit); fit(); document.fonts && document.fonts.ready.then(fit);
+</script>
+</body>
+</html>
