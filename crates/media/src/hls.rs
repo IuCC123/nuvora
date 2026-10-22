@@ -322,12 +322,14 @@ impl Run<'_> {
                     &channels.to_string(),
                     "-b:a",
                     &format!("{bitrate}k"),
-                    // The encoder's 1024-sample lead-in would stamp the first
-                    // frame before the start (a negative time at 0, which
-                    // ExoPlayer rejects); 21 ms later is inaudible and the same
-                    // in every run.
+                    // Nothing may start before zero: ExoPlayer rejects the
+                    // stream. Sources often have audio a few ms early (an
+                    // encoder's delay, rounded to MKV's milliseconds), so that
+                    // goes; and the AAC encoder's 1024-sample lead-in would
+                    // stamp the first frame early, so audio moves 21 ms later,
+                    // inaudible and the same in every run.
                     "-af",
-                    "asetpts=PTS+1024/SR/TB",
+                    "atrim=start=0,asetpts=PTS+1024/SR/TB",
                 ]);
             }
         }

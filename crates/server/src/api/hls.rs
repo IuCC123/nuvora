@@ -188,6 +188,11 @@ mod tests {
     /// MKV: the baseline device (MP4, AAC) needs it remuxed and its audio
     /// converted (mono stays mono), but takes the video as it is.
     async fn library() -> (TestApp, String, i64) {
+        library_encoded(&["-preset", "ultrafast"]).await
+    }
+
+    /// A four-second movie whose H.264 is encoded with `x264`.
+    async fn library_encoded(x264: &[&str]) -> (TestApp, String, i64) {
         let app = TestApp::new().await;
         let admin = app.setup_admin().await;
         let dir = app.path("movies/Conv (2020)");
@@ -196,14 +201,9 @@ mod tests {
             .args(["-y", "-nostdin", "-v", "error", "-f", "lavfi"])
             .args(["-i", "testsrc2=size=320x180:rate=24:duration=4"])
             .args(["-f", "lavfi", "-i", "sine=frequency=440:duration=4"])
-            .args([
-                "-c:v",
-                "libx264",
-                "-preset",
-                "ultrafast",
-                "-pix_fmt",
-                "yuv420p",
-            ])
+            .args(["-c:v", "libx264"])
+            .args(x264)
+            .args(["-pix_fmt", "yuv420p"])
             .args(["-g", "24", "-keyint_min", "24", "-sc_threshold", "0"])
             .args(["-c:a", "ac3"])
             .arg(dir.join("Conv (2020).mkv"))
@@ -314,6 +314,25 @@ mod tests {
         assert!(zero.body.windows(4).any(|w| w == b"moof"));
         // ExoPlayer refuses a fragment that starts before zero; the AAC
         // encoder's lead-in must not put the first audio there.
+        let starts = fragment_starts(&zero.body);
+        assert_eq!(starts.len(), 2, "a video and an audio fragment");
+        assert!(starts.iter().all(|t| *t >= 0), "{starts:?}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn copied_video_with_b_frames_never_starts_before_zero() {
+        // B-frames decode before they show, so the first decode time of a
+        // copied stream is below zero; ExoPlayer refuses such a fragment.
+        let (app, admin, id) = library_encoded(&["-preset", "medium", "-bf", "3"]).await;
+        let detail = app.get(&format!("/api/items/{id}"), &admin).await.json();
+        let file = detail["versions"][0]["file_id"].as_i64().unwrap();
+        let base = format!("/api/files/{file}/hls/copy.a1-aac2/");
+        let playlist = app
+            .get(&format!("{base}main.m3u8?session=t3"), &admin)
+            .await;
+        assert_eq!(playlist.status, StatusCode::OK);
+        let zero = app.get(&format!("{base}0.m4s?session=t3"), &admin).await;
+        assert_eq!(zero.status, StatusCode::OK);
         let starts = fragment_starts(&zero.body);
         assert_eq!(starts.len(), 2, "a video and an audio fragment");
         assert!(starts.iter().all(|t| *t >= 0), "{starts:?}");
