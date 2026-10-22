@@ -27,7 +27,7 @@ const TIMING = /^((?:\d+:)?\d{1,2}:\d{2}[.,]\d{1,3})\s+-->\s+((?:\d+:)?\d{1,2}:\
 /** Cues in start order. Malformed blocks are skipped rather than failing the track. */
 export function parseVtt(text: string): Cue[] {
   const cues: Cue[] = [];
-  const blocks = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n").split(/\n{2,}/);
+  const blocks = text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").split(/\n{2,}/);
   for (const block of blocks) {
     const rows = block.split("\n");
     const at = rows.findIndex((row) => row.includes("-->"));
@@ -36,10 +36,7 @@ export function parseVtt(text: string): Cue[] {
     if (!timing) continue;
     const start = seconds(timing[1]!);
     const end = seconds(timing[2]!);
-    const lines = rows
-      .slice(at + 1)
-      .map(cueRuns)
-      .filter((runs) => runs.length > 0);
+    const lines = cueLines(rows.slice(at + 1).join("\n"));
     if (end <= start || lines.length === 0) continue;
     cues.push({ start, end, placement: placement(timing[3] ?? ""), lines });
   }
@@ -64,14 +61,21 @@ function placement(settings: string): Cue["placement"] {
   return value >= 0 && value < 4 ? "top" : "bottom";
 }
 
-const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", nbsp: " ", lrm: "‎", rlm: "‏", quot: '"', apos: "'" };
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", nbsp: "\u00a0", lrm: "\u200e", rlm: "\u200f", quot: '"', apos: "'" };
 
-/** One line of cue text into styled runs. `<i>`, `<b>` and `<u>` style; other tags and ruby text are dropped. */
-function cueRuns(line: string): CueRun[] {
-  const runs: CueRun[] = [];
+/** Cue text into lines of styled runs. `<i>`, `<b>` and `<u>` style, across line breaks too; other tags and ruby text are dropped. */
+function cueLines(text: string): CueRun[][] {
+  const lines: CueRun[][] = [[]];
   const style = { italic: 0, bold: 0, underline: 0 };
   let inRuby = 0;
-  for (const token of line.split(/(<[^>]*>)/)) {
+  const add = (text: string) => {
+    const line = lines.at(-1)!;
+    const run = { text, italic: style.italic > 0, bold: style.bold > 0, underline: style.underline > 0 };
+    const last = line.at(-1);
+    if (last && last.italic === run.italic && last.bold === run.bold && last.underline === run.underline) last.text += text;
+    else line.push(run);
+  };
+  for (const token of text.split(/(<[^>]*>)/)) {
     if (!token) continue;
     const tag = /^<(\/?)([a-z]+)/i.exec(token);
     if (tag) {
@@ -84,13 +88,13 @@ function cueRuns(line: string): CueRun[] {
       continue;
     }
     if (token.startsWith("<") || inRuby) continue;
-    const text = token.replace(/&(#\d+|[a-z]+);/gi, (match, name: string) =>
+    const decoded = token.replace(/&(#\d+|[a-z]+);/gi, (match, name: string) =>
       name.startsWith("#") ? String.fromCodePoint(Number(name.slice(1))) : (ENTITIES[name.toLowerCase()] ?? match),
     );
-    const run = { text, italic: style.italic > 0, bold: style.bold > 0, underline: style.underline > 0 };
-    const last = runs.at(-1);
-    if (last && last.italic === run.italic && last.bold === run.bold && last.underline === run.underline) last.text += text;
-    else runs.push(run);
+    decoded.split("\n").forEach((part, i) => {
+      if (i > 0) lines.push([]);
+      if (part) add(part);
+    });
   }
-  return runs.some((run) => run.text.trim()) ? runs : [];
+  return lines.filter((line) => line.some((run) => run.text.trim()));
 }

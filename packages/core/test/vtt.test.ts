@@ -5,7 +5,7 @@ const plain = (text: string) => ({ text, italic: false, bold: false, underline: 
 
 test("parses ffmpeg's WebVTT output: hours optional, ids, settings, styling", () => {
   const cues = parseVtt(
-    "﻿WEBVTT\r\n\r\nNOTE made by ffmpeg\r\n\r\n1\r\n00:00:01.500 --> 00:00:04.000\r\nHello <i>there</i>,\r\n<b>friend</b> &amp; co.\r\n\r\n" +
+    "\uFEFFWEBVTT\r\n\r\nNOTE made by ffmpeg\r\n\r\n1\r\n00:00:01.500 --> 00:00:04.000\r\nHello <i>there</i>,\r\n<b>friend</b> &amp; co.\r\n\r\n" +
       "00:05.000 --> 00:07.250 line:0 align:center\n<c.yellow>Top</c> sign\n\n" +
       "01:02:03.004 --> 01:02:04.000\n<v Celia>Late</v>\n",
   );
@@ -65,4 +65,10 @@ test("languages: every ISO 639-1 code, both 639-2 forms, BCP 47 tags", () => {
   expect(languageName("tlh")).toBe("tlh");
   expect(languageName(null)).toBe("Unknown");
   expect(languageName("und")).toBe("Unknown");
+});
+
+test("styling that spans a line break carries over, as ffmpeg writes ASS conversions", () => {
+  const [cue] = parseVtt("WEBVTT\n\n00:01.500 --> 00:12.000\n<b>ESTACIÓN\nCENTRAL</b>\n");
+  const bold = (text: string) => ({ text, italic: false, bold: true, underline: false });
+  expect(cue!.lines).toEqual([[bold("ESTACIÓN")], [bold("CENTRAL")]]);
 });
