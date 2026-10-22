@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { queryKeys, type AuthState, type User } from "@nuvora/core";
+import { ApiError, queryKeys, type AuthState, type User } from "@nuvora/core";
 import { client, queries, queryClient } from "../nuvora";
 
 /** The signed-in user, or `null` in the moment between a sign-out and the move to Sign in. */
@@ -25,13 +25,21 @@ export function forgetResponses() {
   queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== queryKeys.auth[0] });
 }
 
-/** Sign out, then go to Sign in with nothing of the old session left in memory. */
+/**
+ * Sign out, then go to Sign in with nothing of the old session left in memory.
+ * A 401 means the session was already gone, which counts as signed out; any
+ * other failure leaves the session alive on the server, so the person stays signed in.
+ */
 export function useSignOut() {
   const navigate = useNavigate();
-  return async () => {
-    await client.logout().catch(() => {}); // the session may already be gone; signing out here is what matters
-    setSessionUser(null);
-    await navigate({ to: "/signin" });
-    forgetResponses();
-  };
+  return useMutation({
+    mutationFn: () => client.logout().catch((e: unknown) => {
+      if (!(e instanceof ApiError && e.status === 401)) throw e;
+    }),
+    onSuccess: async () => {
+      setSessionUser(null);
+      await navigate({ to: "/signin" });
+      forgetResponses();
+    },
+  });
 }

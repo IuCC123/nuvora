@@ -87,10 +87,22 @@ export function AccountMenu() {
               Account
             </Link>
           )}
-          <button type="button" role="menuitem" className="menu-item" onClick={() => void signOut()}>
+          <button
+            type="button"
+            role="menuitem"
+            className="menu-item"
+            onClick={() => signOut.mutate()}
+            disabled={signOut.isPending}
+            aria-busy={signOut.isPending}
+          >
             <SignOutIcon />
             Sign out
           </button>
+          {signOut.isError && (
+            <p className="menu-error" role="alert">
+              Couldn't sign out. Try again.
+            </p>
+          )}
         </div>
       )}
     </div>

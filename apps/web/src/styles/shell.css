@@ -323,6 +323,13 @@
   color: var(--nv-color-text-secondary);
 }
 
+.menu-error {
+  padding: 4px 10px 6px;
+  color: var(--nv-color-danger);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+}
+
 .menu-item:hover,
 .menu-item:focus-visible {
   background: var(--nv-color-hairline);

@@ -9,7 +9,8 @@ import type { FetchLike, HomeResponse, HttpMethod, ItemDetail, PosterCard, RowPa
  * `vite.config.ts`. Watch state follows the server's rules (`fixtureWatch.ts`).
  *
  * A scripted check can make requests fail: `sessionStorage["nuvora-fixtures-fail"]`
- * holds a pattern, and every matching path and query answers 503 until it is removed.
+ * holds a pattern, optionally after a status (`"401 ^/api/auth/logout$"`), and every
+ * matching path and query answers that status, 503 by default, until it is removed.
  *
  * Sample content: Blender Studio open movie titles and years. Runtimes, sizes,
  * codecs and the gradient artwork are invented.
@@ -165,10 +166,11 @@ export const fixtureFetch: FetchLike = async (url, init) => {
   const { pathname, searchParams } = new URL(url, location.origin);
   await new Promise((r) => setTimeout(r, 60));
   const body: unknown = init.body ? JSON.parse(init.body) : undefined;
-  const failing = sessionStorage.getItem("nuvora-fixtures-fail");
-  if (failing && new RegExp(failing).test(pathname + (searchParams.size ? `?${searchParams}` : ""))) {
-    console.info(`fixture 503 ${init.method} ${pathname}`);
-    return { ok: false, status: 503, json: async () => ({ code: "internal", message: "Unavailable", field: null }) };
+  const [, status = "503", pattern] = /^(?:(\d{3}) )?(.+)$/.exec(sessionStorage.getItem("nuvora-fixtures-fail") ?? "") ?? [];
+  if (pattern && new RegExp(pattern).test(pathname + (searchParams.size ? `?${searchParams}` : ""))) {
+    console.info(`fixture ${status} ${init.method} ${pathname}`);
+    const code = status === "401" ? "unauthorized" : "internal";
+    return { ok: false, status: Number(status), json: async () => ({ code, message: "Failed on request", field: null }) };
   }
   const reply = accountRoute(init.method, pathname, searchParams, body) ?? catalogRoute(init.method, pathname, searchParams, body);
   return {
