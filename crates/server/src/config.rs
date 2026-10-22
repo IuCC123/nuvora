@@ -57,14 +57,15 @@ pub struct ServeArgs {
     /// A reverse proxy in front of Nuvora (an address or CIDR block; repeat
     /// for more). Its `X-Forwarded-For` and `X-Forwarded-Host` are believed:
     /// sign-in limits apply to the client behind it, and the CSRF check
-    /// compares against the host the browser used.
+    /// compares against the host the browser used. Empty entries are
+    /// skipped, so Compose can pass an unset variable through.
     #[arg(
         long = "trusted-proxy",
         value_name = "IP or CIDR",
         env = "NUVORA_TRUSTED_PROXY",
         value_delimiter = ','
     )]
-    pub trusted_proxy: Vec<IpNet>,
+    pub trusted_proxy: Vec<String>,
 }
 
 /// Validated configuration.
@@ -98,6 +99,8 @@ pub enum ConfigError {
     UnknownKind { key: String, kind: String },
     #[error("no data directory: pass --data-dir or set data_dir in nuvora.toml")]
     NoDataDir,
+    #[error("--trusted-proxy: {0}")]
+    TrustedProxy(#[from] crate::net::ParseIpNetError),
 }
 
 /// `nuvora.toml` as written. Unknown keys are errors so a typo cannot silently
@@ -203,7 +206,12 @@ pub fn load(args: &ServeArgs) -> Result<Config, ConfigError> {
         libraries,
         ffmpeg: file.ffmpeg,
         ffprobe: file.ffprobe,
-        trusted_proxies: args.trusted_proxy.clone(),
+        trusted_proxies: args
+            .trusted_proxy
+            .iter()
+            .filter(|p| !p.trim().is_empty())
+            .map(|p| p.parse())
+            .collect::<Result<_, _>>()?,
     })
 }
 
@@ -304,23 +312,39 @@ mod tests {
                 "a path list splits like NUVORA_MOVIES does"
             );
         }
-        let cli = crate::Cli::try_parse_from([
-            "nuvora",
-            "--trusted-proxy",
-            "10.0.0.0/8,::1",
-            "--trusted-proxy",
-            "192.168.1.2",
-        ])
-        .unwrap();
+        let proxies = |flags: &[&str]| {
+            let mut cli = crate::Cli::try_parse_from(
+                ["nuvora", "--data-dir", "/tmp/nuvora-test-data"]
+                    .iter()
+                    .chain(flags),
+            )
+            .unwrap();
+            cli.serve.config = Some("/dev/null".into());
+            load(&cli.serve).map(|c| {
+                c.trusted_proxies
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+            })
+        };
         assert_eq!(
-            cli.serve
-                .trusted_proxy
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>(),
+            proxies(&[
+                "--trusted-proxy",
+                "10.0.0.0/8,::1",
+                "--trusted-proxy",
+                "192.168.1.2"
+            ])
+            .unwrap(),
             ["10.0.0.0/8", "::1/128", "192.168.1.2/32"]
         );
-        assert!(crate::Cli::try_parse_from(["nuvora", "--trusted-proxy", "proxy.lan"]).is_err());
+        assert_eq!(
+            proxies(&["--trusted-proxy", ""]).unwrap(),
+            Vec::<String>::new()
+        );
+        assert!(matches!(
+            proxies(&["--trusted-proxy", "proxy.lan"]),
+            Err(ConfigError::TrustedProxy(_))
+        ));
     }
 
     #[test]

@@ -4,11 +4,14 @@ services:
     image: nuvora:local
     user: "${NUVORA_UID:-10001}:${NUVORA_GID:-10001}"
     ports:
-      - "${NUVORA_PORT:-8640}:8640"
+      - "${NUVORA_LISTEN:-0.0.0.0}:${NUVORA_PORT:-8640}:8640"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     volumes:
       - ./data:/data
       - ${NUVORA_MEDIA:?set NUVORA_MEDIA to your movies folder}:/media:ro
     environment:
       TZ: ${TZ:-UTC}
+      NUVORA_TRUSTED_PROXY: ${NUVORA_TRUSTED_PROXY:-}
     command: ["--bind", "0.0.0.0:8640", "--data-dir", "/data"]
     restart: unless-stopped

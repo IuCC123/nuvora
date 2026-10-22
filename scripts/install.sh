@@ -1,23 +1,26 @@
 #!/usr/bin/env bash
 # Install or update Nuvora with Docker, building from this repo checkout.
-# Usage: scripts/install.sh [--media PATH] [--port PORT] [--dir DIR] [--yes]
+# Usage: scripts/install.sh [--media PATH] [--port PORT] [--listen ADDR] [--dir DIR] [--yes]
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIR="$HOME/nuvora"
 MEDIA=""
 PORT=""
+LISTEN=""
 ASSUME_YES=0
 
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 usage() {
   cat <<'EOF'
-Usage: scripts/install.sh [--media PATH] [--port PORT] [--dir DIR] [--yes]
+Usage: scripts/install.sh [--media PATH] [--port PORT] [--listen ADDR] [--dir DIR] [--yes]
 
-  --media PATH  folder with your media, shown as /media in the setup folder picker (read-only)
-  --port PORT   port to serve on (default 8640)
-  --dir DIR     install directory (default ~/nuvora)
+  --media PATH   folder with your media, shown as /media in the setup folder picker (read-only)
+  --port PORT    port to serve on (default 8640)
+  --listen ADDR  host address to publish the port on (default 0.0.0.0, every interface;
+                 127.0.0.1 when a reverse proxy on this machine is the only way in)
+  --dir DIR      install directory (default ~/nuvora)
   --yes         never prompt; fail if a value is missing
 
 Re-running updates in place and reuses the values saved in DIR/.env.
@@ -28,6 +31,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --media) [ $# -ge 2 ] || die "--media needs a path"; MEDIA="$2"; shift 2 ;;
     --port)  [ $# -ge 2 ] || die "--port needs a number"; PORT="$2"; shift 2 ;;
+    --listen) [ $# -ge 2 ] || die "--listen needs an IPv4 address"; LISTEN="$2"; shift 2 ;;
     --dir)   [ $# -ge 2 ] || die "--dir needs a path"; DIR="$2"; shift 2 ;;
     --yes|-y) ASSUME_YES=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -75,6 +79,22 @@ case "$PORT" in
 esac
 { [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ]; } || die "port out of range: $PORT"
 
+[ -n "$LISTEN" ] || LISTEN="$(saved NUVORA_LISTEN)"
+[ -n "$LISTEN" ] || LISTEN="0.0.0.0"
+valid_ipv4() {
+  local IFS=. part
+  # shellcheck disable=SC2086
+  set -- $1
+  [ $# -eq 4 ] || return 1
+  for part in "$@"; do
+    case "$part" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$part" -le 255 ] || return 1
+  done
+}
+valid_ipv4 "$LISTEN" || die "--listen must be an IPv4 address such as 127.0.0.1: $LISTEN"
+HEALTH_HOST="$LISTEN"
+[ "$LISTEN" != "0.0.0.0" ] || HEALTH_HOST="127.0.0.1"
+
 TZ_NAME="$(saved TZ)"
 if [ -z "$TZ_NAME" ]; then
   if [ -r /etc/timezone ]; then
@@ -90,6 +110,7 @@ cat > "$ENV_FILE" <<EOF
 NUVORA_SRC=$SRC
 NUVORA_MEDIA=$MEDIA
 NUVORA_PORT=$PORT
+NUVORA_LISTEN=$LISTEN
 NUVORA_UID=$(id -u)
 NUVORA_GID=$(id -g)
 TZ=${TZ_NAME:-UTC}
@@ -102,12 +123,15 @@ services:
     image: nuvora:local
     user: "${NUVORA_UID:-10001}:${NUVORA_GID:-10001}"
     ports:
-      - "${NUVORA_PORT:-8640}:8640"
+      - "${NUVORA_LISTEN:-0.0.0.0}:${NUVORA_PORT:-8640}:8640"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     volumes:
       - ./data:/data
       - ${NUVORA_MEDIA:?}:/media:ro
     environment:
       TZ: ${TZ:-UTC}
+      NUVORA_TRUSTED_PROXY: ${NUVORA_TRUSTED_PROXY:-}
     command: ["--bind", "0.0.0.0:8640", "--data-dir", "/data"]
     restart: unless-stopped
 EOF
@@ -126,9 +150,9 @@ lan_ip() {
 
 healthy() {
   if command -v curl >/dev/null 2>&1; then
-    curl -fs -o /dev/null --max-time 2 "http://127.0.0.1:$PORT/api/health"
+    curl -fs -o /dev/null --max-time 2 "http://$HEALTH_HOST:$PORT/api/health"
   else
-    (exec 3<>"/dev/tcp/127.0.0.1/$PORT" \
+    (exec 3<>"/dev/tcp/$HEALTH_HOST/$PORT" \
       && printf 'GET /api/health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 \
       && head -n 1 <&3 | grep -q ' 200 ') 2>/dev/null
   fi
@@ -137,7 +161,11 @@ healthy() {
 echo "Waiting for Nuvora on port $PORT"
 for _ in $(seq 1 60); do
   if healthy; then
-    printf 'Nuvora is running at http://%s:%s\n' "$(lan_ip)" "$PORT"
+    if [ "$LISTEN" = "0.0.0.0" ]; then
+      printf 'Nuvora is running at http://%s:%s\n' "$(lan_ip)" "$PORT"
+    else
+      printf 'Nuvora is running at http://%s:%s (reachable only on that address)\n' "$LISTEN" "$PORT"
+    fi
     exit 0
   fi
   sleep 1
