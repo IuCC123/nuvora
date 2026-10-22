@@ -71,3 +71,28 @@ export { folderCrumbs } from "./folders";
 export type { FolderCrumb } from "./folders";
 export { createProgressReporter, PROGRESS_INTERVAL_MS, PROGRESS_SETTLE_MS } from "./progress";
 export type { PlaybackPosition, ProgressReporter, ProgressReporterOptions, Timers } from "./progress";
+export {
+  DEFAULT_ORDER,
+  DEFAULT_VIEW,
+  FILTER_LABELS,
+  hasGroups,
+  hasViewParams,
+  isFiltered,
+  LIBRARY_SORTS,
+  libraryQuery,
+  librarySearch,
+  libraryViewStorageKey,
+  ORDER_LABELS,
+  parseLibraryView,
+  RESOLUTION_LABELS,
+  RESOLUTIONS,
+  sameView,
+  showsGroups,
+  SORT_LABELS,
+  SORT_ORDERS,
+  WATCH_FILTERS,
+  withSort,
+} from "./library";
+export type { LibrarySearch, LibrarySort, LibraryView, Resolution, SortOrder, WatchFilter } from "./library";
+export { anchorsOf, cardsByOffset, groupOffsets, JUMP_LETTERS, layoutGrid, nextAnchor, offsetsInView, offsetTop, stepOffset } from "./grid";
+export type { Anchor, GridGroup, GridLayout, GridMetrics, GridPage, GridSection } from "./grid";
