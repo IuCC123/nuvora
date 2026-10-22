@@ -26,6 +26,8 @@ export const tokens = {
     focusRing: "#e5a00d",
     danger: "#e5534b",
     placeholder: "#1f2226",     // poster before its ThumbHash decodes (one frame at most)
+    posterHover: "rgba(8,9,10,0.38)", // dims a hovered poster under its play badge
+    video: "#000000",           // the player, so letterboxing disappears
   },
   font: {
     family: "'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
@@ -42,6 +44,11 @@ export const tokens = {
     title: { size: 20, line: 28 },
     heading: { size: 28, line: 34 },
     headline: { size: 40, line: 44 },
+    /** Primary and secondary buttons. */
+    button: { size: 15, line: 20 },
+    /** Technical badges on the detail page. */
+    chip: { size: 11, line: 14 },
+    wordmark: { size: 19, line: 24 },
   },
   /** 4 px grid. */
   space: { 0: 0, 1: 4, 2: 8, 3: 12, 4: 16, 5: 24, 6: 32, 7: 48, 8: 64, 9: 96 },
@@ -59,6 +66,8 @@ export const tokens = {
     lift: "0 12px 28px rgba(0,0,0,0.45)",
     /** The detail poster and the primary button resting over artwork. */
     rest: "0 18px 40px rgba(0,0,0,0.5)",
+    /** The primary button and the poster play badge. */
+    raised: "0 6px 16px rgba(0,0,0,0.4)",
   },
   motion: {
     /** ms */
@@ -79,6 +88,12 @@ export const tokens = {
   titleCard: {
     /** Archivo width axis, percent: condensed poster lettering. */
     stretch: 64,
+    ink: "#f7f2ea",
+    inkMuted: "rgba(247,242,234,0.7)",
+    vignette: "rgba(0,0,0,0.6)",
+    edge: "rgba(255,255,255,0.06)",
+    /** px: title and year lettering on a row card, the compact detail poster and the detail poster. */
+    type: { title: 23, titleMedium: 26, titleLarge: 36, year: 10.5, yearLarge: 12 },
     palettes: [
       { bloom: "#2f8f8a", top: "#0f4448", bottom: "#05181b" },
       { bloom: "#b2433b", top: "#5b1a1f", bottom: "#18070a" },
@@ -110,6 +125,7 @@ const UNITS: readonly (readonly [prefix: string, unit: string])[] = [
   ["motion.duration.", "ms"],
   ["motion.imageFade", "ms"],
   ["titleCard.stretch", "%"],
+  ["titleCard.type.", "px"],
 ];
 
 /**
