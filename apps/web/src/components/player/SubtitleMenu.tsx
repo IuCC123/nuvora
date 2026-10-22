@@ -204,7 +204,7 @@ function Segmented<T extends string>({ legend, name, options, labels, value, onC
       <legend className="subs-style-label">{legend}</legend>
       <div className="subs-segments">
         {options.map((option) => (
-          <label key={option} className="subs-segment" data-checked={value === option || undefined}>
+          <label key={option} className="subs-segment">
             <input type="radio" className="subs-radio" name={name} checked={value === option} onChange={() => onChange(option)} />
             <span>{labels[option]}</span>
           </label>
