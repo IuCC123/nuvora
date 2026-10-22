@@ -1,0 +1,14 @@
+services:
+  nuvora:
+    build: .
+    image: nuvora:local
+    user: "${NUVORA_UID:-10001}:${NUVORA_GID:-10001}"
+    ports:
+      - "${NUVORA_PORT:-8640}:8640"
+    volumes:
+      - ./data:/data
+      - ${NUVORA_MEDIA:?set NUVORA_MEDIA to your movies folder}:/media:ro
+    environment:
+      TZ: ${TZ:-UTC}
+    command: ["--bind", "0.0.0.0:8640", "--data-dir", "/data", "--movies", "/media"]
+    restart: unless-stopped
