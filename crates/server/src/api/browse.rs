@@ -14,7 +14,7 @@
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
-use nuvora_library::Library;
+use nuvora_library::{CardNote, EpisodeNumber, Library};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -338,4 +338,136 @@ fn not_yet() -> Response {
         "Not implemented yet",
     )
     .into_response()
+}
+
+// ----------------------------------------------------------------- mapping
+
+/// `"S1 · E5"`, or `"Special 2"` in season 0.
+fn episode_label(number: EpisodeNumber) -> String {
+    match number.season {
+        0 => format!("Special {}", number.episode),
+        season => format!("S{season} · E{}", number.episode),
+    }
+}
+
+/// The file name's episode title, else `"Episode 5"` (`"Special 2"`).
+fn episode_title(title: Option<String>, number: EpisodeNumber) -> String {
+    title.unwrap_or_else(|| match number.season {
+        0 => format!("Special {}", number.episode),
+        _ => format!("Episode {}", number.episode),
+    })
+}
+
+fn season_title(number: u32) -> String {
+    match number {
+        0 => "Specials".into(),
+        n => format!("Season {n}"),
+    }
+}
+
+/// A card's second line.
+pub(super) fn card_subtitle(note: CardNote) -> Option<String> {
+    match note {
+        CardNote::None => None,
+        CardNote::Episode(number) => Some(episode_label(number)),
+        CardNote::NextUp(number) => Some(format!("Next episode · {}", episode_label(number))),
+        CardNote::NewEpisodes(1) => Some("1 new episode".into()),
+        CardNote::NewEpisodes(n) => Some(format!("{n} new episodes")),
+    }
+}
+
+impl From<nuvora_library::EpisodeRef> for EpisodeRef {
+    fn from(e: nuvora_library::EpisodeRef) -> Self {
+        EpisodeRef {
+            id: e.id.raw(),
+            season_id: e.season_id.raw(),
+            season: e.number.season,
+            index: e.number.episode,
+            label: episode_label(e.number),
+            title: episode_title(e.title, e.number),
+            position_ms: e.watch.resume.map(|r| r.position_ms),
+            thumb: e.thumb.map(Image::from),
+        }
+    }
+}
+
+impl From<nuvora_library::Show> for ShowDetail {
+    fn from(show: nuvora_library::Show) -> Self {
+        ShowDetail {
+            id: show.id.raw(),
+            title: show.title,
+            year_range: show.year.map(|y| y.to_string()),
+            overview: show.overview,
+            poster: show.poster.map(Image::from),
+            backdrop: show.backdrop.map(Image::from),
+            seasons: show
+                .seasons
+                .into_iter()
+                .map(|s| SeasonSummary {
+                    id: s.id.raw(),
+                    index: s.number,
+                    title: season_title(s.number),
+                    episode_count: s.episode_count,
+                    watched_count: s.watched_count,
+                })
+                .collect(),
+            next: show.next.map(EpisodeRef::from),
+            watched_count: show.watched_count,
+            episode_count: show.episode_count,
+        }
+    }
+}
+
+impl From<nuvora_library::Season> for SeasonDetail {
+    fn from(season: nuvora_library::Season) -> Self {
+        SeasonDetail {
+            id: season.id.raw(),
+            show_id: season.show.raw(),
+            show_title: season.show_title,
+            index: season.number,
+            title: season_title(season.number),
+            poster: season.poster.map(Image::from),
+            backdrop: season.backdrop.map(Image::from),
+            episode_count: season.episode_count,
+            watched_count: season.watched_count,
+        }
+    }
+}
+
+impl From<nuvora_library::Episode> for EpisodeDetail {
+    fn from(e: nuvora_library::Episode) -> Self {
+        EpisodeDetail {
+            id: e.id.raw(),
+            show_id: e.show.raw(),
+            season_id: e.season_id.raw(),
+            runtime_ms: e.runtime_ms(),
+            show_title: e.show_title,
+            season: e.number.season,
+            index: e.number.episode,
+            label: episode_label(e.number),
+            title: episode_title(e.title, e.number),
+            overview: e.overview,
+            poster: e.poster.map(Image::from),
+            backdrop: e.backdrop.map(Image::from),
+            thumb: e.thumb.map(Image::from),
+            versions: e.versions.into_iter().map(Version::from).collect(),
+            watch: e.watch.into(),
+            next: e.next.map(EpisodeRef::from),
+        }
+    }
+}
+
+impl From<nuvora_library::Episode> for Episode {
+    fn from(e: nuvora_library::Episode) -> Self {
+        Episode {
+            id: e.id.raw(),
+            index: e.number.episode,
+            runtime_ms: e.runtime_ms(),
+            label: episode_label(e.number),
+            title: episode_title(e.title, e.number),
+            thumb: e.thumb.map(Image::from),
+            watch: e.watch.into(),
+            versions: e.versions.into_iter().map(Version::from).collect(),
+        }
+    }
 }

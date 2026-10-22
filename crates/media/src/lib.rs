@@ -20,7 +20,7 @@ pub use artwork::{
 };
 pub use name::{
     EpisodeName, IdentityKey, MovieName, PARSE_VERSION, PathClass, ShowName, classify_path,
-    is_skipped_dir,
+    fold_for_sort, is_skipped_dir,
 };
 pub use playback::{AudioSupport, DeviceProfile, Incompatibility, PlaybackDecision, VideoSupport};
 pub use probe::{

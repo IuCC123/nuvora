@@ -13,14 +13,17 @@ use nuvora_media::{
 };
 use rusqlite::Connection;
 
+use crate::browse::{self, LibraryCursor, LibraryQuery};
+use crate::shows::{self, Episode, Season, Show};
 use crate::watch_state::{self, WatchState};
-use crate::{ArtworkId, FileId, ItemId, UserId};
+use crate::{ArtworkId, FileId, ItemId, LibraryId, UserId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ItemKind {
     Movie,
-    // Step 2: Show, Season, Episode. No DB change needed (item.kind has no CHECK
-    // list; `parent_id` and `index_number` already exist).
+    Show,
+    Season,
+    Episode,
 }
 
 /// The catalog revision: bumped by every write transaction that changes what a
@@ -56,6 +59,8 @@ pub struct Row {
     pub cards: Vec<Card>,
     /// `None` when `cards` is the whole row.
     pub next: Option<Cursor>,
+    /// The library's name, on a [`RowKind::Library`] row.
+    pub library_name: Option<String>,
 }
 
 /// A later page of one row, from [`Library::row`](crate::Library::row).
@@ -75,40 +80,19 @@ pub const MAX_ROW_LIMIT: u32 = 100;
 /// Adding a row is a variant here plus its arms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RowKind {
-    /// The user's items in progress, most recently watched first:
-    /// `updated_at DESC, id DESC`. On home only when non-empty.
+    /// The user's movies and episodes in progress, plus the next episode of
+    /// each show they are watching, most recent activity first:
+    /// `activity DESC, id DESC`. On home only when non-empty.
     ContinueWatching,
-    /// Newest first: `added_at DESC, id DESC`.
+    /// Movies, and shows by their newest episode, newest first:
+    /// `added DESC, id DESC`.
     RecentlyAdded,
-    /// By title: `sort_title COLLATE NOCASE, id`.
+    /// Every movie of every movie library by title: `sort_title COLLATE
+    /// NOCASE, id`. Not on home; kept for clients that page it.
     AllMovies,
-}
-
-impl RowKind {
-    /// Home order.
-    pub const ALL: [RowKind; 3] = [
-        RowKind::ContinueWatching,
-        RowKind::RecentlyAdded,
-        RowKind::AllMovies,
-    ];
-
-    /// The keyset `ORDER BY` over [`CARDS`]. The trailing id makes the order
-    /// total, so a page boundary between equal keys never skips or repeats a card.
-    pub(crate) const fn order_by(self) -> &'static str {
-        match self {
-            RowKind::ContinueWatching => "w.updated_at DESC, d.id DESC",
-            RowKind::RecentlyAdded => "d.added_at DESC, d.id DESC",
-            RowKind::AllMovies => "d.sort_title COLLATE NOCASE, d.id",
-        }
-    }
-
-    /// What the row adds to [`CARDS`]' `WHERE`.
-    const fn filter(self) -> &'static str {
-        match self {
-            RowKind::ContinueWatching => " AND w.position_ms IS NOT NULL",
-            RowKind::RecentlyAdded | RowKind::AllMovies => "",
-        }
-    }
+    /// One library's movies or shows, as its library page sorts them by
+    /// title. Home has one per library, in the order they were added.
+    Library(LibraryId),
 }
 
 /// An opaque keyset position inside one row: the sort key of the last card of
@@ -122,6 +106,7 @@ enum CursorKey {
     ContinueWatching { updated_at_ms: i64, id: ItemId },
     RecentlyAdded { added_at_ms: i64, id: ItemId },
     AllMovies { sort_title: String, id: ItemId },
+    Library(LibraryId, LibraryCursor),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -154,6 +139,10 @@ impl Cursor {
                     id: parse_id(id)?,
                 }
             }
+            (RowKind::Library(library), _) => CursorKey::Library(
+                library,
+                LibraryCursor::parse(&LibraryQuery::default(), raw)?,
+            ),
             _ => return Err(InvalidCursor),
         };
         Ok(Cursor(key))
@@ -164,6 +153,7 @@ impl Cursor {
             CursorKey::ContinueWatching { .. } => RowKind::ContinueWatching,
             CursorKey::RecentlyAdded { .. } => RowKind::RecentlyAdded,
             CursorKey::AllMovies { .. } => RowKind::AllMovies,
+            CursorKey::Library(library, _) => RowKind::Library(library),
         }
     }
 }
@@ -181,15 +171,16 @@ impl std::fmt::Display for Cursor {
                 write!(f, "t{}.", id.0)?;
                 sort_title.bytes().try_for_each(|b| write!(f, "{b:02x}"))
             }
+            CursorKey::Library(_, cursor) => cursor.fmt(f),
         }
     }
 }
 
-fn parse_id(s: &str) -> Result<ItemId, InvalidCursor> {
+pub(crate) fn parse_id(s: &str) -> Result<ItemId, InvalidCursor> {
     s.parse().map(ItemId).map_err(|_| InvalidCursor)
 }
 
-fn hex_decode_utf8(s: &str) -> Result<String, InvalidCursor> {
+pub(crate) fn hex_decode_utf8(s: &str) -> Result<String, InvalidCursor> {
     if !s.len().is_multiple_of(2) || !s.is_ascii() {
         return Err(InvalidCursor);
     }
@@ -200,7 +191,8 @@ fn hex_decode_utf8(s: &str) -> Result<String, InvalidCursor> {
     String::from_utf8(bytes).map_err(|_| InvalidCursor)
 }
 
-/// What a poster card needs, and nothing more.
+/// What a poster card needs, and nothing more. An episode card (in Continue
+/// Watching) carries its show's title, year and poster.
 #[derive(Debug, Clone)]
 pub struct Card {
     pub id: ItemId,
@@ -208,8 +200,48 @@ pub struct Card {
     pub title: String,
     pub year: Option<u16>,
     pub poster: Option<Artwork>,
-    /// The requesting user's.
+    /// The requesting user's. A show's is `watched` when every episode is.
     pub watch: WatchState,
+    /// What the card's second line says.
+    pub note: CardNote,
+    /// On episode cards: the show.
+    pub show: Option<ItemId>,
+    /// On show cards: episodes the requesting user has not watched.
+    pub unwatched: Option<u32>,
+}
+
+impl Card {
+    pub(crate) fn new(id: ItemId, kind: ItemKind, title: String, year: Option<u16>) -> Card {
+        Card {
+            id,
+            kind,
+            title,
+            year,
+            poster: None,
+            watch: WatchState::default(),
+            note: CardNote::None,
+            show: None,
+            unwatched: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardNote {
+    None,
+    /// An episode in progress.
+    Episode(EpisodeNumber),
+    /// The next episode of a show the user is watching, not started.
+    NextUp(EpisodeNumber),
+    /// A show in Recently Added: episodes added in the week before its newest.
+    NewEpisodes(u32),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct EpisodeNumber {
+    /// 0 for Specials.
+    pub season: u32,
+    pub episode: u32,
 }
 
 /// A stored artwork as clients see it: an id to build size URLs from, its
@@ -226,6 +258,9 @@ pub struct Artwork {
 #[derive(Debug, Clone)]
 pub enum Item {
     Movie(Movie),
+    Show(Show),
+    Season(Season),
+    Episode(Episode),
 }
 
 #[derive(Debug, Clone)]
@@ -247,10 +282,7 @@ pub struct Movie {
 impl Movie {
     /// Runtime of the first version. Derived, never stored.
     pub fn runtime_ms(&self) -> Option<u64> {
-        self.versions.first().and_then(|v| match &v.media {
-            VersionMedia::Probed { info, .. } => info.duration_ms,
-            VersionMedia::Unreadable { .. } => None,
-        })
+        runtime_ms(&self.versions)
     }
 }
 
@@ -290,12 +322,27 @@ pub(crate) fn rev(conn: &Connection) -> rusqlite::Result<CatalogRev> {
         .map(|rev| CatalogRev(rev as u64))
 }
 
-/// `rev`, then `row_page(kind, None, HOME_ROW_LIMIT)` for each of
-/// [`RowKind::ALL`], leaving out an empty Continue Watching.
+/// `rev`, then `row_page(kind, None, HOME_ROW_LIMIT)` for Continue Watching
+/// (left out when empty), Recently Added, and each library in the order
+/// they were added.
 pub(crate) fn home(conn: &Connection, user: UserId) -> rusqlite::Result<Home> {
     let rev = rev(conn)?;
-    let mut rows = Vec::with_capacity(RowKind::ALL.len());
-    for kind in RowKind::ALL {
+    let libraries: Vec<(i64, String)> = conn
+        .prepare_cached("SELECT id, name FROM library ORDER BY id")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    let kinds = [
+        (RowKind::ContinueWatching, None),
+        (RowKind::RecentlyAdded, None),
+    ]
+    .into_iter()
+    .chain(
+        libraries
+            .into_iter()
+            .map(|(id, name)| (RowKind::Library(LibraryId(id)), Some(name))),
+    );
+    let mut rows = Vec::new();
+    for (kind, library_name) in kinds {
         let (total, cards, next) = row_page(conn, kind, None, HOME_ROW_LIMIT, user)?;
         if kind == RowKind::ContinueWatching && total == 0 {
             continue;
@@ -305,6 +352,7 @@ pub(crate) fn home(conn: &Connection, user: UserId) -> rusqlite::Result<Home> {
             total,
             cards,
             next,
+            library_name,
         });
     }
     Ok(Home { rev, rows })
@@ -322,9 +370,13 @@ const CARDS: &str = "SELECT d.id, d.kind, d.title, d.year, d.added_at, d.sort_ti
 const CARD_COUNT: &str = "SELECT count(*) FROM item_display d \
     WHERE d.library_id IN (SELECT id FROM library WHERE kind = 'movies') AND d.missing_since IS NULL";
 
-const CONTINUE_COUNT: &str = "SELECT count(*) FROM watch_state w JOIN item_display d ON d.id = w.item_id \
-    WHERE w.user_id = ?1 AND w.position_ms IS NOT NULL \
-    AND d.library_id IN (SELECT id FROM library WHERE kind = 'movies') AND d.missing_since IS NULL";
+/// Present movies and shows, as `id` and `at`: a movie's added time, a
+/// show's newest episode's.
+const RECENT: &str = "WITH recent(id, at) AS ( \
+    SELECT id, added_at FROM item WHERE kind = 'movie' AND missing_since IS NULL \
+    UNION ALL \
+    SELECT se.parent_id, max(e.added_at) FROM item e JOIN item se ON se.id = e.parent_id \
+    WHERE e.kind = 'episode' AND e.missing_since IS NULL GROUP BY se.parent_id) ";
 
 #[cfg(test)]
 pub(crate) const CARDS_PLAN_RECENT: &str = "SELECT d.id FROM item_display d LEFT JOIN item_artwork p ON p.item_id = d.id AND p.role = 'poster' \
@@ -335,12 +387,8 @@ pub(crate) const CARDS_PLAN_TITLE: &str = "SELECT d.id FROM item_display d LEFT 
     WHERE d.library_id IN (SELECT id FROM library WHERE kind = 'movies') AND d.missing_since IS NULL \
     ORDER BY sort_title COLLATE NOCASE, id LIMIT 41";
 
-/// `SELECT ... FROM item_display d LEFT JOIN item_artwork p ON (p.item_id, p.role) = (d.id, 'poster')
-///  LEFT JOIN watch_state w ON (w.user_id, w.item_id) = (user, d.id)
-///  WHERE d.library_id IN (movie libraries) AND d.missing_since IS NULL <kind.filter()>
-///    AND (<sort key>) > (<cursor key>)  ORDER BY kind.order_by() LIMIT limit + 1`
-/// (the extra row decides `next`), plus `COUNT(*)` over the same predicate
-/// without the cursor. Statements via `prepare_cached`.
+/// One page of `kind` after `after`, with the row's total. The extra row
+/// fetched past `limit` decides `next`. Statements via `prepare_cached`.
 pub(crate) fn row_page(
     conn: &Connection,
     kind: RowKind,
@@ -348,50 +396,82 @@ pub(crate) fn row_page(
     limit: u32,
     user: UserId,
 ) -> rusqlite::Result<(u32, Vec<Card>, Option<Cursor>)> {
-    let total = match kind {
-        RowKind::ContinueWatching => conn
-            .prepare_cached(CONTINUE_COUNT)?
-            .query_row([user.0], |r| r.get::<_, i64>(0))?,
-        RowKind::RecentlyAdded | RowKind::AllMovies => conn
-            .prepare_cached(CARD_COUNT)?
-            .query_row([], |r| r.get::<_, i64>(0))?,
-    } as u32;
+    let wrong_cursor = || rusqlite::Error::InvalidParameterName("cursor is for another row".into());
+    match (kind, after.map(|c| &c.0)) {
+        (RowKind::ContinueWatching, None | Some(CursorKey::ContinueWatching { .. })) => {
+            let all = shows::continue_watching(conn, user)?;
+            let total = all.len() as u32;
+            let start = match after.map(|c| &c.0) {
+                Some(CursorKey::ContinueWatching { updated_at_ms, id }) => all
+                    .iter()
+                    .position(|(card, at)| (*at, card.id) < (*updated_at_ms, *id))
+                    .unwrap_or(all.len()),
+                _ => 0,
+            };
+            let mut page: Vec<(Card, i64)> = all
+                .into_iter()
+                .skip(start)
+                .take(limit as usize + 1)
+                .collect();
+            let next = (page.len() > limit as usize).then(|| {
+                page.truncate(limit as usize);
+                let (card, at) = page.last().expect("limit >= 1");
+                Cursor(CursorKey::ContinueWatching {
+                    updated_at_ms: *at,
+                    id: card.id,
+                })
+            });
+            Ok((
+                total,
+                page.into_iter().map(|(card, _)| card).collect(),
+                next,
+            ))
+        }
+        (RowKind::Library(library), None | Some(CursorKey::Library(..))) => {
+            let after = match after.map(|c| &c.0) {
+                Some(CursorKey::Library(cursor_library, cursor)) if *cursor_library == library => {
+                    Some(cursor)
+                }
+                Some(_) => return Err(wrong_cursor()),
+                None => None,
+            };
+            let page = browse::page(conn, library, &LibraryQuery::default(), after, limit, user)?;
+            Ok(page.map_or((0, Vec::new(), None), |page| {
+                (
+                    page.total,
+                    page.cards,
+                    page.next.map(|c| Cursor(CursorKey::Library(library, c))),
+                )
+            }))
+        }
+        (RowKind::RecentlyAdded, None | Some(CursorKey::RecentlyAdded { .. })) => {
+            recently_added(conn, after.map(|c| &c.0), limit, user)
+        }
+        (RowKind::AllMovies, None | Some(CursorKey::AllMovies { .. })) => {
+            all_movies(conn, after.map(|c| &c.0), limit, user)
+        }
+        _ => Err(wrong_cursor()),
+    }
+}
+
+/// `CARDS ORDER BY sort_title COLLATE NOCASE, id` after the cursor, plus
+/// `COUNT(*)` over the same predicate without it.
+fn all_movies(
+    conn: &Connection,
+    after: Option<&CursorKey>,
+    limit: u32,
+    user: UserId,
+) -> rusqlite::Result<(u32, Vec<Card>, Option<Cursor>)> {
+    let total = conn
+        .prepare_cached(CARD_COUNT)?
+        .query_row([], |r| r.get::<_, i64>(0))? as u32;
     let fetch = i64::from(limit) + 1;
-    let cards = format!("{CARDS}{}", kind.filter());
-    let (sql, params): (String, Vec<rusqlite::types::Value>) = match (kind, after.map(|c| &c.0)) {
-        (_, None) => (
-            format!("{cards} ORDER BY {} LIMIT ?2", kind.order_by()),
-            vec![user.0.into(), fetch.into()],
-        ),
-        (RowKind::ContinueWatching, Some(CursorKey::ContinueWatching { updated_at_ms, id })) => (
+    let order = "d.sort_title COLLATE NOCASE, d.id";
+    let (sql, params): (String, Vec<rusqlite::types::Value>) = match after {
+        Some(CursorKey::AllMovies { sort_title, id }) => (
             format!(
-                "{cards} AND (w.updated_at < ?2 OR (w.updated_at = ?2 AND d.id < ?3)) ORDER BY {} LIMIT ?4",
-                kind.order_by()
-            ),
-            vec![
-                user.0.into(),
-                (*updated_at_ms).into(),
-                id.0.into(),
-                fetch.into(),
-            ],
-        ),
-        (RowKind::RecentlyAdded, Some(CursorKey::RecentlyAdded { added_at_ms, id })) => (
-            format!(
-                "{cards} AND (d.added_at < ?2 OR (d.added_at = ?2 AND d.id < ?3)) ORDER BY {} LIMIT ?4",
-                kind.order_by()
-            ),
-            vec![
-                user.0.into(),
-                (*added_at_ms).into(),
-                id.0.into(),
-                fetch.into(),
-            ],
-        ),
-        (RowKind::AllMovies, Some(CursorKey::AllMovies { sort_title, id })) => (
-            format!(
-                "{cards} AND (d.sort_title COLLATE NOCASE > ?2 OR (d.sort_title COLLATE NOCASE = ?2 AND d.id > ?3)) \
-                 ORDER BY {} LIMIT ?4",
-                kind.order_by()
+                "{CARDS} AND (d.sort_title COLLATE NOCASE > ?2 OR (d.sort_title COLLATE NOCASE = ?2 AND d.id > ?3)) \
+                 ORDER BY {order} LIMIT ?4"
             ),
             vec![
                 user.0.into(),
@@ -400,15 +480,21 @@ pub(crate) fn row_page(
                 fetch.into(),
             ],
         ),
-        (_, Some(_)) => {
-            return Err(rusqlite::Error::InvalidParameterName(
-                "cursor is for another row".into(),
-            ));
-        }
+        _ => (
+            format!("{CARDS} ORDER BY {order} LIMIT ?2"),
+            vec![user.0.into(), fetch.into()],
+        ),
     };
-    let mut stmt = conn.prepare_cached(&sql)?;
-    let mut cards = stmt
-        .query_map(rusqlite::params_from_iter(params), |r| card(r, kind))?
+    let mut cards = conn
+        .prepare_cached(&sql)?
+        .query_map(rusqlite::params_from_iter(params), |r| {
+            let card = card(r)?;
+            let key = CursorKey::AllMovies {
+                sort_title: r.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                id: card.id,
+            };
+            Ok((card, key))
+        })?
         .collect::<rusqlite::Result<Vec<(Card, CursorKey)>>>()?;
     let next = (cards.len() > limit as usize).then(|| {
         cards.truncate(limit as usize);
@@ -421,37 +507,110 @@ pub(crate) fn row_page(
     ))
 }
 
-/// One `CARDS` row, plus the keyset position it occupies in `kind`'s order.
-fn card(r: &rusqlite::Row<'_>, kind: RowKind) -> rusqlite::Result<(Card, CursorKey)> {
-    let id = ItemId(r.get(0)?);
-    let card = Card {
-        id,
-        kind: item_kind(r.get_ref(1)?.as_str()?)?,
-        title: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
-        year: r.get(3)?,
-        poster: artwork(r, 6, ArtworkRole::Poster)?,
-        watch: watch_state::state_columns(r, 10)?,
+/// [`RECENT`] joined to the cards' columns, `ORDER BY at DESC, id DESC`
+/// after the cursor. Show cards get their counts from `shows`.
+fn recently_added(
+    conn: &Connection,
+    after: Option<&CursorKey>,
+    limit: u32,
+    user: UserId,
+) -> rusqlite::Result<(u32, Vec<Card>, Option<Cursor>)> {
+    let total = conn
+        .prepare_cached(&format!("{RECENT}SELECT count(*) FROM recent"))?
+        .query_row([], |r| r.get::<_, i64>(0))? as u32;
+    let fetch = i64::from(limit) + 1;
+    let select = format!(
+        "{RECENT}SELECT d.id, d.kind, d.title, d.year, r.at, d.sort_title, \
+         p.hash, p.width, p.height, p.placeholder, \
+         w.file_id, w.position_ms, w.duration_ms, w.play_count, w.last_watched_at, w.updated_at \
+         FROM recent r JOIN item_display d ON d.id = r.id \
+         LEFT JOIN item_artwork p ON p.item_id = d.id AND p.role = 'poster' \
+         LEFT JOIN watch_state w ON w.user_id = ?1 AND w.item_id = d.id"
+    );
+    let order = "ORDER BY r.at DESC, d.id DESC";
+    let (sql, params): (String, Vec<rusqlite::types::Value>) = match after {
+        Some(CursorKey::RecentlyAdded { added_at_ms, id }) => (
+            format!("{select} WHERE r.at < ?2 OR (r.at = ?2 AND d.id < ?3) {order} LIMIT ?4"),
+            vec![
+                user.0.into(),
+                (*added_at_ms).into(),
+                id.0.into(),
+                fetch.into(),
+            ],
+        ),
+        _ => (
+            format!("{select} {order} LIMIT ?2"),
+            vec![user.0.into(), fetch.into()],
+        ),
     };
-    let key = match kind {
-        RowKind::ContinueWatching => CursorKey::ContinueWatching {
-            updated_at_ms: r.get(15)?,
-            id,
-        },
-        RowKind::RecentlyAdded => CursorKey::RecentlyAdded {
-            added_at_ms: r.get(4)?,
-            id,
-        },
-        RowKind::AllMovies => CursorKey::AllMovies {
-            sort_title: r.get::<_, Option<String>>(5)?.unwrap_or_default(),
-            id,
-        },
-    };
-    Ok((card, key))
+    let mut cards = conn
+        .prepare_cached(&sql)?
+        .query_map(rusqlite::params_from_iter(params), |r| {
+            let card = card(r)?;
+            let key = CursorKey::RecentlyAdded {
+                added_at_ms: r.get(4)?,
+                id: card.id,
+            };
+            Ok((card, key))
+        })?
+        .collect::<rusqlite::Result<Vec<(Card, CursorKey)>>>()?;
+    let next = (cards.len() > limit as usize).then(|| {
+        cards.truncate(limit as usize);
+        Cursor(cards.last().expect("limit >= 1").1.clone())
+    });
+    let mut out = Vec::with_capacity(cards.len());
+    for (mut card, key) in cards {
+        if card.kind == ItemKind::Show {
+            let CursorKey::RecentlyAdded { added_at_ms, .. } = key else {
+                unreachable!("keys of this row")
+            };
+            shows::fill_show_card(conn, &mut card, user)?;
+            card.note = CardNote::NewEpisodes(shows::added_since(
+                conn,
+                card.id,
+                added_at_ms - shows::NEW_EPISODE_WINDOW_MS,
+            )?);
+        }
+        out.push(card);
+    }
+    Ok((total, out, next))
+}
+
+/// The card of one movie (or any item) by id, with `user`'s watch state.
+pub(crate) fn card_by_id(
+    conn: &Connection,
+    id: ItemId,
+    user: UserId,
+) -> rusqlite::Result<Option<Card>> {
+    use rusqlite::OptionalExtension;
+    conn.prepare_cached(
+        "SELECT d.id, d.kind, d.title, d.year, d.added_at, d.sort_title, \
+         p.hash, p.width, p.height, p.placeholder, \
+         w.file_id, w.position_ms, w.duration_ms, w.play_count, w.last_watched_at, w.updated_at \
+         FROM item_display d LEFT JOIN item_artwork p ON p.item_id = d.id AND p.role = 'poster' \
+         LEFT JOIN watch_state w ON w.user_id = ?1 AND w.item_id = d.id WHERE d.id = ?2",
+    )?
+    .query_row([user.0, id.0], card)
+    .optional()
+}
+
+/// One row in [`CARDS`]' column order: `id, kind, title, year, (4), (5),
+/// poster at 6..=9, watch state at 10..=14`.
+pub(crate) fn card(r: &rusqlite::Row<'_>) -> rusqlite::Result<Card> {
+    let mut card = Card::new(
+        ItemId(r.get(0)?),
+        item_kind(r.get_ref(1)?.as_str()?)?,
+        r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+        r.get(3)?,
+    );
+    card.poster = artwork(r, 6, ArtworkRole::Poster)?;
+    card.watch = watch_state::state_columns(r, 10)?;
+    Ok(card)
 }
 
 /// `hash, width, height, placeholder` starting at column `at`; all NULL when
 /// the LEFT JOIN found no artwork.
-fn artwork(
+pub(crate) fn artwork(
     r: &rusqlite::Row<'_>,
     at: usize,
     role: ArtworkRole,
@@ -471,19 +630,20 @@ fn artwork(
     }))
 }
 
-fn item_kind(name: &str) -> rusqlite::Result<ItemKind> {
+pub(crate) fn item_kind(name: &str) -> rusqlite::Result<ItemKind> {
     match name {
         "movie" => Ok(ItemKind::Movie),
+        "show" => Ok(ItemKind::Show),
+        "season" => Ok(ItemKind::Season),
+        "episode" => Ok(ItemKind::Episode),
         other => Err(rusqlite::Error::InvalidParameterName(format!(
             "item kind {other:?}"
         ))),
     }
 }
 
-/// Three statements: the item (+ poster/backdrop), its files, all their streams
-/// (`WHERE file_id IN (...)` ordered by file, index). Rows are parsed into
-/// `MediaInfo` here (codec strings via `from_name`), then `device.decide()`
-/// runs per version. The row -> domain mapping exists only in this file.
+/// The item (+ poster/backdrop), then by kind: a movie's versions, or the
+/// show, season or episode read from `shows`.
 pub(crate) fn item(
     conn: &Connection,
     id: ItemId,
@@ -512,10 +672,47 @@ pub(crate) fn item(
             ))
         })
         .optional()?;
-    let Some((ItemKind::Movie, title, year, overview, added_at_ms, poster, backdrop)) = head else {
+    let Some((kind, title, year, overview, added_at_ms, poster, backdrop)) = head else {
         return Ok(None);
     };
+    match kind {
+        ItemKind::Movie => {}
+        ItemKind::Show => return Ok(Some(Item::Show(shows::show(conn, id, user)?))),
+        ItemKind::Season => return Ok(shows::season(conn, id, user)?.map(Item::Season)),
+        ItemKind::Episode => {
+            return Ok(shows::episode(conn, id, device, user)?.map(Item::Episode));
+        }
+    }
+    Ok(Some(Item::Movie(Movie {
+        id,
+        title,
+        year,
+        overview,
+        added_at: SystemTime::UNIX_EPOCH + Duration::from_millis(added_at_ms.max(0) as u64),
+        poster,
+        backdrop,
+        versions: versions(conn, id, device)?,
+        watch: watch_state::load(conn, user, id)?,
+    })))
+}
 
+/// Runtime of the first (best) version. Derived, never stored.
+pub(crate) fn runtime_ms(versions: &[Version]) -> Option<u64> {
+    versions.first().and_then(|v| match &v.media {
+        VersionMedia::Probed { info, .. } => info.duration_ms,
+        VersionMedia::Unreadable { .. } => None,
+    })
+}
+
+/// Every file of `id`, best first. Two statements: its files, then all
+/// their streams (ordered by file, index). Rows are parsed into `MediaInfo`
+/// here (codec strings via `from_name`), then `device.decide()` runs per
+/// version. The row -> domain mapping exists only in this file.
+pub(crate) fn versions(
+    conn: &Connection,
+    id: ItemId,
+    device: &DeviceProfile,
+) -> rusqlite::Result<Vec<Version>> {
     struct FileRow {
         id: FileId,
         rel_path: String,
@@ -601,18 +798,7 @@ pub(crate) fn item(
         })
         .collect();
     versions.sort_by_key(|v| std::cmp::Reverse(version_rank(v)));
-
-    Ok(Some(Item::Movie(Movie {
-        id,
-        title,
-        year,
-        overview,
-        added_at: SystemTime::UNIX_EPOCH + Duration::from_millis(added_at_ms.max(0) as u64),
-        poster,
-        backdrop,
-        versions,
-        watch: watch_state::load(conn, user, id)?,
-    })))
+    Ok(versions)
 }
 
 /// Best first: playable before not, then height, then bitrate.
@@ -782,7 +968,10 @@ mod tests {
         assert_eq!(home.rev.get(), 1);
         assert_eq!(
             home.rows.iter().map(|r| r.kind).collect::<Vec<_>>(),
-            [RowKind::RecentlyAdded, RowKind::AllMovies],
+            [
+                RowKind::RecentlyAdded,
+                RowKind::Library(crate::LibraryId(1))
+            ],
             "no Continue Watching without progress"
         );
         for row in &home.rows {
@@ -826,7 +1015,10 @@ mod tests {
     #[tokio::test]
     async fn paging_through_a_row_neither_skips_nor_repeats() {
         let (_dir, db) = seeded(50).await;
-        for kind in [RowKind::RecentlyAdded, RowKind::AllMovies] {
+        for kind in [
+            RowKind::RecentlyAdded,
+            RowKind::Library(crate::LibraryId(1)),
+        ] {
             let mut seen = Vec::new();
             let mut after: Option<Cursor> = None;
             loop {
@@ -857,7 +1049,9 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        let Item::Movie(movie) = found;
+        let Item::Movie(movie) = found else {
+            panic!("a movie")
+        };
         assert_eq!(
             (movie.title.as_str(), movie.year),
             ("A Movie 0000", Some(2000))

@@ -67,7 +67,7 @@ export interface paths {
         delete: operations["delete_library"];
         options?: never;
         head?: never;
-        /** Starts a scan when `paths` changed. */
+        /** Starts a scan when `paths` or `kind` changed. */
         patch: operations["update_library"];
         trace?: never;
     };
@@ -452,7 +452,8 @@ export interface paths {
         };
         /**
          * Keyset paging on the row's sort key. A malformed cursor, or one from
-         *     another row, is 400. Per user, with the same ETag as home.
+         *     another row (or library), is 400. Per user, with the same ETag as home.
+         *     A library row needs `?library=`; an unknown library is an empty row.
          */
         get: operations["get_row"];
         put?: never;

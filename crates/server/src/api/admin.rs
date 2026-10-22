@@ -213,16 +213,7 @@ pub(super) async fn create_library(
 ) -> Result<(StatusCode, Json<AdminLibrary>), ApiError> {
     let name = valid_library_name(&body.name)?;
     let roots = valid_folders(body.paths).await?;
-    let kind = match body.kind {
-        LibraryKind::Movies => nuvora_library::LibraryKind::Movies,
-        LibraryKind::Shows => {
-            return Err(ApiError::new(
-                StatusCode::NOT_IMPLEMENTED,
-                super::ErrorCode::Internal,
-                "Not implemented yet",
-            ));
-        }
-    };
+    let kind = body.kind.into();
     let library = state
         .library
         .create_library(name, kind, roots)
@@ -232,7 +223,7 @@ pub(super) async fn create_library(
     Ok((StatusCode::CREATED, Json(admin_library(library).await)))
 }
 
-/// Starts a scan when `paths` changed.
+/// Starts a scan when `paths` or `kind` changed.
 #[utoipa::path(
     patch,
     path = "/api/admin/libraries/{id}",
@@ -249,13 +240,6 @@ pub(super) async fn update_library(
     Path(id): Path<i64>,
     JsonBody(body): JsonBody<UpdateLibraryRequest>,
 ) -> Result<Json<AdminLibrary>, ApiError> {
-    if body.kind.is_some() {
-        return Err(ApiError::new(
-            StatusCode::NOT_IMPLEMENTED,
-            super::ErrorCode::Internal,
-            "Not implemented yet",
-        ));
-    }
     let name = body.name.as_deref().map(valid_library_name).transpose()?;
     let roots = match body.paths {
         Some(paths) => Some(valid_folders(paths).await?),
@@ -263,7 +247,13 @@ pub(super) async fn update_library(
     };
     let (library, folders_changed) = state
         .library
-        .update_library(LibraryId::from_raw(id), name, roots, state.auth.now_ms())
+        .update_library(
+            LibraryId::from_raw(id),
+            name,
+            roots,
+            body.kind.map(LibraryKind::into),
+            state.auth.now_ms(),
+        )
         .await
         .map_err(library_error)?;
     if folders_changed {
@@ -530,9 +520,7 @@ async fn admin_library(library: LibraryInfo) -> AdminLibrary {
     AdminLibrary {
         id: library.id.raw(),
         name: library.name,
-        kind: match library.kind {
-            nuvora_library::LibraryKind::Movies => LibraryKind::Movies,
-        },
+        kind: library.kind.into(),
         paths: library
             .roots
             .iter()
@@ -540,6 +528,24 @@ async fn admin_library(library: LibraryInfo) -> AdminLibrary {
             .collect(),
         item_count: library.item_count,
         missing_paths: missing.iter().map(|p| p.display().to_string()).collect(),
+    }
+}
+
+impl From<LibraryKind> for nuvora_library::LibraryKind {
+    fn from(kind: LibraryKind) -> Self {
+        match kind {
+            LibraryKind::Movies => nuvora_library::LibraryKind::Movies,
+            LibraryKind::Shows => nuvora_library::LibraryKind::Shows,
+        }
+    }
+}
+
+impl From<nuvora_library::LibraryKind> for LibraryKind {
+    fn from(kind: nuvora_library::LibraryKind) -> Self {
+        match kind {
+            nuvora_library::LibraryKind::Movies => LibraryKind::Movies,
+            nuvora_library::LibraryKind::Shows => LibraryKind::Shows,
+        }
     }
 }
 
@@ -908,7 +914,14 @@ mod tests {
         }
         assert_eq!(libraries[1]["item_count"], 1, "{libraries}");
         let home = app.get("/api/home", &admin).await.json();
-        assert_eq!(home["rows"][1]["items"][0]["title"], "Big Buck");
+        assert_eq!(
+            (
+                &home["rows"][2]["library_id"],
+                &home["rows"][2]["items"][0]["title"]
+            ),
+            (&created["id"], &json!("Big Buck")),
+            "the new library has its own row"
+        );
 
         let again = app
             .call(
@@ -935,7 +948,8 @@ mod tests {
             .await;
         assert_eq!(deleted.status, StatusCode::NO_CONTENT);
         let home = app.get("/api/home", &admin).await.json();
-        assert_eq!(home["rows"][1]["total"], 0);
+        assert_eq!(home["rows"][0]["total"], 0, "nothing recently added");
+        assert_eq!(home["rows"].as_array().unwrap().len(), 2, "its row is gone");
         assert!(movie.is_file(), "files on disk are untouched");
     }
 

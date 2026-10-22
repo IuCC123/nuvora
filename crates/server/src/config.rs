@@ -18,7 +18,7 @@
 //! [[library]]
 //! key = "movies"                   # stable identity; renaming `name` keeps ids
 //! name = "Movies"
-//! kind = "movies"
+//! kind = "movies"                  # or "shows" (TV Shows)
 //! paths = ["/Volumes/Media/Movies"]
 //! ```
 
@@ -145,6 +145,7 @@ pub fn load(args: &ServeArgs) -> Result<Config, ConfigError> {
         }
         let kind = match lib.kind.as_deref().unwrap_or(MOVIES_KEY) {
             MOVIES_KEY => LibraryKind::Movies,
+            "shows" => LibraryKind::Shows,
             other => {
                 return Err(ConfigError::UnknownKind {
                     key: lib.key,
@@ -391,7 +392,7 @@ mod tests {
         let toml = dir.path().join("kind.toml");
         std::fs::write(
             &toml,
-            "[[library]]\nkey = \"s\"\nkind = \"shows\"\npaths = []\n",
+            "[[library]]\nkey = \"s\"\nkind = \"music\"\npaths = []\n",
         )
         .unwrap();
         assert!(matches!(

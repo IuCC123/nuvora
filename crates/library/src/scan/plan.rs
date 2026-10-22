@@ -5,7 +5,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use nuvora_media::{ArtworkRole, PROBE_VERSION};
+use nuvora_media::{ArtworkRole, PARSE_VERSION, PROBE_VERSION};
 
 use super::walk::{DiskFile, RelPath, RootId, RootWalk};
 use crate::{FileId, ItemId};
@@ -20,6 +20,7 @@ pub(crate) struct KnownFile {
     pub mtime_ns: i64,
     pub fingerprint: [u8; 16],
     pub probe_version: u32,
+    pub parse_version: u32,
 }
 
 /// A file to (re)read with ffprobe and upsert.
@@ -52,6 +53,9 @@ pub(crate) struct ScanPlan {
     /// is wrong.
     pub future: Vec<RelPath>,
     pub to_probe: Vec<ProbeJob>,
+    /// Unchanged files placed by an older parser: placed again from their
+    /// names, without a probe. Also counted in `unchanged`.
+    pub reparse: Vec<FileId>,
     pub moved: Vec<Move>,
     /// Stored files absent from a *completely* walked part of a root whose
     /// removals are allowed this scan.
@@ -69,7 +73,8 @@ pub(crate) struct ScanPlan {
 const CLOCK_SKEW: Duration = Duration::from_secs(60);
 
 /// Diff stored files against walks. Rules:
-/// - same path, same (size, mtime) and current probe_version => unchanged;
+/// - same path, same (size, mtime) and current probe_version => unchanged,
+///   and also reparse when its parse_version is stale;
 /// - same path, different (size, mtime) or stale probe_version => to_probe(existing);
 /// - path only on disk => to_probe(new), candidate for move pairing;
 /// - path only in store, under a complete root that is not held and not under
@@ -127,6 +132,9 @@ pub(crate) fn diff(
                         && k.probe_version == PROBE_VERSION =>
                 {
                     plan.unchanged += 1;
+                    if k.parse_version != PARSE_VERSION {
+                        plan.reparse.push(k.id);
+                    }
                 }
                 _ => plan.to_probe.push(ProbeJob {
                     root: walk.root,
@@ -276,7 +284,22 @@ impl WantedSource {
 #[derive(Debug, Clone)]
 pub(crate) struct ItemFiles {
     pub item: ItemId,
+    pub kind: ArtKind,
+    /// A show's are its first episode's (in order), for the frame backdrop.
     pub files: Vec<FileForArtwork>,
+}
+
+/// What artwork an item takes, and from where.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ArtKind {
+    /// Poster and backdrop from the movie's folder, else a frame backdrop.
+    Movie,
+    /// A thumbnail only (the backdrop role): `<video stem>-thumb`, else a
+    /// frame at 10%.
+    Episode,
+    /// Poster and backdrop from generic names in the show's folder (the first
+    /// folder all its episodes share), else a frame of its first episode.
+    Show { folder: Option<RelPath> },
 }
 
 #[derive(Debug, Clone)]
@@ -293,6 +316,38 @@ pub(crate) struct FileForArtwork {
 
 const POSTER_NAMES: &[&str] = &["poster", "folder", "cover"];
 const BACKDROP_NAMES: &[&str] = &["fanart", "backdrop", "background"];
+
+/// The local image in `candidates` with one of `names`.
+fn local_image(
+    root: RootId,
+    candidates: Option<&Vec<(String, &DiskFile)>>,
+    names: &[&str],
+) -> Option<LocalImage> {
+    let (_, image) = candidates?
+        .iter()
+        .find(|(stem, _)| names.contains(&stem.as_str()))?;
+    Some(LocalImage {
+        root,
+        rel: image.rel.clone(),
+        size: image.size,
+        mtime_ns: image.mtime_ns,
+    })
+}
+
+/// A frame at 10% of the item's best SDR file (tallest, then oldest).
+fn frame_of(files: &[FileForArtwork]) -> Option<WantedSource> {
+    let best = files
+        .iter()
+        .filter(|f| f.sdr)
+        .max_by_key(|f| (f.height, std::cmp::Reverse(f.id)))?;
+    Some(WantedSource::Frame {
+        file: best.id,
+        root: best.root,
+        rel: best.rel.clone(),
+        fingerprint: best.fingerprint,
+        at_ms: best.duration_ms.unwrap_or(0) / 10,
+    })
+}
 
 /// The artwork every present item should have, from the walked images and the
 /// items' files. An item with a file under a held root or an unreadable folder
@@ -334,6 +389,38 @@ pub(crate) fn wanted_artwork(
         .iter()
         .filter(|item| !item.files.iter().any(unknown))
         .map(|item| {
+            match &item.kind {
+                ArtKind::Movie => {}
+                ArtKind::Episode => {
+                    let thumb = item.files.iter().find_map(|file| {
+                        let (folder, stem) = file.rel.folder_and_stem();
+                        let names = [format!("{stem}-thumb")];
+                        let names: Vec<&str> = names.iter().map(String::as_str).collect();
+                        local_image(file.root, images.get(&(file.root, folder)), &names)
+                    });
+                    return WantedArtwork {
+                        item: item.item,
+                        poster: None,
+                        backdrop: thumb
+                            .map(WantedSource::Local)
+                            .or_else(|| frame_of(&item.files)),
+                    };
+                }
+                ArtKind::Show { folder } => {
+                    let root = item.files.first().map(|f| f.root);
+                    let candidates = root
+                        .zip(folder.as_ref())
+                        .and_then(|(root, folder)| images.get(&(root, folder.0.as_str())));
+                    let root = root.unwrap_or(RootId(0));
+                    return WantedArtwork {
+                        item: item.item,
+                        poster: local_image(root, candidates, POSTER_NAMES),
+                        backdrop: local_image(root, candidates, BACKDROP_NAMES)
+                            .map(WantedSource::Local)
+                            .or_else(|| frame_of(&item.files)),
+                    };
+                }
+            }
             let mut poster = None;
             let mut backdrop = None;
             for file in &item.files {
@@ -365,20 +452,7 @@ pub(crate) fn wanted_artwork(
                     .map(WantedSource::Local)
                 });
             }
-            let backdrop = backdrop.or_else(|| {
-                let best = item
-                    .files
-                    .iter()
-                    .filter(|f| f.sdr)
-                    .max_by_key(|f| (f.height, std::cmp::Reverse(f.id)))?;
-                Some(WantedSource::Frame {
-                    file: best.id,
-                    root: best.root,
-                    rel: best.rel.clone(),
-                    fingerprint: best.fingerprint,
-                    at_ms: best.duration_ms.unwrap_or(0) / 10,
-                })
-            });
+            let backdrop = backdrop.or_else(|| frame_of(&item.files));
             WantedArtwork {
                 item: item.item,
                 poster,
@@ -484,6 +558,7 @@ mod tests {
             mtime_ns: NOW_NS - 86_400_000_000_000,
             fingerprint: FP,
             probe_version: PROBE_VERSION,
+            parse_version: PARSE_VERSION,
         }
     }
 
@@ -739,14 +814,17 @@ mod tests {
     fn wanted_artwork_follows_the_folder_rule() {
         let items = vec![
             ItemFiles {
+                kind: ArtKind::Movie,
                 item: ItemId(1),
                 files: vec![file(1, "Alien (1979)/Alien (1979).mkv", true, 1080)],
             },
             ItemFiles {
+                kind: ArtKind::Movie,
                 item: ItemId(2),
                 files: vec![file(2, "Loose/Heat.1995.mkv", true, 720)],
             },
             ItemFiles {
+                kind: ArtKind::Movie,
                 item: ItemId(3),
                 files: vec![
                     file(3, "Loose/Ronin.1998.mkv", true, 1080),
@@ -754,6 +832,7 @@ mod tests {
                 ],
             },
             ItemFiles {
+                kind: ArtKind::Movie,
                 item: ItemId(4),
                 files: vec![file(5, "HDR (2020)/HDR (2020).mkv", false, 2160)],
             },
@@ -810,10 +889,12 @@ mod tests {
     fn artwork_is_not_planned_for_items_under_held_or_unreadable_folders() {
         let items = vec![
             ItemFiles {
+                kind: ArtKind::Movie,
                 item: ItemId(1),
                 files: vec![file(1, "Alien (1979)/Alien (1979).mkv", true, 1080)],
             },
             ItemFiles {
+                kind: ArtKind::Movie,
                 item: ItemId(2),
                 files: vec![file(2, "Locked (2001)/Locked (2001).mkv", true, 1080)],
             },

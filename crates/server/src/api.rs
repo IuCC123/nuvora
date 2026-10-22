@@ -46,8 +46,8 @@ use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH, VARY}
 use axum::http::{HeaderMap, HeaderValue, StatusCode, request::Parts};
 use axum::response::{IntoResponse, Response};
 use nuvora_library::{
-    ArtworkId, CatalogRev, Cursor, FileId, HOME_ROW_LIMIT, ItemId, Library, ScanPhase, ScanState,
-    ScanStatus, VersionMedia, WatchRev,
+    ArtworkId, CatalogRev, Cursor, FileId, HOME_ROW_LIMIT, ItemId, Library, LibraryId, ScanPhase,
+    ScanState, ScanStatus, VersionMedia, WatchRev,
 };
 use nuvora_media::{
     AudioCodec, AudioSupport, Container, DeviceProfile, HdrFormat, Incompatibility, MediaInfo,
@@ -300,19 +300,8 @@ pub enum RowKind {
     Library,
 }
 
-impl From<RowKind> for nuvora_library::RowKind {
-    fn from(k: RowKind) -> Self {
-        match k {
-            RowKind::ContinueWatching => nuvora_library::RowKind::ContinueWatching,
-            RowKind::RecentlyAdded => nuvora_library::RowKind::RecentlyAdded,
-            RowKind::AllMovies | RowKind::Library => nuvora_library::RowKind::AllMovies,
-        }
-    }
-}
-
 #[derive(Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
-#[expect(dead_code, reason = "contract first; the implementation follows")]
 pub struct RowQuery {
     /// `next` from the previous page; absent = from the start.
     pub after: Option<String>,
@@ -325,7 +314,6 @@ pub struct RowQuery {
 
 #[derive(Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-#[expect(dead_code, reason = "contract first; the implementation follows")]
 pub enum ItemKind {
     Movie,
     Show,
@@ -391,7 +379,6 @@ impl From<ImageSize> for nuvora_media::ImageSize {
 
 #[derive(Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-#[expect(dead_code, reason = "contract first; the implementation follows")]
 pub enum ItemDetail {
     Movie(MovieDetail),
     Show(browse::ShowDetail),
@@ -621,7 +608,8 @@ async fn get_home(
 }
 
 /// Keyset paging on the row's sort key. A malformed cursor, or one from
-/// another row, is 400. Per user, with the same ETag as home.
+/// another row (or library), is 400. Per user, with the same ETag as home.
+/// A library row needs `?library=`; an unknown library is an empty row.
 #[utoipa::path(
     get,
     path = "/api/rows/{row}",
@@ -638,14 +626,16 @@ async fn get_row(
     if if_none_match(&headers, &rev_etag(lib.rev(), me.watch_rev)) {
         return Ok(StatusCode::NOT_MODIFIED.into_response());
     }
-    if let RowKind::Library = row {
-        return Err(ApiError::new(
-            StatusCode::NOT_IMPLEMENTED,
-            ErrorCode::Internal,
-            "Not implemented yet",
-        ));
-    }
-    let kind: nuvora_library::RowKind = row.into();
+    let kind = match row {
+        RowKind::ContinueWatching => nuvora_library::RowKind::ContinueWatching,
+        RowKind::RecentlyAdded => nuvora_library::RowKind::RecentlyAdded,
+        RowKind::AllMovies => nuvora_library::RowKind::AllMovies,
+        RowKind::Library => nuvora_library::RowKind::Library(LibraryId::from_raw(
+            query
+                .library
+                .ok_or_else(|| ApiError::validation("library", "A library row needs ?library="))?,
+        )),
+    };
     let after = query
         .after
         .as_deref()
@@ -787,12 +777,14 @@ async fn post_scan(State(lib): State<Library>) -> (StatusCode, Json<ScanStatusRe
 
 // ----------------------------------------------------------------- mapping
 
-/// Row titles are display strings, so they live here, not in the catalog.
-fn row_title(kind: nuvora_library::RowKind) -> &'static str {
-    match kind {
-        nuvora_library::RowKind::ContinueWatching => "Continue Watching",
-        nuvora_library::RowKind::RecentlyAdded => "Recently Added",
-        nuvora_library::RowKind::AllMovies => "All Movies",
+/// Row titles are display strings, so they live here, not in the catalog;
+/// a library row is titled with the library's name.
+fn row_title(row: &nuvora_library::Row) -> String {
+    match row.kind {
+        nuvora_library::RowKind::ContinueWatching => "Continue Watching".into(),
+        nuvora_library::RowKind::RecentlyAdded => "Recently Added".into(),
+        nuvora_library::RowKind::AllMovies => "All Movies".into(),
+        nuvora_library::RowKind::Library(_) => row.library_name.clone().unwrap_or_default(),
     }
 }
 
@@ -848,11 +840,14 @@ impl From<nuvora_library::Home> for HomeResponse {
             .into_iter()
             .map(|row| HomeRow {
                 kind: row.kind.into(),
-                title: row_title(row.kind).to_owned(),
+                title: row_title(&row),
                 total: row.total,
+                library_id: match row.kind {
+                    nuvora_library::RowKind::Library(id) => Some(id.raw()),
+                    _ => None,
+                },
                 items: row.cards.into_iter().map(PosterCard::from).collect(),
                 next: row.next.map(|c| c.to_string()),
-                library_id: None,
             })
             .collect();
         HomeResponse { rows }
@@ -865,6 +860,18 @@ impl From<nuvora_library::RowKind> for RowKind {
             nuvora_library::RowKind::ContinueWatching => RowKind::ContinueWatching,
             nuvora_library::RowKind::RecentlyAdded => RowKind::RecentlyAdded,
             nuvora_library::RowKind::AllMovies => RowKind::AllMovies,
+            nuvora_library::RowKind::Library(_) => RowKind::Library,
+        }
+    }
+}
+
+impl From<nuvora_library::ItemKind> for ItemKind {
+    fn from(kind: nuvora_library::ItemKind) -> Self {
+        match kind {
+            nuvora_library::ItemKind::Movie => ItemKind::Movie,
+            nuvora_library::ItemKind::Show => ItemKind::Show,
+            nuvora_library::ItemKind::Season => ItemKind::Season,
+            nuvora_library::ItemKind::Episode => ItemKind::Episode,
         }
     }
 }
@@ -873,9 +880,10 @@ impl From<nuvora_library::Card> for PosterCard {
     fn from(card: nuvora_library::Card) -> Self {
         PosterCard {
             id: card.id.raw(),
-            kind: match card.kind {
-                nuvora_library::ItemKind::Movie => ItemKind::Movie,
-            },
+            kind: card.kind.into(),
+            subtitle: browse::card_subtitle(card.note),
+            show_id: card.show.map(ItemId::raw),
+            unwatched_count: card.unwatched,
             title: card.title,
             year: card.year,
             poster: card.poster.map(Image::from),
@@ -884,9 +892,6 @@ impl From<nuvora_library::Card> for PosterCard {
                 .resume
                 .map(|r| (r.position_ms as f64 / r.duration_ms.max(1) as f64).min(1.0) as f32),
             watched: card.watch.watched(),
-            subtitle: None,
-            show_id: None,
-            unwatched_count: None,
         }
     }
 }
@@ -915,6 +920,9 @@ impl From<nuvora_library::Item> for ItemDetail {
                 versions: movie.versions.into_iter().map(Version::from).collect(),
                 watch: movie.watch.into(),
             }),
+            nuvora_library::Item::Show(show) => ItemDetail::Show(show.into()),
+            nuvora_library::Item::Season(season) => ItemDetail::Season(season.into()),
+            nuvora_library::Item::Episode(episode) => ItemDetail::Episode(episode.into()),
         }
     }
 }
@@ -1506,7 +1514,11 @@ mod tests {
         );
         let json = reply.json();
         assert_eq!(json["rows"][0]["kind"], "recently_added");
-        assert_eq!(json["rows"][1]["title"], "All Movies");
+        assert_eq!(
+            (&json["rows"][1]["kind"], &json["rows"][1]["title"]),
+            (&serde_json::json!("library"), &serde_json::json!("Movies"))
+        );
+        assert_eq!(json["rows"][1]["library_id"], 1);
         assert_eq!(json["rows"][1]["total"], 0);
         let request = axum::http::Request::builder()
             .uri("/api/home")

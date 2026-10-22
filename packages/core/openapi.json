@@ -314,7 +314,7 @@
         ]
       },
       "patch": {
-        "summary": "Starts a scan when `paths` changed.",
+        "summary": "Starts a scan when `paths` or `kind` changed.",
         "operationId": "update_library",
         "parameters": [
           {
@@ -1803,7 +1803,7 @@
     },
     "/api/rows/{row}": {
       "get": {
-        "summary": "Keyset paging on the row's sort key. A malformed cursor, or one from\nanother row, is 400. Per user, with the same ETag as home.",
+        "summary": "Keyset paging on the row's sort key. A malformed cursor, or one from\nanother row (or library), is 400. Per user, with the same ETag as home.\nA library row needs `?library=`; an unknown library is an empty row.",
         "operationId": "get_row",
         "parameters": [
           {

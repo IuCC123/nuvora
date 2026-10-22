@@ -230,6 +230,19 @@ impl MovieName {
     }
 }
 
+/// `title` lowercased with diacritics folded (`Amélie` -> `amelie`), for
+/// sorting and for grouping by first letter: `Ñ` files under N, not after Z.
+pub fn fold_for_sort(title: &str) -> String {
+    let mut out = String::with_capacity(title.len());
+    for c in title.chars() {
+        match fold_diacritic(c) {
+            Some(folded) => out.push_str(folded),
+            None => out.extend(c.to_lowercase()),
+        }
+    }
+    out
+}
+
 fn title_key(title: &str, year: Option<u16>) -> String {
     let mut key = String::with_capacity(title.len() + 5);
     for c in title.chars() {

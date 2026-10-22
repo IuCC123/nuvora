@@ -6,10 +6,14 @@
 //! the server crate cannot name them, so it cannot bypass the catalog's rules.
 
 mod accounts;
+mod browse;
 mod db;
 mod ids;
 mod libraries;
 mod scan;
+mod shows;
+#[cfg(test)]
+mod shows_tests;
 mod store;
 #[cfg(test)]
 mod test_support;
@@ -27,12 +31,18 @@ use tokio::sync::watch;
 pub use accounts::{
     AccountError, Credentials, NewUser, Role, Session, TokenHash, User, UserChanges,
 };
+pub use browse::{
+    GroupKey, IndexGroup, LibraryCursor, LibraryPage, LibraryQuery, Order, Resolution, Sort,
+    WatchFilter,
+};
 pub use ids::{ArtworkId, FileId, ItemId, LibraryId, ParseIdError, UserId};
 pub use libraries::{LibraryError, LibraryInfo};
 pub use scan::{ScanIssue, ScanPhase, ScanProgress, ScanState, ScanStatus, ScanSummary};
+pub use shows::{Episode, EpisodeRef, Season, SeasonSummary, Show};
 pub use views::{
-    Artwork, Card, CatalogRev, Cursor, HOME_ROW_LIMIT, Home, InvalidCursor, Item, ItemKind,
-    MAX_ROW_LIMIT, Movie, Row, RowKind, RowPage, StreamSource, Version, VersionMedia,
+    Artwork, Card, CardNote, CatalogRev, Cursor, EpisodeNumber, HOME_ROW_LIMIT, Home,
+    InvalidCursor, Item, ItemKind, MAX_ROW_LIMIT, Movie, Row, RowKind, RowPage, StreamSource,
+    Version, VersionMedia,
 };
 pub use watch_state::{Resume, WatchError, WatchEvent, WatchRev, WatchState};
 
@@ -66,6 +76,26 @@ pub struct LibrarySpec {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LibraryKind {
     Movies,
+    /// TV Shows: every file is an episode, grouped into seasons and shows.
+    Shows,
+}
+
+impl LibraryKind {
+    /// The `library.kind` column.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            LibraryKind::Movies => "movies",
+            LibraryKind::Shows => "shows",
+        }
+    }
+
+    pub(crate) fn from_name(name: &str) -> Option<LibraryKind> {
+        match name {
+            "movies" => Some(LibraryKind::Movies),
+            "shows" => Some(LibraryKind::Shows),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -82,6 +112,9 @@ pub enum OpenError {
 #[derive(Debug, thiserror::Error)]
 #[error("catalog query failed: {0}")]
 pub struct QueryError(#[from] db::DbError);
+
+/// Upper bound on a library page; larger requests are clamped.
+pub const MAX_LIBRARY_LIMIT: u32 = 200;
 
 /// Read-only connections in the pool; home and item reads are short, so a
 /// handful covers a houseful of clients.
@@ -208,6 +241,69 @@ impl Library {
             .await?)
     }
 
+    /// The cards of library `id` matching `query` after `after` (`None` =
+    /// from the start), `limit` clamped to `1..=MAX_LIBRARY_LIMIT`. `None`
+    /// when the library does not exist. `after` comes from
+    /// [`LibraryCursor::parse`] with the same query.
+    pub async fn library_items(
+        &self,
+        id: LibraryId,
+        query: LibraryQuery,
+        after: Option<LibraryCursor>,
+        limit: u32,
+        user: UserId,
+    ) -> Result<Option<LibraryPage>, QueryError> {
+        let limit = limit.clamp(1, MAX_LIBRARY_LIMIT);
+        Ok(self
+            .inner
+            .db
+            .read(move |c| {
+                let rev = views::rev(c)?;
+                let page = browse::page(c, id, &query, after.as_ref(), limit, user)?;
+                Ok(page.map(|p| LibraryPage {
+                    rev,
+                    total: p.total,
+                    cards: p.cards,
+                    next: p.next,
+                }))
+            })
+            .await?)
+    }
+
+    /// The group headers of library `id` for `query`, with the catalog rev
+    /// they were read at. `None` when the library does not exist.
+    pub async fn library_index(
+        &self,
+        id: LibraryId,
+        query: LibraryQuery,
+        user: UserId,
+    ) -> Result<Option<(CatalogRev, Vec<IndexGroup>)>, QueryError> {
+        Ok(self
+            .inner
+            .db
+            .read(move |c| {
+                let rev = views::rev(c)?;
+                Ok(browse::index(c, id, &query, user)?.map(|groups| (rev, groups)))
+            })
+            .await?)
+    }
+
+    /// A season's present episodes in order, each with its versions'
+    /// playback decisions for `device` and `user`'s watch state. `None`
+    /// unless `season` is a season.
+    pub async fn episodes(
+        &self,
+        season: ItemId,
+        device: DeviceProfile,
+        user: UserId,
+    ) -> Result<Option<Vec<Episode>>, QueryError> {
+        Ok(self
+            .inner
+            .db
+            .read(move |c| shows::episodes(c, season, &device, user))
+            .await?)
+    }
+
     /// Where to read a file for direct play. The absolute path is built here from
     /// root + relative path and is never sent to clients.
     pub async fn stream_source(&self, id: FileId) -> Result<Option<StreamSource>, QueryError> {
@@ -317,7 +413,10 @@ mod tests {
             .item(card.id, DeviceProfile::baseline(), NOBODY)
             .await
             .unwrap()
-            .unwrap();
+            .unwrap()
+        else {
+            panic!("a movie")
+        };
         movie
     }
 
@@ -496,7 +595,10 @@ mod tests {
             .item(sintel.id, DeviceProfile::baseline(), NOBODY)
             .await
             .unwrap()
-            .expect("id still resolves");
+            .expect("id still resolves")
+        else {
+            panic!("a movie")
+        };
         assert!(missing.versions.is_empty());
     }
 
@@ -645,7 +747,13 @@ mod tests {
         let lib = open(&a, &data).await;
         let movies = lib.libraries().await.unwrap().remove(0);
         let (renamed, _) = lib
-            .update_library(movies.id, Some("Films".into()), Some(vec![b.clone()]), 0)
+            .update_library(
+                movies.id,
+                Some("Films".into()),
+                Some(vec![b.clone()]),
+                None,
+                0,
+            )
             .await
             .unwrap();
         assert_eq!(renamed.roots, std::slice::from_ref(&b));
@@ -700,7 +808,13 @@ mod tests {
             .await
             .unwrap();
         let rejected = lib
-            .update_library(movies.id, Some("Films".into()), Some(vec![b.clone()]), 0)
+            .update_library(
+                movies.id,
+                Some("Films".into()),
+                Some(vec![b.clone()]),
+                None,
+                0,
+            )
             .await;
         assert!(matches!(rejected, Err(LibraryError::PathInUse(p)) if p == b));
         let after = lib.library(movies.id).await.unwrap().unwrap();
@@ -723,7 +837,7 @@ mod tests {
         std::fs::rename(&a, &b).unwrap();
         let movies = lib.libraries().await.unwrap().remove(0);
         let (info, changed) = lib
-            .update_library(movies.id, None, Some(vec![b.clone()]), 0)
+            .update_library(movies.id, None, Some(vec![b.clone()]), None, 0)
             .await
             .unwrap();
         assert!(changed);
@@ -757,7 +871,7 @@ mod tests {
         let movies = lib.libraries().await.unwrap().remove(0);
         assert_eq!(movies.item_count, 1);
         let (info, changed) = lib
-            .update_library(movies.id, None, Some(vec![b.clone()]), 0)
+            .update_library(movies.id, None, Some(vec![b.clone()]), None, 0)
             .await
             .unwrap();
         assert!(changed);

@@ -6,7 +6,8 @@ use std::path::PathBuf;
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
-use crate::scan::write::{bump_rev, mark_empty_items_missing};
+use crate::scan::place::{mark_empty_items_missing, rebuild};
+use crate::scan::write::bump_rev;
 use crate::{Library, LibraryId, LibraryKind, QueryError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,16 +45,13 @@ fn load(c: &Connection, id: i64) -> rusqlite::Result<Option<LibraryInfo>> {
     else {
         return Ok(None);
     };
-    let kind = match kind.as_str() {
-        "movies" => LibraryKind::Movies,
-        other => {
-            return Err(rusqlite::Error::FromSqlConversionFailure(
-                1,
-                rusqlite::types::Type::Text,
-                format!("unknown library kind {other:?}").into(),
-            ));
-        }
-    };
+    let kind = LibraryKind::from_name(&kind).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            1,
+            rusqlite::types::Type::Text,
+            format!("unknown library kind {kind:?}").into(),
+        )
+    })?;
     let roots = c
         .prepare_cached("SELECT path FROM library_root WHERE library_id = ?1 ORDER BY id")?
         .query_map([id], |r| Ok(PathBuf::from(r.get::<_, String>(0)?)))?
@@ -131,14 +129,11 @@ impl Library {
                 if let Some(path) = root_in_use(tx, 0, &roots)? {
                     return Ok(Err(LibraryError::PathInUse(path)));
                 }
-                let kind = match kind {
-                    LibraryKind::Movies => "movies",
-                };
                 // The key only identifies config-file libraries; a panel-made
                 // library gets one no config can name by accident.
                 tx.execute(
                     "INSERT INTO library (key, name, kind) VALUES ('', ?1, ?2)",
-                    params![name, kind],
+                    params![name, kind.as_str()],
                 )?;
                 let id = tx.last_insert_rowid();
                 tx.execute(
@@ -157,19 +152,24 @@ impl Library {
             .await?
     }
 
-    /// Renames a library and/or replaces its folders. Nothing changes when a
+    /// Renames a library, replaces its folders and/or changes its type.
+    /// A new type rebuilds every item of the library in the same transaction
+    /// (see `place::rebuild`): ids change and watch state in it is gone.
+    /// Nothing changes when a
     /// folder is rejected. Swapping exactly one folder for another that is not
     /// empty repoints it, keeping its files (a share remounted elsewhere). An
     /// empty folder would hold the old files forever, since a scan removes
     /// nothing under an empty root. Otherwise a
     /// removed folder takes its files out of the catalog; items it emptied
     /// are marked missing, so they keep their ids if the folder comes back.
-    /// Returns whether the folders changed (the caller then requests a scan).
+    /// Returns whether the folders or the type changed (the caller then
+    /// requests a scan).
     pub async fn update_library(
         &self,
         id: LibraryId,
         name: Option<String>,
         roots: Option<Vec<PathBuf>>,
+        kind: Option<LibraryKind>,
         now_ms: i64,
     ) -> Result<(LibraryInfo, bool), LibraryError> {
         let has_entries: Vec<PathBuf> = roots
@@ -226,6 +226,14 @@ impl Library {
                             mark_empty_items_missing(tx, now_ms)?;
                         }
                     }
+                }
+                if let Some(kind) = kind.filter(|k| *k != before.kind) {
+                    tx.execute(
+                        "UPDATE library SET kind = ?1 WHERE id = ?2",
+                        params![kind.as_str(), id.0],
+                    )?;
+                    rebuild(tx, id.0, now_ms)?;
+                    changed = true;
                 }
                 if changed || name.is_some() {
                     bump_rev(tx)?;

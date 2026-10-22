@@ -222,13 +222,13 @@ mod tests {
             .collect()
     }
 
-    /// `(id, progress, watched)` of every card in the All Movies row.
+    /// `(id, progress, watched)` of every card in the Movies library row.
     fn cards(home: &Value) -> Vec<(i64, Value, bool)> {
         let all = home["rows"]
             .as_array()
             .unwrap()
             .iter()
-            .find(|r| r["kind"] == "all_movies")
+            .find(|r| r["kind"] == "library")
             .unwrap();
         all["items"]
             .as_array()
@@ -256,7 +256,7 @@ mod tests {
         let home = app.get("/api/home", &admin).await.json();
         assert_eq!(
             row_kinds(&home),
-            ["recently_added", "all_movies"],
+            ["recently_added", "library"],
             "30 s is ignored"
         );
         assert_eq!(watch(&app, &admin, 1).await["position_ms"], Value::Null);
@@ -268,7 +268,7 @@ mod tests {
         let home = app.get("/api/home", &admin).await.json();
         assert_eq!(
             row_kinds(&home),
-            ["continue_watching", "recently_added", "all_movies"]
+            ["continue_watching", "recently_added", "library"]
         );
         assert_eq!(home["rows"][0]["title"], "Continue Watching");
         assert_eq!(home["rows"][0]["items"][0]["id"], 1);
@@ -282,7 +282,7 @@ mod tests {
         );
 
         let theirs = app.get("/api/home", &member).await.json();
-        assert_eq!(row_kinds(&theirs), ["recently_added", "all_movies"]);
+        assert_eq!(row_kinds(&theirs), ["recently_added", "library"]);
         assert_eq!(
             cards(&theirs),
             [(1, Value::Null, false), (2, Value::Null, false)]
@@ -318,7 +318,7 @@ mod tests {
         let home = app.get("/api/home", &admin).await.json();
         assert_eq!(
             row_kinds(&home),
-            ["recently_added", "all_movies"],
+            ["recently_added", "library"],
             "watched leaves Continue Watching"
         );
         assert_eq!(cards(&home)[1], (2, Value::Null, true));
@@ -462,7 +462,7 @@ mod tests {
             StatusCode::OK,
             "the admin's tag never matches the member"
         );
-        assert_eq!(row_kinds(&reply.json()), ["recently_added", "all_movies"]);
+        assert_eq!(row_kinds(&reply.json()), ["recently_added", "library"]);
 
         report(&app, &member, 2, 2, 10 * 60_000).await;
         let member_rev = etag(&app.get("/api/home", &member).await);
