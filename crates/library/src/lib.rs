@@ -572,6 +572,36 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn a_future_mtime_does_not_rescan_forever() {
+        let dir = tempfile::tempdir().unwrap();
+        let (root, data) = (dir.path().join("Movies"), dir.path().join("data"));
+        let future = root.join("Future (2001)/Future (2001).mp4");
+        sdr_movie(&future);
+        std::fs::File::options()
+            .write(true)
+            .open(&future)
+            .unwrap()
+            .set_modified(SystemTime::now() + Duration::from_secs(86_400 * 365))
+            .unwrap();
+        let lib = open(&root, &data).await;
+        let summary = scan(&lib).await;
+        assert_eq!((summary.added, summary.settling), (1, 0), "{summary:?}");
+        assert!(
+            summary
+                .issues
+                .iter()
+                .any(|i| i.path == "Future (2001)/Future (2001).mp4"),
+            "{:?}",
+            summary.issues
+        );
+
+        let mut status = lib.watch_scan();
+        status.borrow_and_update();
+        let quiet = tokio::time::timeout(Duration::from_secs(3), status.changed()).await;
+        assert!(quiet.is_err(), "no scan runs without a request");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn config_only_adds_what_is_missing() {
         let dir = tempfile::tempdir().unwrap();
         let (a, b, data) = (

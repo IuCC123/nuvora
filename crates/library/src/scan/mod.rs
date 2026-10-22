@@ -328,6 +328,12 @@ async fn scan(
     tally.summary.unchanged = plan.unchanged;
     tally.summary.settling = plan.settling;
     tally.summary.moved = plan.moved.len() as u32;
+    for rel in &plan.future {
+        tally.issue(
+            rel.0.clone(),
+            "modified time is in the future; check the clock of the device that wrote it",
+        );
+    }
     for root in &plan.held_roots {
         tally.issue(
             root_abs[root].to_string_lossy(),

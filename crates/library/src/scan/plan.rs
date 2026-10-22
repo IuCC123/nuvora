@@ -47,6 +47,10 @@ pub(crate) struct ScanPlan {
     /// Modified within the settle window; probably still copying. Left for the
     /// next scan, and neither probed nor treated as gone.
     pub settling: u32,
+    /// Modified further in the future than clock skew explains. Probed like
+    /// any file (waiting would never end) and reported, since the timestamp
+    /// is wrong.
+    pub future: Vec<RelPath>,
     pub to_probe: Vec<ProbeJob>,
     pub moved: Vec<Move>,
     /// Stored files absent from a *completely* walked part of a root whose
@@ -60,6 +64,10 @@ pub(crate) struct ScanPlan {
     pub held_roots: Vec<RootId>,
 }
 
+/// How far past `now` an mtime may be and still mean "just written" (a NAS
+/// clock running ahead). Beyond it the timestamp is simply wrong.
+const CLOCK_SKEW: Duration = Duration::from_secs(60);
+
 /// Diff stored files against walks. Rules:
 /// - same path, same (size, mtime) and current probe_version => unchanged;
 /// - same path, different (size, mtime) or stale probe_version => to_probe(existing);
@@ -67,7 +75,9 @@ pub(crate) struct ScanPlan {
 /// - path only in store, under a complete root that is not held and not under
 ///   an unreadable subfolder => gone, candidate for move pairing; otherwise
 ///   left untouched;
-/// - a file modified within `settle` is counted as settling and skipped.
+/// - a file modified within `settle` is counted as settling and skipped;
+/// - a file modified more than [`CLOCK_SKEW`] in the future is not settling:
+///   it is planned as usual and listed in `future`.
 ///
 /// Deterministic: inputs are sorted by (root, rel) first.
 pub(crate) fn diff(
@@ -80,6 +90,9 @@ pub(crate) fn diff(
     let settle_cutoff_ns = now
         .checked_sub(settle)
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map_or(i64::MAX, |d| d.as_nanos() as i64);
+    let future_ns = (now + CLOCK_SKEW)
+        .duration_since(UNIX_EPOCH)
         .map_or(i64::MAX, |d| d.as_nanos() as i64);
     let known_by_path: HashMap<(RootId, &RelPath), &KnownFile> =
         known.iter().map(|k| ((k.root, &k.rel), k)).collect();
@@ -101,7 +114,9 @@ pub(crate) fn diff(
             if let Some(k) = stored {
                 seen.insert(k.id);
             }
-            if disk.mtime_ns > settle_cutoff_ns {
+            if disk.mtime_ns > future_ns {
+                plan.future.push(disk.rel.clone());
+            } else if disk.mtime_ns > settle_cutoff_ns {
                 plan.settling += 1;
                 continue;
             }
@@ -610,6 +625,26 @@ mod tests {
             Duration::ZERO,
         );
         assert_eq!((plan.settling, plan.to_probe.len()), (0, 1));
+    }
+
+    #[test]
+    fn a_future_mtime_is_probed_and_reported_not_settling() {
+        let mut ahead = disk("Future (2001)/Future (2001).mkv", 5);
+        ahead.mtime_ns = NOW_NS + 86_400_000_000_000 * 365;
+        let mut skewed = disk("Skewed (2002)/Skewed (2002).mkv", 5);
+        skewed.mtime_ns = NOW_NS + 1_000_000_000;
+        let plan = diff(vec![], &[walk(&[ahead, skewed])], now(), settle());
+        assert_eq!(plan.settling, 1, "a second of clock skew still settles");
+        let probed: Vec<&str> = plan
+            .to_probe
+            .iter()
+            .map(|j| j.disk.rel.0.as_str())
+            .collect();
+        assert_eq!(probed, ["Future (2001)/Future (2001).mkv"]);
+        assert_eq!(
+            plan.future,
+            [RelPath("Future (2001)/Future (2001).mkv".into())]
+        );
     }
 
     #[test]
