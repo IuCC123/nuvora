@@ -23,10 +23,29 @@ pub(crate) struct RootRow {
 }
 
 /// Add the configured libraries and roots that do not exist yet. Libraries
-/// match by `key`; a root is skipped when any library already has its path.
-/// Nothing is updated or removed: the admin panel owns a library once it exists.
+/// match by `key`; a root is skipped when any library already has its path,
+/// and a new library is created only when it brings a root. Nothing is
+/// updated or removed: the admin panel owns a library once it exists.
 pub(crate) fn add_libraries(tx: &Transaction<'_>, specs: &[LibrarySpec]) -> rusqlite::Result<()> {
     for spec in specs {
+        let mut new_roots = Vec::new();
+        for root in &spec.roots {
+            let path = root.to_string_lossy();
+            let used = tx
+                .query_row(
+                    "SELECT 1 FROM library_root WHERE path = ?1",
+                    [&path],
+                    |_| Ok(()),
+                )
+                .optional()?
+                .is_some();
+            if !used {
+                new_roots.push(path);
+            }
+        }
+        if new_roots.is_empty() {
+            continue;
+        }
         tx.execute(
             "INSERT INTO library (key, name, kind) VALUES (?1, ?2, ?3) ON CONFLICT(key) DO NOTHING",
             params![spec.key, spec.name, "movies"],
@@ -35,11 +54,10 @@ pub(crate) fn add_libraries(tx: &Transaction<'_>, specs: &[LibrarySpec]) -> rusq
             tx.query_row("SELECT id FROM library WHERE key = ?1", [&spec.key], |r| {
                 r.get(0)
             })?;
-        for root in &spec.roots {
+        for path in new_roots {
             tx.execute(
-                "INSERT INTO library_root (library_id, path) SELECT ?1, ?2 \
-                 WHERE NOT EXISTS (SELECT 1 FROM library_root WHERE path = ?2)",
-                params![library_id, root.to_string_lossy()],
+                "INSERT INTO library_root (library_id, path) VALUES (?1, ?2)",
+                params![library_id, path],
             )?;
         }
     }

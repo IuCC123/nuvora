@@ -540,6 +540,20 @@ mod tests {
             .create_library("Other".into(), LibraryKind::Movies, vec![a.clone()])
             .await;
         assert!(matches!(other, Err(LibraryError::PathInUse(p)) if p == a));
+
+        let films = libraries[0].id;
+        lib.delete_library(films).await.unwrap();
+        let panel = lib
+            .create_library("Panel".into(), LibraryKind::Movies, vec![a.clone()])
+            .await
+            .unwrap();
+        drop(lib);
+        let lib = open(&a, &data).await;
+        assert_eq!(
+            lib.libraries().await.unwrap(),
+            [panel],
+            "a config folder the panel already uses creates no empty library"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
