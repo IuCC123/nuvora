@@ -1,5 +1,6 @@
 import { accountRoute, hasLibraries, signedIn, signedInAsAdmin, type Reply } from "./fixtureAccounts";
-import { continueWatching, watchRoute, watchState, withWatch } from "./fixtureWatch";
+import { catalogEpisodes, catalogFiles, catalogItem, homeRows, libraryRoute } from "./fixtureLibrary";
+import { watchRoute, watchState, withWatch } from "./fixtureWatch";
 import type { FetchLike, HomeResponse, HttpMethod, ItemDetail, PosterCard, RowPage, ScanStatus, Version } from "@nuvora/core";
 
 /**
@@ -40,7 +41,8 @@ const backdrops: Record<number, NonNullable<ItemDetail["backdrop"]>> = {
   2: { id: "5a1d0c0ffee000000000000000000002", aspect_ratio: 16 / 9, placeholder: "U7YNLIZAh3iJd4eHiIi/dvhrhw==" },
 };
 
-const cards = (): PosterCard[] => movies.map(([id, title, year]) => withWatch({ id, kind: "movie", title, year, poster: posters[id] ?? null, watched: false }));
+export const blenderCards = (): PosterCard[] => movies.map(([id, title, year]) => withWatch({ id, kind: "movie", title, year, poster: posters[id] ?? null, watched: false }));
+const cards = blenderCards;
 const byId = (id: number): PosterCard => cards().find((c) => c.id === id)!;
 
 const ALL_FIRST_PAGE = 8;
@@ -48,15 +50,12 @@ const ALL_FIRST_PAGE = 8;
 function home(): HomeResponse {
   if (!hasLibraries()) return { rows: [] };
   const recent = [14, 13, 12, 5, 11, 9, 4].map(byId);
-  const resume = continueWatching().map(byId);
-  const all = cards();
-  return {
-    rows: [
-      ...(resume.length ? [{ kind: "continue_watching" as const, title: "Continue Watching", total: resume.length, items: resume, next: null }] : []),
-      { kind: "recently_added", title: "Recently Added", total: recent.length, items: recent, next: null },
-      { kind: "all_movies", title: "All Movies", total: all.length, items: all.slice(0, ALL_FIRST_PAGE), next: "after-8" },
-    ],
-  };
+  const movie = (id: number) => cards().find((c) => c.id === id) ?? movieCard(catalogItem(id));
+  return { rows: homeRows(recent, movie) };
+}
+
+function movieCard(item: ItemDetail | undefined): PosterCard | undefined {
+  return item?.kind === "movie" ? withWatch({ id: item.id, kind: "movie", title: item.title, year: item.year, poster: item.poster, watched: false }) : undefined;
 }
 
 const ROW_PAGE = 3;
@@ -128,7 +127,7 @@ const versionOverrides: Record<number, (v: Version) => Version[]> = {
   9: () => [],
 };
 
-function item(id: number): ItemDetail | undefined {
+export function blenderItem(id: number): ItemDetail | undefined {
   const movie = movies.find(([m]) => m === id);
   if (!movie) return undefined;
   const [, title, year] = movie;
@@ -185,13 +184,20 @@ export const fixtureFetch: FetchLike = async (url, init) => {
 
 function catalogRoute(method: HttpMethod, path: string, query: URLSearchParams, request: unknown): Reply {
   if (!signedIn()) return { status: 401, body: { code: "unauthorized", message: "Sign in to continue.", field: null } };
-  const watch = watchRoute(method, path, request, (id) => item(id)?.versions.map((v) => v.file_id));
+  const watch = watchRoute(method, path, request, (id) => versionsOf(id) ?? catalogFiles(id), catalogEpisodes);
   if (watch) return watch;
+  const library = libraryRoute(path, query);
+  if (library) return library;
   if (path === "/api/scan" && method === "POST" && !signedInAsAdmin()) {
     return { status: 403, body: { code: "forbidden", message: "Only an admin can do that.", field: null } };
   }
   const body = route(method, path, query);
   return body === undefined ? { status: 404, body: { code: "not_found", message: "Not found", field: null } } : { status: 200, body };
+}
+
+function versionsOf(id: number): number[] | undefined {
+  const movie = blenderItem(id);
+  return movie?.kind === "movie" ? movie.versions.map((v) => v.file_id) : undefined;
 }
 
 function route(method: HttpMethod, path: string, query: URLSearchParams): unknown {
@@ -203,6 +209,6 @@ function route(method: HttpMethod, path: string, query: URLSearchParams): unknow
   }
   if (path === "/api/scan") return scanStatus();
   const itemMatch = /^\/api\/items\/(\d+)$/.exec(path);
-  if (itemMatch) return item(Number(itemMatch[1]));
+  if (itemMatch) return blenderItem(Number(itemMatch[1])) ?? catalogItem(Number(itemMatch[1]));
   return undefined;
 }

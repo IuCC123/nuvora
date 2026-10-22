@@ -1,5 +1,6 @@
 import type { PosterCard, ProgressRequest, WatchState } from "@nuvora/core";
 import type { Reply } from "./fixtureAccounts";
+import { ARCHIVE, SHOWS } from "./fixtureCatalog";
 
 /**
  * The watch-state half of the fixture server, with the real server's rules:
@@ -36,7 +37,18 @@ function seed(): Record<number, Entry> {
     updated_at: now - ago,
   });
   const watched = (ago: number): Entry => ({ position_ms: null, duration_ms: null, file_id: null, play_count: 1, last_watched_at: now - ago, updated_at: now - ago });
+  const [harbor, , night] = SHOWS.map((show) => show.seasons.flatMap((s) => s.episodes));
+  const episodes: Record<number, Entry> = {};
+  // Harbor Lights: S1 E1 to E3 watched, E4 stopped at 12:03. Night Shift Diaries: season 1 done, so Next Up is S2 E1.
+  harbor!.slice(0, 3).forEach((e, i) => (episodes[e.id] = watched((6 - i) * 24 * 60 * MINUTE)));
+  episodes[harbor![3]!.id] = watching(harbor![3]!.id, 723_000, harbor![3]!.runtime_ms, 50 * MINUTE);
+  night!.slice(0, 6).forEach((e, i) => (episodes[e.id] = watched((2 * 24 * 60 - i) * MINUTE)));
+  ARCHIVE.forEach((m, i) => {
+    if (i % 7 === 3) episodes[m.id] = watched((40 + i) * 24 * 60 * MINUTE);
+    if (i % 41 === 5) episodes[m.id] = watching(m.id, 1_800_000, m.runtime_ms, (12 + i) * 24 * 60 * MINUTE);
+  });
   return {
+    ...episodes,
     2: watching(2, 410_000, 662_000, 20 * MINUTE),
     13: watching(13, 431_000, 734_000, 26 * 60 * MINUTE),
     5: watching(5, 178_000, 845_000, 3 * 24 * 60 * MINUTE),
@@ -80,6 +92,11 @@ export function continueWatching(): number[] {
     .map(([id]) => Number(id));
 }
 
+/** When this viewer last did anything with the item: a report, a finish or a mark. */
+export function lastActivity(id: number): number | null {
+  return store[id]?.updated_at ?? null;
+}
+
 function invalid(message: string, field: string): Reply {
   return { status: 400, body: { code: "validation", message, field } };
 }
@@ -89,21 +106,37 @@ function finish(id: number, now: number) {
   store[id] = { position_ms: null, duration_ms: null, file_id: null, play_count: (e?.play_count ?? 0) + 1, last_watched_at: now, updated_at: now };
 }
 
-/** `PUT /api/items/{id}/progress`, `PUT` and `DELETE /api/items/{id}/watched`; `undefined` for other routes. */
-export function watchRoute(method: string, path: string, body: unknown, fileIds: (id: number) => number[] | undefined): Reply | undefined {
+/**
+ * `PUT /api/items/{id}/progress`, `PUT` and `DELETE /api/items/{id}/watched`;
+ * `undefined` for other routes. A mark on a show or season (`episodesOf`)
+ * applies to each of its episodes; already watched ones keep their count.
+ */
+export function watchRoute(
+  method: string,
+  path: string,
+  body: unknown,
+  fileIds: (id: number) => number[] | undefined,
+  episodesOf: (id: number) => number[] | undefined,
+): Reply | undefined {
   const match = /^\/api\/items\/(\d+)\/(progress|watched)$/.exec(path);
   if (!match) return undefined;
   const id = Number(match[1]);
+  const group = match[2] === "watched" ? episodesOf(id) : undefined;
   const files = fileIds(id);
-  if (!files) return { status: 404, body: { code: "not_found", message: "Not found", field: null } };
+  if (!files && !group) return { status: 404, body: { code: "not_found", message: "Not found", field: null } };
   const now = Date.now();
   if (match[2] === "watched") {
-    if (method === "PUT") finish(id, now);
-    else if (method === "DELETE") store[id] = { position_ms: null, duration_ms: null, file_id: null, play_count: 0, last_watched_at: null, updated_at: now };
-    else return { status: 405 };
+    for (const target of group ?? [id]) {
+      if (method === "PUT") {
+        if (!group || !((store[target]?.play_count ?? 0) > 0) || store[target]?.position_ms != null) finish(target, now);
+      } else if (method === "DELETE") {
+        store[target] = { position_ms: null, duration_ms: null, file_id: null, play_count: 0, last_watched_at: null, updated_at: now };
+      } else return { status: 405 };
+    }
     save();
     return { status: 204 };
   }
+  if (!files) return { status: 404, body: { code: "not_found", message: "Not found", field: null } };
   if (method !== "PUT") return { status: 405 };
   const report = body as ProgressRequest;
   if (!files.includes(report.file_id)) return invalid("That file isn't a version of this movie.", "file_id");
