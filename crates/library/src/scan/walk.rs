@@ -134,7 +134,13 @@ pub(crate) fn walk_root(root: RootId, library_id: i64, abs: &Path) -> RootWalk {
             Ok(meta) if meta.is_file() => meta,
             Ok(_) => continue,
             Err(e) => {
-                walk.issues.push((rel_str, e.to_string()));
+                walk.issues
+                    .push((rel_str.clone(), format!("cannot read, so it was kept: {e}")));
+                if e.io_error().is_some_and(is_share_down) {
+                    walk.complete = false;
+                    break;
+                }
+                walk.unreadable.push(RelPath(rel_str));
                 continue;
             }
         };
@@ -263,6 +269,26 @@ mod tests {
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert!(walk.complete);
         assert_eq!(walk.unreadable, [RelPath("Locked (2001)".into())]);
+        assert_eq!(walk.videos.len(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn files_in_a_listable_but_unsearchable_folder_are_unreadable() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        touch(&root.join("Open (2000)/Open (2000).mkv"), b"v");
+        touch(&root.join("Locked (2001)/Locked (2001).mkv"), b"v");
+        let locked = root.join("Locked (2001)");
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o444)).unwrap();
+        let walk = walk_root(RootId(1), 1, root);
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(walk.complete);
+        assert_eq!(
+            walk.unreadable,
+            [RelPath("Locked (2001)/Locked (2001).mkv".into())]
+        );
         assert_eq!(walk.videos.len(), 1);
     }
 
