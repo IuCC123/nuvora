@@ -1,4 +1,14 @@
-import { createRootRoute, createRoute, createRouter, Outlet, redirect, type ParsedLocation } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  notFound,
+  Outlet,
+  redirect,
+  useRouter,
+  type ErrorComponentProps,
+  type ParsedLocation,
+} from "@tanstack/react-router";
 import { ApiError, safeRedirect, type User } from "@nuvora/core";
 import { onUnauthorized, queries, queryClient } from "./nuvora";
 import { forgetResponses, setSessionUser } from "./lib/session";
@@ -6,7 +16,7 @@ import { Shell } from "./components/Shell";
 import { Home } from "./screens/Home";
 import { MovieScreen } from "./screens/Movie";
 import { Player } from "./screens/Player";
-import { ErrorState } from "./screens/ErrorState";
+import { ErrorState, MissingMovie } from "./screens/ErrorState";
 import { SignIn } from "./screens/SignIn";
 import { WelcomeAccount, WelcomeLibrary } from "./screens/Welcome";
 import { SettingsAccount } from "./screens/settings/Account";
@@ -45,6 +55,23 @@ function requireAdmin({ context }: { context: { user: User } }) {
 /** A 401 renders nothing: the client has already sent the person to Sign in. */
 const signedOut = (error: unknown) => error instanceof ApiError && error.status === 401;
 
+/** A route's loader failed. Try again re-runs the loaders; the boundary's own `reset` would only re-render the error. */
+function Unreachable({ error }: ErrorComponentProps) {
+  const router = useRouter();
+  if (signedOut(error)) return null;
+  return <ErrorState title="Can't reach your Nuvora server" detail="Check that it's running, then try again." retry={() => void router.invalidate()} />;
+}
+
+/** `/movie/abc` names no movie, so it gets the missing-movie screen instead of a request for `NaN`. */
+const movieParams = {
+  parse: (p: { id: string }) => {
+    const id = Number(p.id);
+    if (!Number.isSafeInteger(id) || id <= 0) throw notFound();
+    return { id };
+  },
+  stringify: (p: { id: number }) => ({ id: String(p.id) }),
+};
+
 const welcome = createRoute({
   getParentRoute: () => root,
   path: "/welcome",
@@ -81,16 +108,14 @@ const home = createRoute({
   path: "/",
   loader: () => queryClient.ensureQueryData(queries.home()),
   component: Home,
-  errorComponent: ({ error, reset }) =>
-    signedOut(error) ? null : (
-      <ErrorState title="Can't reach your Nuvora server" detail="Check that it's running, then try again." retry={reset} />
-    ),
+  errorComponent: Unreachable,
 });
 
 const movie = createRoute({
   getParentRoute: () => shell,
   path: "/movie/$id",
-  params: { parse: (p) => ({ id: Number(p.id) }), stringify: (p) => ({ id: String(p.id) }) },
+  params: movieParams,
+  notFoundComponent: MissingMovie,
   // Not awaited: the screen paints from the cached home card at once and fills
   // in when the item arrives (see `findCard`).
   loader: ({ params }) => void queryClient.prefetchQuery(queries.item(params.id)),
@@ -136,14 +161,19 @@ const settingsAccount = createRoute({ getParentRoute: () => settings, path: "/ac
 const play = createRoute({
   getParentRoute: () => root,
   path: "/movie/$id/play",
-  params: { parse: (p) => ({ id: Number(p.id) }), stringify: (p) => ({ id: String(p.id) }) },
+  params: movieParams,
   validateSearch: (s: Record<string, unknown>): { file: number; t?: number } => {
     const t = Number(s.t);
     return Number.isFinite(t) && t > 0 ? { file: Number(s.file), t: Math.floor(t) } : { file: Number(s.file) };
   },
   beforeLoad: requireUser,
-  loader: ({ params }) => queryClient.ensureQueryData(queries.item(params.id)),
+  loader: ({ params }) =>
+    queryClient.ensureQueryData(queries.item(params.id)).catch((error: unknown) => {
+      throw error instanceof ApiError && error.status === 404 ? notFound() : error;
+    }),
   component: Player,
+  notFoundComponent: MissingMovie,
+  errorComponent: Unreachable,
 });
 
 export const router = createRouter({

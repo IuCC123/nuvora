@@ -23,7 +23,7 @@ import { playState } from "../lib/playState";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useWatchedToggle } from "../lib/useWatchedToggle";
 import { PosterMarks } from "../components/PosterCard";
-import { ErrorState } from "./ErrorState";
+import { ErrorState, MissingMovie } from "./ErrorState";
 import "../styles/movie.css";
 
 /** What the detail page can show before the item arrives: the home card's title, year and poster. */
@@ -48,7 +48,7 @@ export function MovieScreen() {
 
   if (item.error) {
     return item.error instanceof ApiError && item.error.status === 404 ? (
-      <ErrorState title="This movie isn't in your library" detail="It may have been removed by the last scan." home />
+      <MissingMovie />
     ) : (
       <ErrorState title="Can't reach your Nuvora server" detail="Check that it's running, then try again." retry={() => void item.refetch()} />
     );

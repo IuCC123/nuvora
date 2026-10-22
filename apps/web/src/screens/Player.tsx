@@ -7,7 +7,7 @@ import { ArrowLeftIcon, Back10Icon, Forward10Icon, FullscreenIcon, PauseIcon, Pi
 import { Notice, type NoticeText } from "../components/Notice";
 import { Scrubber } from "../components/player/Scrubber";
 import { Volume } from "../components/player/Volume";
-import { playerFailed, playState } from "../lib/playState";
+import { fileGone, playerFailed, playState } from "../lib/playState";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useMediaState } from "../lib/useMediaState";
 import { useProgressReporting } from "../lib/useProgressReporting";
@@ -45,8 +45,8 @@ export function Player() {
     [canGoBack, router, navigate, id],
   );
   const version = movie?.versions.find((v) => v.file_id === file);
-  const decided = movie ? playState(version ? [version] : []) : undefined;
-  const notice = failed ? playerFailed : decided?.kind === "blocked" ? decided.notice : undefined;
+  const decided = version ? playState([version]) : undefined;
+  const notice = failed ? playerFailed : movie && !version ? fileGone : decided?.kind === "blocked" ? decided.notice : undefined;
   const src = !notice && version?.playback.kind === "direct_play" ? client.resolve(version.playback.url) : undefined;
 
   return (

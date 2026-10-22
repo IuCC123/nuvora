@@ -9,6 +9,9 @@ const CONVERT_HINT = "It will play once Nuvora can convert files on the fly.";
 
 export const playerFailed: NoticeText = { problem: ["This browser couldn't play this file."], hint: CONVERT_HINT };
 
+/** The link named a file the movie no longer has: replaced, or removed by a scan. */
+export const fileGone: NoticeText = { problem: ["This file is no longer part of the movie."], hint: "Go back to the movie and play it from there." };
+
 export function playState(versions: readonly Version[]): PlayState {
   const version = versions[0];
   if (!version) {
