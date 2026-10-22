@@ -9,6 +9,8 @@ mod db;
 mod ids;
 mod scan;
 mod store;
+#[cfg(test)]
+mod test_support;
 mod views;
 
 use std::num::NonZeroUsize;
