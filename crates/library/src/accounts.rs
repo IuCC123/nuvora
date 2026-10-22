@@ -428,19 +428,21 @@ impl Library {
             .await?)
     }
 
-    /// Records activity on a session and moves its expiry.
+    /// Records activity on a session, and moves its expiry when `expires_at`
+    /// is given.
     pub async fn touch_session(
         &self,
         token: TokenHash,
         now_ms: i64,
-        expires_at: i64,
+        expires_at: Option<i64>,
     ) -> Result<(), QueryError> {
         Ok(self
             .inner
             .db
             .write(move |tx| {
                 tx.execute(
-                    "UPDATE session SET last_seen_at = ?2, expires_at = ?3 WHERE token_hash = ?1",
+                    "UPDATE session SET last_seen_at = ?2, expires_at = coalesce(?3, expires_at) \
+                     WHERE token_hash = ?1",
                     params![token.0.to_vec(), now_ms, expires_at],
                 )?;
                 Ok(())

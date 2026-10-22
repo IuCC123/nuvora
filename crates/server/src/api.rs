@@ -26,11 +26,16 @@
 
 mod accounts;
 mod admin;
+#[cfg(test)]
+mod test_app;
 
-use std::time::SystemTime;
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::{Instant, SystemTime};
 
 use axum::Json;
-use axum::extract::{FromRequest, FromRequestParts, Path, Query, State};
+use axum::extract::{FromRef, FromRequest, FromRequestParts, Path, Query, State};
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH, VARY};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, request::Parts};
 use axum::response::{IntoResponse, Response};
@@ -40,7 +45,7 @@ use nuvora_library::{
 };
 use nuvora_media::{
     AudioCodec, AudioSupport, Container, DeviceProfile, HdrFormat, Incompatibility, MediaInfo,
-    PlaybackDecision, SubtitleCodec, VideoCodec, VideoSupport,
+    MediaTools, PlaybackDecision, SubtitleCodec, VideoCodec, VideoSupport,
 };
 use serde::{Deserialize, Serialize};
 use tower::ServiceExt;
@@ -67,9 +72,49 @@ enum Access {
     Admin,
 }
 
-/// All API routes plus the spec built from the same `routes!` calls, so a
-/// route cannot exist without being documented (no hand-kept path list).
-pub fn router() -> (axum::Router<Library>, utoipa::openapi::OpenApi) {
+/// What every handler can reach.
+#[derive(Clone)]
+pub struct AppState {
+    pub library: Library,
+    pub auth: Arc<crate::auth::Auth>,
+    pub server: Arc<ServerSetup>,
+}
+
+/// Facts about this process for the admin panel's General page.
+pub struct ServerSetup {
+    pub data_dir: PathBuf,
+    pub bind: SocketAddr,
+    pub tools: MediaTools,
+    pub started: Instant,
+}
+
+impl FromRef<AppState> for Library {
+    fn from_ref(state: &AppState) -> Library {
+        state.library.clone()
+    }
+}
+
+/// All API routes, guarded by their access group, plus `/api/openapi.json`.
+pub fn router(state: AppState) -> axum::Router {
+    let (router, spec) = build(Some(&state));
+    router
+        .route(
+            "/api/openapi.json",
+            axum::routing::get(move || async move { Json(spec) }),
+        )
+        .layer(axum::middleware::from_fn(crate::auth::csrf))
+        .with_state(state)
+}
+
+/// The spec, built from the same `routes!` calls as the router, so a route
+/// cannot exist without being documented (no hand-kept path list).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    build(None).1
+}
+
+/// `state` is `None` only when printing the spec: the guards need it to run,
+/// not to be documented.
+fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::OpenApi) {
     let public = OpenApiRouter::new()
         .routes(routes!(accounts::health))
         .routes(routes!(accounts::auth_state))
@@ -94,6 +139,17 @@ pub fn router() -> (axum::Router<Library>, utoipa::openapi::OpenApi) {
         .routes(routes!(admin::get_server, admin::update_server));
     document_access(member.get_openapi_mut(), Access::Member);
     document_access(admin.get_openapi_mut(), Access::Admin);
+    if let Some(state) = state {
+        use axum::middleware::from_fn_with_state;
+        member = member.route_layer(from_fn_with_state(
+            state.clone(),
+            crate::auth::require_member,
+        ));
+        admin = admin.route_layer(from_fn_with_state(
+            state.clone(),
+            crate::auth::require_admin,
+        ));
+    }
     let (router, mut spec) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .merge(public)
         .merge(member)
@@ -110,14 +166,7 @@ pub fn router() -> (axum::Router<Library>, utoipa::openapi::OpenApi) {
         "bearer",
         SecurityScheme::Http(HttpBuilder::new().scheme(HttpAuthScheme::Bearer).build()),
     );
-    let spec_json = spec.clone();
-    (
-        router.route(
-            "/api/openapi.json",
-            axum::routing::get(move || async move { Json(spec_json) }),
-        ),
-        spec,
-    )
+    (router, spec)
 }
 
 /// Marks every operation in `spec` as needing a session (cookie or bearer) and
@@ -554,7 +603,8 @@ async fn get_item(
 }
 
 /// Reads the WebP from the store (tens of KB) and answers with
-/// `Cache-Control: public, max-age=31536000, immutable`. Bad ids are 404, and
+/// `Cache-Control: private, max-age=31536000, immutable` (private: it needs a
+/// session, so a shared cache must not hand it to anyone else). Bad ids are 404, and
 /// ids are parsed to 16 bytes before any path is built.
 #[utoipa::path(
     get,
@@ -575,7 +625,7 @@ async fn get_image(
         .map_err(|_| ApiError::not_found())?;
     let headers = [
         (CONTENT_TYPE, "image/webp"),
-        (CACHE_CONTROL, "public, max-age=31536000, immutable"),
+        (CACHE_CONTROL, "private, max-age=31536000, immutable"),
     ];
     Ok((headers, bytes).into_response())
 }
@@ -1141,13 +1191,43 @@ impl ApiError {
     }
 
     /// Logged where it happened; the client gets a generic message.
-    fn internal(e: impl std::fmt::Display) -> ApiError {
+    pub(crate) fn internal(e: impl std::fmt::Display) -> ApiError {
         tracing::error!("{e}");
         ApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             ErrorCode::Internal,
             "Something went wrong on the server",
         )
+    }
+
+    pub(crate) fn unauthorized() -> ApiError {
+        ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            ErrorCode::Unauthorized,
+            "Sign in to continue",
+        )
+    }
+
+    pub(crate) fn forbidden(message: impl Into<String>) -> ApiError {
+        ApiError::new(StatusCode::FORBIDDEN, ErrorCode::Forbidden, message)
+    }
+
+    fn bad_credentials() -> ApiError {
+        ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            ErrorCode::BadCredentials,
+            "Wrong username or password",
+        )
+    }
+
+    fn rate_limited(retry_after_s: u64) -> ApiError {
+        let mut error = ApiError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            ErrorCode::RateLimited,
+            "Too many failed sign-ins. Try again in 15 minutes.",
+        );
+        error.retry_after_s = Some(retry_after_s);
+        error
     }
 
     fn not_implemented() -> ApiError {
@@ -1190,12 +1270,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::test_app::TestApp;
     use super::*;
-    use axum::body::Body;
-    use axum::http::{Request, header};
-    use nuvora_library::{LibraryConfig, LibrarySpec};
-    use nuvora_media::{AudioStream, ColorInfo, MediaTools, VideoStream};
-    use std::num::NonZeroUsize;
+    use axum::http::header;
+    use nuvora_media::{AudioStream, ColorInfo, VideoStream};
     use std::time::Duration;
 
     /// `packages/core/openapi.json` is generated, committed, and the input to the
@@ -1203,8 +1281,7 @@ mod tests {
     /// was not run, so the client can never silently drift from the server.
     #[test]
     fn committed_openapi_is_current() {
-        let (_, spec) = super::router();
-        let generated = spec.to_pretty_json().unwrap();
+        let generated = super::openapi().to_pretty_json().unwrap();
         let committed = include_str!("../../../packages/core/openapi.json");
         assert_eq!(committed.trim(), generated.trim(), "run `bun run gen:api`");
     }
@@ -1297,88 +1374,69 @@ mod tests {
         );
     }
 
-    async fn app() -> (tempfile::TempDir, axum::Router) {
-        let dir = tempfile::tempdir().unwrap();
-        let movies = dir.path().join("movies");
-        std::fs::create_dir_all(&movies).unwrap();
-        let tools = MediaTools::locate(None, None).await.unwrap();
-        let library = Library::open(LibraryConfig {
-            data_dir: dir.path().join("data"),
-            libraries: vec![LibrarySpec {
-                key: "movies".into(),
-                name: "Movies".into(),
-                kind: nuvora_library::LibraryKind::Movies,
-                roots: vec![movies],
-            }],
-            tools,
-            probe_concurrency: NonZeroUsize::new(1).unwrap(),
-            settle_window: Duration::ZERO,
-        })
-        .await
-        .unwrap();
-        let (api, _) = router();
-        (
-            dir,
-            api.with_state(library)
-                .fallback(crate::web::serve_app)
-                .layer(compression()),
-        )
-    }
-
-    async fn get(
-        app: &axum::Router,
-        uri: &str,
-        headers: &[(&str, &str)],
-    ) -> (StatusCode, HeaderMap, Vec<u8>) {
-        let mut request = Request::builder().uri(uri);
-        for (name, value) in headers {
-            request = request.header(*name, *value);
-        }
-        let response = app
-            .clone()
-            .oneshot(request.body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let (parts, body) = response.into_parts();
-        let bytes = axum::body::to_bytes(body, usize::MAX)
-            .await
-            .unwrap()
-            .to_vec();
-        (parts.status, parts.headers, bytes)
-    }
-
     #[tokio::test(flavor = "multi_thread")]
     async fn home_revalidates_with_the_catalog_rev() {
-        let (_dir, app) = app().await;
-        let (status, headers, body) = get(&app, "/api/home", &[]).await;
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(headers.get(header::ETAG).unwrap(), "\"0\"");
-        assert_eq!(headers.get(header::CACHE_CONTROL).unwrap(), "no-cache");
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let app = TestApp::new().await;
+        let cookie = app.setup_admin().await;
+        let reply = app.get("/api/home", &cookie).await;
+        assert_eq!(reply.status, StatusCode::OK);
+        assert_eq!(reply.headers.get(header::ETAG).unwrap(), "\"0\"");
+        assert_eq!(
+            reply.headers.get(header::CACHE_CONTROL).unwrap(),
+            "no-cache"
+        );
+        let json = reply.json();
         assert_eq!(json["rows"][0]["kind"], "recently_added");
         assert_eq!(json["rows"][1]["title"], "All Movies");
         assert_eq!(json["rows"][1]["total"], 0);
-        let (status, _, body) = get(&app, "/api/home", &[("if-none-match", "\"0\"")]).await;
-        assert_eq!((status, body.len()), (StatusCode::NOT_MODIFIED, 0));
+        let request = axum::http::Request::builder()
+            .uri("/api/home")
+            .header(header::COOKIE, &cookie)
+            .header(header::IF_NONE_MATCH, "\"0\"");
+        let reply = app
+            .send(request.body(axum::body::Body::empty()).unwrap())
+            .await;
+        assert_eq!(
+            (reply.status, reply.body.len()),
+            (StatusCode::NOT_MODIFIED, 0)
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn errors_and_fallbacks() {
-        let (_dir, app) = app().await;
-        let (status, _, _) = get(&app, "/api/items/1", &[]).await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
-        let (status, _, _) = get(&app, "/api/items/1", &[("nuvora-device", "{not json")]).await;
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        let (status, _, _) = get(&app, "/api/rows/all_movies?after=garbage", &[]).await;
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        let (status, _, _) = get(&app, "/api/images/not-an-id/small", &[]).await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
-        let (status, _, _) = get(&app, "/api/files/9/stream", &[]).await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
-        let (status, headers, body) = get(&app, "/api/nope", &[]).await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
+        let app = TestApp::new().await;
+        let cookie = app.setup_admin().await;
+        let status = |uri: &'static str| {
+            let (app, cookie) = (&app, &cookie);
+            async move { app.get(uri, cookie).await.status }
+        };
+        assert_eq!(status("/api/items/1").await, StatusCode::NOT_FOUND);
+        let reply = app
+            .send(
+                axum::http::Request::builder()
+                    .uri("/api/items/1")
+                    .header(header::COOKIE, &cookie)
+                    .header("nuvora-device", "{not json")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(reply.status, StatusCode::BAD_REQUEST);
+        assert_eq!(reply.json()["code"], "bad_request");
+        assert_eq!(
+            status("/api/rows/all_movies?after=garbage").await,
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            status("/api/images/not-an-id/small").await,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(status("/api/files/9/stream").await, StatusCode::NOT_FOUND);
+        let reply = app.get("/api/nope", &cookie).await;
+        assert_eq!(reply.status, StatusCode::NOT_FOUND);
         assert!(
-            headers
+            reply
+                .headers
                 .get(header::CONTENT_TYPE)
                 .unwrap()
                 .to_str()
@@ -1386,53 +1444,41 @@ mod tests {
                 .starts_with("application/json")
         );
         assert_eq!(
-            String::from_utf8(body).unwrap(),
+            String::from_utf8(reply.body).unwrap(),
             "{\"code\":\"not_found\",\"message\":\"Not found\",\"field\":null}"
         );
-        let (status, _, body) = get(&app, "/movie/1", &[]).await;
+        let reply = app.get("/movie/1", &cookie).await;
         assert_eq!(
-            status,
+            reply.status,
             StatusCode::SERVICE_UNAVAILABLE,
             "web app not built in this checkout"
         );
-        assert!(String::from_utf8(body).unwrap().contains("bun run build"));
-        let (status, _, body) = get(&app, "/api/openapi.json", &[]).await;
-        assert_eq!(status, StatusCode::OK);
-        assert!(serde_json::from_slice::<serde_json::Value>(&body).is_ok());
+        assert!(
+            String::from_utf8(reply.body)
+                .unwrap()
+                .contains("bun run build")
+        );
+        let reply = app.call("GET", "/api/openapi.json", None, None).await;
+        assert_eq!(reply.status, StatusCode::OK);
+        reply.json();
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn scan_endpoints_report_and_coalesce() {
-        let (_dir, app) = app().await;
-        let (status, _, body) = get(&app, "/api/scan", &[]).await;
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(
-            serde_json::from_slice::<serde_json::Value>(&body).unwrap()["state"],
-            "idle"
-        );
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/scan")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::ACCEPTED);
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let first: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let app = TestApp::new().await;
+        let cookie = app.setup_admin().await;
+        let reply = app.get("/api/scan", &cookie).await;
+        assert_eq!(reply.status, StatusCode::OK);
+        assert_eq!(reply.json()["state"], "idle");
+        let reply = app.call("POST", "/api/scan", Some(&cookie), None).await;
+        assert_eq!(reply.status, StatusCode::ACCEPTED);
+        let first = reply.json();
         assert!(
             matches!(first["state"].as_str(), Some("idle" | "running")),
             "{first}"
         );
         tokio::time::sleep(Duration::from_millis(500)).await;
-        let (_, _, body) = get(&app, "/api/scan", &[]).await;
-        let status: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let status = app.get("/api/scan", &cookie).await.json();
         assert_eq!(status["state"], "idle");
         assert_eq!(status["last"]["added"], 0);
         assert!(status["last"]["finished_at"].as_i64().unwrap() > 0);

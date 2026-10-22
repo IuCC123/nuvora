@@ -2,11 +2,13 @@
 //! used by `bun run gen:api` to regenerate the TypeScript client).
 
 mod api;
+mod auth;
 mod config;
 mod web;
 
 use std::num::NonZeroUsize;
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use clap::{Parser, Subcommand};
 use nuvora_library::{Library, LibraryConfig};
@@ -41,7 +43,7 @@ async fn main() -> Result<(), BoxError> {
     let cli = Cli::parse();
     match cli.command.unwrap_or(Command::Serve) {
         Command::Openapi => {
-            let (_, spec) = api::router();
+            let spec = api::openapi();
             println!("{}", spec.to_pretty_json().expect("spec serializes"));
             Ok(())
         }
@@ -66,21 +68,32 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
     let library = Library::open(LibraryConfig {
         data_dir: config.data_dir.clone(),
         libraries: config.libraries,
-        tools,
+        tools: tools.clone(),
         probe_concurrency,
         settle_window: SETTLE_WINDOW,
     })
     .await?;
     tracing::info!(data_dir = %config.data_dir.display(), "catalog open");
 
-    let (api, _) = api::router();
-    let app = api
-        .with_state(library.clone())
+    let listener = TcpListener::bind(config.bind).await?;
+    let bind = listener.local_addr()?;
+    let state = api::AppState {
+        library: library.clone(),
+        auth: Default::default(),
+        server: Arc::new(api::ServerSetup {
+            data_dir: config.data_dir,
+            bind,
+            tools,
+            started: Instant::now(),
+        }),
+    };
+    let app = api::router(state)
         .fallback(web::serve_app)
         .layer(api::compression());
-    let listener = TcpListener::bind(config.bind).await?;
-    tracing::info!("listening on http://{}", listener.local_addr()?);
+    tracing::info!("listening on http://{bind}");
     library.request_scan();
+    // The peer address keys sign-in rate limiting.
+    let app = app.into_make_service_with_connect_info::<std::net::SocketAddr>();
     axum::serve(listener, app)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;

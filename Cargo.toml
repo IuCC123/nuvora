@@ -9,3 +9,11 @@ license = "AGPL-3.0-only"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+
+# Password hashing is deliberately slow; unoptimized it takes seconds per
+# hash, which makes debug builds and tests crawl.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3

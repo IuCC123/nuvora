@@ -258,7 +258,8 @@ export interface paths {
         };
         /**
          * Reads the WebP from the store (tens of KB) and answers with
-         *     `Cache-Control: public, max-age=31536000, immutable`. Bad ids are 404, and
+         *     `Cache-Control: private, max-age=31536000, immutable` (private: it needs a
+         *     session, so a shared cache must not hand it to anyone else). Bad ids are 404, and
          *     ids are parsed to 16 bytes before any path is built.
          */
         get: operations["get_image"];
