@@ -132,6 +132,12 @@ const adminUser = ({ password: _, ...user }: StoredUser): AdminUser => user;
 const me = () => state.users.find((u) => u.id === state.session && !u.disabled);
 const enabledAdmins = () => state.users.filter((u) => u.role === "admin" && !u.disabled);
 
+/** For the browser console and scripted checks: end the session as if it expired on the server. */
+export function expireSession() {
+  state.session = null;
+  save();
+}
+
 export function signedIn(): boolean {
   return me() !== undefined;
 }

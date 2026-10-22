@@ -85,8 +85,8 @@
   font-family: var(--nv-font-family-display);
   font-stretch: 112%;
   font-weight: var(--nv-font-weight-bold);
-  font-size: 24px;
-  line-height: 28px;
+  font-size: var(--nv-type-wordmark-size);
+  line-height: var(--nv-type-wordmark-line);
   letter-spacing: 0.01em;
 }
 
