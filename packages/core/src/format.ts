@@ -158,3 +158,56 @@ const SUBTITLE_CODECS: Record<string, string> = {
   dvd_subtitle: "VobSub",
   dvb_subtitle: "DVB",
 };
+
+/** Up to two letters for an avatar: `"Jamie Rivera"` -> `"JR"`, `"jamie"` -> `"J"`. */
+export function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const first = (w: string | undefined) => (w ? [...w][0]!.toLocaleUpperCase() : "");
+  if (words.length === 0) return "?";
+  return words.length === 1 ? first(words[0]) : first(words[0]) + first(words[words.length - 1]);
+}
+
+/** Server uptime: `"3 days, 4 hours"`, `"2 hours, 5 minutes"`, `"40 seconds"`. The two largest units at most. */
+export function formatUptime(seconds: number): string {
+  let rest = Math.max(0, Math.floor(seconds));
+  const counts = UPTIME_UNITS.map(([unit, size]) => {
+    const n = Math.floor(rest / size);
+    rest -= n * size;
+    return [unit, n] as const;
+  });
+  const lead = counts.findIndex(([, n]) => n > 0);
+  if (lead < 0) return "0 seconds";
+  return counts
+    .slice(lead, lead + 2)
+    .filter(([, n]) => n > 0)
+    .map(([unit, n]) => `${n} ${unit}${n === 1 ? "" : "s"}`)
+    .join(", ");
+}
+
+const UPTIME_UNITS: readonly (readonly [string, number])[] = [
+  ["day", 86_400],
+  ["hour", 3_600],
+  ["minute", 60],
+  ["second", 1],
+];
+
+/**
+ * `"Just now"`, `"12 minutes ago"`, `"Yesterday"`, `"4 days ago"`, then a date
+ * (`"3 Mar 2026"`). Both arguments are Unix milliseconds; `null` reads `"Never"`.
+ */
+export function formatLastSeen(at: number | null, now: number): string {
+  if (at == null) return "Never";
+  const minutes = Math.floor((now - at) / 60_000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return plural(minutes, "minute");
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return plural(hours, "hour");
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  if (days < 7) return plural(days, "day");
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(at);
+}
+
+function plural(n: number, unit: string): string {
+  return `${n} ${unit}${n === 1 ? "" : "s"} ago`;
+}

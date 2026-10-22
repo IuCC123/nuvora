@@ -1,5 +1,5 @@
 import type { components, paths } from "./generated/schema";
-import { ApiError, type AbortSignalLike, type FetchLike } from "./transport";
+import { ApiError, type AbortSignalLike, type FetchLike, type HttpMethod, type ResponseLike } from "./transport";
 
 type Schemas = components["schemas"];
 export type HomeResponse = Schemas["HomeResponse"];
@@ -22,6 +22,12 @@ export interface ClientOptions {
   fetch: FetchLike;
   /** Measured once at startup by the app (it needs platform APIs this package must not touch). */
   device: DeviceProfile;
+  /**
+   * Called when a request comes back 401 because the session ended or never
+   * existed (not for a wrong password). The app sends the person to Sign in.
+   * The request still rejects with its `ApiError`.
+   */
+  onUnauthorized?: () => void;
 }
 
 /**
@@ -51,16 +57,27 @@ export function createClient(options: ClientOptions): NuvoraClient {
   const headers = { accept: "application/json", "nuvora-device": JSON.stringify(options.device) };
 
   async function call<T>(
-    method: "GET" | "POST",
+    method: HttpMethod,
     path: Path,
     params: Record<string, string | number>,
     signal?: AbortSignalLike,
     query?: Record<string, string>,
+    body?: unknown,
   ): Promise<T> {
     const url = options.baseUrl + fill(path, params) + queryString(query);
-    const init = signal ? { method, headers, signal } : { method, headers };
+    const init = {
+      method,
+      headers: method === "GET" ? headers : { ...headers, "content-type": "application/json" },
+      ...(body !== undefined && { body: JSON.stringify(body) }),
+      ...(signal && { signal }),
+    };
     const res = await options.fetch(url, init);
-    if (!res.ok) throw new ApiError(res.status, `${method} ${url} -> ${res.status}`);
+    if (!res.ok) {
+      const error = await apiError(res, `${method} ${url} -> ${res.status}`);
+      if (res.status === 401 && error.code !== "bad_credentials") options.onUnauthorized?.();
+      throw error;
+    }
+    if (res.status === 204) return undefined as T;
     // Trusted: the server's types generated this client. Parsing again here would
     // be a second schema to keep in sync.
     return (await res.json()) as T;
@@ -85,4 +102,15 @@ function queryString(query: Record<string, string> | undefined): string {
   if (!query) return "";
   const pairs = Object.entries(query).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
   return pairs.length ? `?${pairs.join("&")}` : "";
+}
+
+/** The error body is `{ code, message }` JSON when the server has a stable code to give; anything else carries none. */
+async function apiError(res: ResponseLike, message: string): Promise<ApiError> {
+  const body = await res.json().catch(() => null);
+  if (typeof body !== "object" || body === null) return new ApiError(res.status, message);
+  const field = (name: string) => {
+    const value = (body as Record<string, unknown>)[name];
+    return typeof value === "string" ? value : null;
+  };
+  return new ApiError(res.status, message, field("code"), field("message") ?? field("error"));
 }

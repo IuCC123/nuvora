@@ -29,6 +29,9 @@ export { titleCardLook } from "./titleCard";
 export type { TitleCardLook } from "./titleCard";
 export {
   containerLabel,
+  formatLastSeen,
+  formatUptime,
+  initials,
   fileFacts,
   formatBitrate,
   formatBytes,
@@ -39,4 +42,8 @@ export {
 } from "./format";
 export type { FileFact, LanguageName } from "./format";
 export { ApiError } from "./transport";
-export type { AbortSignalLike, FetchLike, RequestInitLike, ResponseLike } from "./transport";
+export type { AbortSignalLike, FetchLike, HttpMethod, RequestInitLike, ResponseLike } from "./transport";
+export { describeError } from "./errors";
+export type { ErrorCode } from "./errors";
+export { checkPassword, checkPasswordsMatch, checkRequired, checkUsername, PASSWORD_MIN_LENGTH } from "./validation";
+export { safeRedirect } from "./redirect";

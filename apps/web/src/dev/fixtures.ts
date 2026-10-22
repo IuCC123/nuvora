@@ -1,4 +1,4 @@
-import type { FetchLike, HomeResponse, ItemDetail, PosterCard, RowPage, ScanStatus, Version } from "@nuvora/core";
+import type { FetchLike, HomeResponse, HttpMethod, ItemDetail, PosterCard, RowPage, ScanStatus, Version } from "@nuvora/core";
 
 /**
  * Dev-only transport (`VITE_FIXTURES=1`): answers the JSON endpoints from the
@@ -150,7 +150,7 @@ export const fixtureFetch: FetchLike = async (url, init) => {
     : { ok: true, status: 200, json: async () => body };
 };
 
-function route(method: "GET" | "POST", path: string): unknown {
+function route(method: HttpMethod, path: string): unknown {
   if (path === "/api/home") return home;
   if (path === "/api/rows/all_movies") return allMoviesPage2;
   if (path === "/api/scan" && method === "POST") {
