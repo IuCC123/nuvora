@@ -138,7 +138,7 @@ impl ScanHandle {
             state: ScanState::Idle,
             last: None,
         });
-        tokio::spawn(worker(ctx, rx, tx));
+        tokio::spawn(worker(ctx, rx, requests.downgrade(), tx));
         ScanHandle { requests, status }
     }
 
@@ -165,10 +165,14 @@ impl ScanHandle {
 
 /// Loop: wait for a request, run one scan, publish the summary. A scan that
 /// fails outright (database gone) is logged and reported as a summary with one
-/// issue; the worker keeps running.
+/// issue; the worker keeps running. A scan that skipped settling files asks for
+/// one more scan once the window has passed, so a finished copy shows up
+/// without anyone pressing Scan. `resend` is weak so the worker ends with its
+/// `Library`.
 async fn worker(
     ctx: ScanContext,
     mut requests: mpsc::Receiver<()>,
+    resend: mpsc::WeakSender<()>,
     status: watch::Sender<ScanStatus>,
 ) {
     while requests.recv().await.is_some() {
@@ -184,9 +188,20 @@ async fn worker(
             moved = summary.moved,
             removed = summary.removed,
             unchanged = summary.unchanged,
+            settling = summary.settling,
             failed = summary.failed,
             "scan finished"
         );
+        if summary.settling > 0 {
+            let resend = resend.clone();
+            let delay = ctx.settle_window + Duration::from_secs(1);
+            tokio::spawn(async move {
+                tokio::time::sleep(delay).await;
+                if let Some(requests) = resend.upgrade() {
+                    let _ = requests.try_send(());
+                }
+            });
+        }
         status.send_modify(|s| {
             s.state = ScanState::Idle;
             s.last = Some(summary);
