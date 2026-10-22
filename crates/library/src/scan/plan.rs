@@ -130,7 +130,7 @@ pub(crate) fn diff(
         let Some(walk) = walks.iter().find(|w| w.root == k.root) else {
             continue;
         };
-        if walk.unreadable.iter().any(|folder| k.rel.is_under(folder)) {
+        if walk.unreadable.iter().any(|path| k.rel.is_within(path)) {
             continue;
         }
         plan.gone.push(k.id);
@@ -293,7 +293,7 @@ pub(crate) fn wanted_artwork(
         };
         !walk.complete
             || held_roots.contains(&file.root)
-            || walk.unreadable.iter().any(|f| file.rel.is_under(f))
+            || walk.unreadable.iter().any(|path| file.rel.is_within(path))
     };
     let mut images: HashMap<(RootId, &str), Vec<(String, &DiskFile)>> = HashMap::new();
     for walk in walks {
@@ -672,6 +672,18 @@ mod tests {
         ];
         let mut w = walk(&[disk("Open (2000)/Open (2000).mkv", 1)]);
         w.unreadable = vec![RelPath("Locked (2001)".into())];
+        let plan = diff(stored, &[w], now(), settle());
+        assert_eq!(plan.gone, [FileId(2)]);
+    }
+
+    #[test]
+    fn an_unreadable_path_keeps_the_file_at_that_path() {
+        let stored = vec![
+            known(1, "Linked.2001.mkv", 10),
+            known(2, "Gone (2002)/Gone (2002).mkv", 20),
+        ];
+        let mut w = walk(&[disk("Open (2000)/Open (2000).mkv", 1)]);
+        w.unreadable = vec![RelPath("Linked.2001.mkv".into())];
         let plan = diff(stored, &[w], now(), settle());
         assert_eq!(plan.gone, [FileId(2)]);
     }

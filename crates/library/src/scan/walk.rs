@@ -20,6 +20,11 @@ impl RelPath {
         (folder, stem.to_lowercase())
     }
 
+    /// `self` is `path` or lies under it.
+    pub(crate) fn is_within(&self, path: &RelPath) -> bool {
+        self == path || self.is_under(path)
+    }
+
     pub(crate) fn is_under(&self, folder: &RelPath) -> bool {
         self.0.len() > folder.0.len()
             && self.0.starts_with(&folder.0)
@@ -46,7 +51,8 @@ pub(crate) struct RootWalk {
     /// False if the root itself could not be read (unmounted share). The planner
     /// then treats every stored file of this root as unknown, never as gone.
     pub complete: bool,
-    /// Subfolders that failed to list. Stored files under them are unknown.
+    /// Entries (folders, files, symlinks) that failed to read. Stored files at
+    /// or under them are unknown.
     pub unreadable: Vec<RelPath>,
     /// `PathClass::Video` entries.
     pub videos: Vec<DiskFile>,
@@ -90,11 +96,15 @@ pub(crate) fn walk_root(root: RootId, library_id: i64, abs: &Path) -> RootWalk {
                 let rel = rel_path(abs, path).unwrap_or_default();
                 if e.loop_ancestor().is_some() {
                     walk.issues.push((rel, "symlink loop".into()));
-                } else if path.is_dir() {
-                    walk.unreadable.push(RelPath(rel));
-                } else {
-                    walk.issues.push((rel, e.to_string()));
+                    continue;
                 }
+                walk.issues
+                    .push((rel.clone(), format!("cannot read, so it was kept: {e}")));
+                if rel.is_empty() || e.io_error().is_some_and(is_share_down) {
+                    walk.complete = false;
+                    break;
+                }
+                walk.unreadable.push(RelPath(rel));
                 continue;
             }
         };
@@ -143,6 +153,15 @@ pub(crate) fn walk_root(root: RootId, library_id: i64, abs: &Path) -> RootWalk {
     walk.images.sort_by(|a, b| a.rel.cmp(&b.rel));
     walk.unreadable.sort();
     walk
+}
+
+/// Errors that mean the share itself went away mid-walk, not one bad entry.
+/// The whole root is then held, as if it had been unreadable from the start.
+fn is_share_down(e: &std::io::Error) -> bool {
+    use std::io::ErrorKind;
+    const EIO: i32 = 5;
+    matches!(e.kind(), ErrorKind::NotConnected | ErrorKind::TimedOut)
+        || e.raw_os_error() == Some(EIO)
 }
 
 /// `path` relative to `root`, `/`-separated; `None` when not valid UTF-8.
@@ -245,6 +264,33 @@ mod tests {
         assert!(walk.complete);
         assert_eq!(walk.unreadable, [RelPath("Locked (2001)".into())]);
         assert_eq!(walk.videos.len(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_folder_whose_target_cannot_be_statted_is_unreadable() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let (root, nas) = (dir.path().join("Movies"), dir.path().join("nas"));
+        touch(&root.join("Open (2000)/Open (2000).mkv"), b"v");
+        touch(&nas.join("Linked (2001)/Linked (2001).mkv"), b"v");
+        std::os::unix::fs::symlink(nas.join("Linked (2001)"), root.join("Linked (2001)")).unwrap();
+        std::fs::set_permissions(&nas, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let walk = walk_root(RootId(1), 1, &root);
+        std::fs::set_permissions(&nas, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(walk.complete);
+        assert_eq!(walk.unreadable, [RelPath("Linked (2001)".into())]);
+        assert_eq!(walk.issues.len(), 1, "{:?}", walk.issues);
+        assert_eq!(walk.videos.len(), 1);
+    }
+
+    #[test]
+    fn a_share_dropping_mid_walk_holds_the_root() {
+        use std::io::{Error, ErrorKind};
+        assert!(is_share_down(&Error::from_raw_os_error(5)), "EIO");
+        assert!(is_share_down(&Error::from(ErrorKind::NotConnected)));
+        assert!(is_share_down(&Error::from(ErrorKind::TimedOut)));
+        assert!(!is_share_down(&Error::from(ErrorKind::PermissionDenied)));
     }
 
     #[test]

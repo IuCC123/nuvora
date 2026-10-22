@@ -548,6 +548,29 @@ mod tests {
         assert_eq!((summary.unchanged, summary.removed), (5, 0));
     }
 
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_offline_symlinked_folder_removes_nothing() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let (root, data, nas) = (
+            dir.path().join("Movies"),
+            dir.path().join("data"),
+            dir.path().join("nas"),
+        );
+        sdr_movie(&root.join("Open (2000)/Open (2000).mp4"));
+        sdr_movie(&nas.join("Linked (2001)/Linked (2001).mp4"));
+        std::os::unix::fs::symlink(nas.join("Linked (2001)"), root.join("Linked (2001)")).unwrap();
+        let lib = open(&root, &data).await;
+        assert_eq!(scan(&lib).await.added, 2);
+
+        std::fs::set_permissions(&nas, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let summary = scan(&lib).await;
+        std::fs::set_permissions(&nas, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(summary.removed, 0, "{:?}", summary.issues);
+        assert_eq!(home_titles(&lib).await, ["Linked", "Open"]);
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn config_only_adds_what_is_missing() {
         let dir = tempfile::tempdir().unwrap();
