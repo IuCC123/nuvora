@@ -5,13 +5,11 @@
  * every rule about what a position means (too early, in progress, finished).
  */
 
+import type { ProgressRequest } from "./client";
+
 export interface PlaybackPosition {
   positionMs: number;
   durationMs: number;
-}
-
-export interface ProgressReport extends PlaybackPosition {
-  fileId: number;
 }
 
 /** The platform's timers, injected so tests drive the clock. */
@@ -24,7 +22,7 @@ export interface ProgressReporterOptions<H> {
   fileId: number;
   /** Where playback is now; `null` while the duration is still unknown. */
   read: () => PlaybackPosition | null;
-  send: (report: ProgressReport) => Promise<unknown> | void;
+  send: (report: ProgressRequest) => Promise<unknown> | void;
   timers: Timers<H>;
   /** While playing, a report this often. */
   intervalMs?: number;
@@ -37,7 +35,7 @@ export interface ProgressReporter {
   paused(): void;
   seeked(): void;
   /** Report now through another transport (the web's page-hide beacon) and keep going. */
-  flush(via: (report: ProgressReport) => void): void;
+  flush(via: (report: ProgressRequest) => void): void;
   /** The final report. Resolves once it is sent; later calls do nothing. */
   leave(): Promise<void>;
 }
@@ -53,19 +51,19 @@ export function createProgressReporter<H>(options: ProgressReporterOptions<H>): 
   let phase: "paused" | "playing" | "left" = "paused";
   let cadence: { handle: H } | null = null;
   let settle: { handle: H } | null = null;
-  let last: ProgressReport | null = null;
+  let last: ProgressRequest | null = null;
 
   const stop = (timer: { handle: H } | null) => {
     if (timer) timers.clearTimeout(timer.handle);
     return null;
   };
 
-  function report(): ProgressReport | null {
+  function report(): ProgressRequest | null {
     const at = options.read();
     if (!at || !Number.isFinite(at.durationMs) || at.durationMs <= 0 || !Number.isFinite(at.positionMs)) return null;
-    const durationMs = Math.round(at.durationMs);
-    const next = { fileId: options.fileId, positionMs: Math.min(Math.max(0, Math.round(at.positionMs)), durationMs), durationMs };
-    if (last && last.durationMs === next.durationMs && Math.abs(last.positionMs - next.positionMs) < SAME_POSITION_MS) return null;
+    const duration_ms = Math.round(at.durationMs);
+    const next = { file_id: options.fileId, position_ms: Math.min(Math.max(0, Math.round(at.positionMs)), duration_ms), duration_ms };
+    if (last && last.duration_ms === next.duration_ms && Math.abs(last.position_ms - next.position_ms) < SAME_POSITION_MS) return null;
     last = next;
     return next;
   }

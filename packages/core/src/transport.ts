@@ -8,7 +8,7 @@ export interface AbortSignalLike {
   readonly aborted: boolean;
 }
 
-export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 export interface RequestInitLike {
   method: HttpMethod;
@@ -16,6 +16,8 @@ export interface RequestInitLike {
   /** JSON text. State-changing requests always send `content-type: application/json` (the server's CSRF rule). */
   body?: string;
   signal?: AbortSignalLike;
+  /** Let the request outlive the page (the web's last progress report on close). Platforms without it ignore it. */
+  keepalive?: boolean;
 }
 
 export interface ResponseLike {

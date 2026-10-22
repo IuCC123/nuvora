@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createProgressReporter, formatClock, type ProgressReport, type Timers } from "../src";
+import { createClient, createProgressReporter, formatClock, type ProgressRequest, type Timers } from "../src";
 
 /** A clock the test advances by hand: timers fire in due order as `advance` passes them. */
 function fakeClock() {
@@ -32,7 +32,7 @@ function fakeClock() {
 /** A player whose position moves with the fake clock while playing. */
 function setup(durationMs = 6_000_000) {
   const clock = fakeClock();
-  const sent: ProgressReport[] = [];
+  const sent: ProgressRequest[] = [];
   let base = 0;
   let since: number | null = null;
   const position = () => base + (since === null ? 0 : clock.now() - since);
@@ -45,7 +45,7 @@ function setup(durationMs = 6_000_000) {
   return {
     clock,
     reporter,
-    sent: () => sent.map((r) => r.positionMs),
+    sent: () => sent.map((r) => r.position_ms),
     reports: sent,
     play() {
       since = clock.now();
@@ -77,7 +77,7 @@ test("reports every 10 s while playing and stops on pause", () => {
   expect(p.sent()).toEqual([10_000, 20_000, 30_000, 35_000]);
   p.clock.advance(60_000);
   expect(p.sent()).toEqual([10_000, 20_000, 30_000, 35_000]);
-  expect(p.reports[0]).toEqual({ fileId: 7, positionMs: 10_000, durationMs: 6_000_000 });
+  expect(p.reports[0]).toEqual({ file_id: 7, position_ms: 10_000, duration_ms: 6_000_000 });
 });
 
 test("a run of seeks reports once, after the last one settles, and restarts the cadence", () => {
@@ -122,7 +122,7 @@ test("a pause right after a report, or a flush, sends nothing new", () => {
   p.clock.advance(10_000);
   p.pause();
   const beacon: number[] = [];
-  p.reporter.flush((r) => beacon.push(r.positionMs));
+  p.reporter.flush((r) => beacon.push(r.position_ms));
   expect(p.sent()).toEqual([10_000]);
   expect(beacon).toEqual([]);
 });
@@ -132,14 +132,14 @@ test("flush sends the current position through the given transport and playback 
   p.play();
   p.clock.advance(4_000);
   const beacon: number[] = [];
-  p.reporter.flush((r) => beacon.push(r.positionMs));
+  p.reporter.flush((r) => beacon.push(r.position_ms));
   expect(beacon).toEqual([4_000]);
   p.clock.advance(6_000);
   expect(p.sent()).toEqual([10_000]);
 });
 
 test("nothing is reported before the duration is known", async () => {
-  const sent: ProgressReport[] = [];
+  const sent: ProgressRequest[] = [];
   const clock = fakeClock();
   const reporter = createProgressReporter({ fileId: 1, read: () => ({ positionMs: 0, durationMs: Number.NaN }), send: (r) => void sent.push(r), timers: clock.timers });
   reporter.playing();
@@ -164,4 +164,24 @@ test("formats the player clock", () => {
   expect(formatClock(2_530_000)).toBe("42:10");
   expect(formatClock(3_723_000)).toBe("1:02:03");
   expect(formatClock(-5)).toBe("0:00");
+});
+
+test("the client reports progress as a JSON PUT that can outlive the page, and marks watched both ways", async () => {
+  const calls: { url: string; method: string; body?: string; keepalive?: boolean }[] = [];
+  const client = createClient({
+    baseUrl: "",
+    device: { containers: [], video: [], audio: [] },
+    fetch: async (url, init) => {
+      calls.push({ url, method: init.method, ...(init.body && { body: init.body }), ...(init.keepalive && { keepalive: true }) });
+      return { ok: true, status: 204, json: async () => null };
+    },
+  });
+  await client.reportProgress(13, { file_id: 13, position_ms: 2_530_000, duration_ms: 6_000_000 }, { keepalive: true });
+  await client.markWatched(13);
+  await client.markUnwatched(13);
+  expect(calls).toEqual([
+    { url: "/api/items/13/progress", method: "PUT", body: '{"file_id":13,"position_ms":2530000,"duration_ms":6000000}', keepalive: true },
+    { url: "/api/items/13/watched", method: "PUT" },
+    { url: "/api/items/13/watched", method: "DELETE" },
+  ]);
 });
