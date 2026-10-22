@@ -1,6 +1,7 @@
 //! The HTTP API: wire types, handlers, and the OpenAPI document generated from
-//! them. Wire types exist only in this file; they are built from the catalog's
-//! domain read models, and the TypeScript client is generated from the spec.
+//! them. Wire types exist only in this module and its children (`accounts`,
+//! `admin`); they are built from the catalog's domain read models, and the
+//! TypeScript client is generated from the spec.
 //!
 //! One request per screen:
 //!
@@ -14,11 +15,22 @@
 //! | GET    | /api/scan                   | Scan status                              |
 //! | POST   | /api/scan                   | Request a scan (idempotent, coalescing)  |
 //! | GET    | /api/openapi.json           | The spec                                 |
+//!
+//! Accounts and admin routes live in [`accounts`] and [`admin`]. Access is set
+//! by the group a route is registered in ([`Access`]), which decides both the
+//! middleware and the spec's `security`, so the two cannot disagree.
+//!
+//! Every error body is [`ErrorBody`]. State-changing requests (anything but
+//! GET/HEAD/OPTIONS) must send `Content-Type: application/json`, even with an
+//! empty body, and when they carry an `Origin` it must match the `Host`.
+
+mod accounts;
+mod admin;
 
 use std::time::SystemTime;
 
 use axum::Json;
-use axum::extract::{FromRequestParts, Path, Query, State};
+use axum::extract::{FromRequest, FromRequestParts, Path, Query, State};
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH, VARY};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, request::Parts};
 use axum::response::{IntoResponse, Response};
@@ -33,27 +45,71 @@ use nuvora_media::{
 use serde::{Deserialize, Serialize};
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
+use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityRequirement, SecurityScheme};
+use utoipa::openapi::{ContentBuilder, Ref, ResponseBuilder};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[derive(OpenApi)]
 #[openapi(
     info(title = "Nuvora", version = "1"),
-    components(schemas(DeviceProfileWire, ImageSize))
+    components(schemas(DeviceProfileWire, ImageSize, ErrorBody))
 )]
 struct ApiDoc;
+
+/// The session cookie. HttpOnly, so scripts never see the token.
+pub const SESSION_COOKIE: &str = "nuvora_session";
+
+/// Who may call a route. Public routes are health, auth state, login and setup.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Access {
+    Member,
+    Admin,
+}
 
 /// All API routes plus the spec built from the same `routes!` calls, so a
 /// route cannot exist without being documented (no hand-kept path list).
 pub fn router() -> (axum::Router<Library>, utoipa::openapi::OpenApi) {
-    let (router, spec) = OpenApiRouter::with_openapi(ApiDoc::openapi())
+    let public = OpenApiRouter::new()
+        .routes(routes!(accounts::health))
+        .routes(routes!(accounts::auth_state))
+        .routes(routes!(accounts::setup))
+        .routes(routes!(accounts::login));
+    let mut member = OpenApiRouter::new()
         .routes(routes!(get_home))
         .routes(routes!(get_row))
         .routes(routes!(get_item))
         .routes(routes!(get_image))
         .routes(routes!(stream_file))
         .routes(routes!(get_scan, post_scan))
+        .routes(routes!(accounts::logout))
+        .routes(routes!(accounts::update_me));
+    let mut admin = OpenApiRouter::new()
+        .routes(routes!(admin::list_libraries, admin::create_library))
+        .routes(routes!(admin::update_library, admin::delete_library))
+        .routes(routes!(admin::scan_library))
+        .routes(routes!(admin::list_dirs))
+        .routes(routes!(admin::list_users, admin::create_user))
+        .routes(routes!(admin::update_user, admin::delete_user))
+        .routes(routes!(admin::get_server, admin::update_server));
+    document_access(member.get_openapi_mut(), Access::Member);
+    document_access(admin.get_openapi_mut(), Access::Admin);
+    let (router, mut spec) = OpenApiRouter::with_openapi(ApiDoc::openapi())
+        .merge(public)
+        .merge(member)
+        .merge(admin)
         .split_for_parts();
+    let components = spec.components.get_or_insert_with(Default::default);
+    components.add_security_scheme(
+        "session",
+        SecurityScheme::ApiKey(utoipa::openapi::security::ApiKey::Cookie(
+            utoipa::openapi::security::ApiKeyValue::new(SESSION_COOKIE),
+        )),
+    );
+    components.add_security_scheme(
+        "bearer",
+        SecurityScheme::Http(HttpBuilder::new().scheme(HttpAuthScheme::Bearer).build()),
+    );
     let spec_json = spec.clone();
     (
         router.route(
@@ -62,6 +118,42 @@ pub fn router() -> (axum::Router<Library>, utoipa::openapi::OpenApi) {
         ),
         spec,
     )
+}
+
+/// Marks every operation in `spec` as needing a session (cookie or bearer) and
+/// documents the 401, plus the 403 for admin routes.
+fn document_access(spec: &mut utoipa::openapi::OpenApi, access: Access) {
+    let error = |description: &str| {
+        ResponseBuilder::new()
+            .description(description)
+            .content(
+                "application/json",
+                ContentBuilder::new()
+                    .schema(Some(Ref::from_schema_name("ErrorBody")))
+                    .build(),
+            )
+            .build()
+    };
+    for item in spec.paths.paths.values_mut() {
+        let operations = [
+            &mut item.get,
+            &mut item.post,
+            &mut item.put,
+            &mut item.patch,
+            &mut item.delete,
+        ];
+        for op in operations.into_iter().flatten() {
+            op.security = Some(vec![
+                SecurityRequirement::new("session", Vec::<String>::new()),
+                SecurityRequirement::new("bearer", Vec::<String>::new()),
+            ]);
+            let responses = &mut op.responses.responses;
+            responses.insert("401".into(), error("No valid session").into());
+            if access == Access::Admin {
+                responses.insert("403".into(), error("Not an admin").into());
+            }
+        }
+    }
 }
 
 /// Gzip at the fastest level: brotli at its default level costs more time than
@@ -375,7 +467,7 @@ impl<S: Send + Sync> FromRequestParts<S> for Device {
             DeviceProfile::baseline()
         } else {
             let wire: DeviceProfileWire = serde_json::from_slice(raw).map_err(|e| {
-                ApiError::BadRequest(format!("Nuvora-Device header is not a device profile: {e}"))
+                ApiError::bad_request(format!("Nuvora-Device header is not a device profile: {e}"))
             })?;
             DeviceProfile::from(wire)
         };
@@ -418,7 +510,7 @@ async fn get_row(
         .as_deref()
         .map(|raw| Cursor::parse(kind, raw))
         .transpose()
-        .map_err(|_| ApiError::BadRequest("invalid cursor for this row".into()))?;
+        .map_err(|_| ApiError::bad_request("invalid cursor for this row"))?;
     let page = lib
         .row(kind, after, query.limit.unwrap_or(HOME_ROW_LIMIT))
         .await
@@ -453,7 +545,7 @@ async fn get_item(
             .item(ItemId::from_raw(id), device.profile)
             .await
             .map_err(ApiError::internal)?;
-        json_with_etag(&etag, &ItemDetail::from(item.ok_or(ApiError::NotFound)?))
+        json_with_etag(&etag, &ItemDetail::from(item.ok_or(ApiError::not_found())?))
     };
     response
         .headers_mut()
@@ -474,13 +566,13 @@ async fn get_image(
     State(lib): State<Library>,
     Path((id, size)): Path<(String, ImageSize)>,
 ) -> Result<Response, ApiError> {
-    let id: ArtworkId = id.parse().map_err(|_| ApiError::NotFound)?;
+    let id: ArtworkId = id.parse().map_err(|_| ApiError::not_found())?;
     let path = lib
         .artwork_path(id, size.into())
-        .ok_or(ApiError::NotFound)?;
+        .ok_or(ApiError::not_found())?;
     let bytes = tokio::fs::read(path)
         .await
-        .map_err(|_| ApiError::NotFound)?;
+        .map_err(|_| ApiError::not_found())?;
     let headers = [
         (CONTENT_TYPE, "image/webp"),
         (CACHE_CONTROL, "public, max-age=31536000, immutable"),
@@ -507,7 +599,7 @@ async fn stream_file(
         .stream_source(FileId::from_raw(id))
         .await
         .map_err(ApiError::internal)?
-        .ok_or(ApiError::NotFound)?;
+        .ok_or(ApiError::not_found())?;
     let mime: mime::Mime = source
         .container
         .mime_type()
@@ -981,28 +1073,118 @@ fn json_with_etag<T: Serialize>(etag: &str, body: &T) -> Response {
     response
 }
 
-#[derive(Debug)]
-pub enum ApiError {
-    BadRequest(String),
+/// Every API error answers with this body. `code` is stable; `message` is
+/// written for people and may change.
+#[derive(Serialize, ToSchema, Debug)]
+pub struct ErrorBody {
+    pub code: ErrorCode,
+    pub message: String,
+    /// The request field the error is about, for inline form validation.
+    pub field: Option<String>,
+}
+
+/// Clients must treat an unknown code like `bad_request`.
+#[allow(dead_code)]
+#[derive(Serialize, ToSchema, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorCode {
+    BadRequest,
+    Validation,
+    Unauthorized,
+    BadCredentials,
+    Forbidden,
     NotFound,
-    /// Logged where it happened; the client gets a bare 500.
+    SetupDone,
+    UsernameTaken,
+    LastAdmin,
+    RateLimited,
     Internal,
 }
 
+#[derive(Debug)]
+pub struct ApiError {
+    status: StatusCode,
+    body: ErrorBody,
+    retry_after_s: Option<u64>,
+}
+
+#[allow(dead_code)]
 impl ApiError {
+    fn new(status: StatusCode, code: ErrorCode, message: impl Into<String>) -> ApiError {
+        ApiError {
+            status,
+            body: ErrorBody {
+                code,
+                message: message.into(),
+                field: None,
+            },
+            retry_after_s: None,
+        }
+    }
+
+    fn bad_request(message: impl Into<String>) -> ApiError {
+        ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::BadRequest, message)
+    }
+
+    fn validation(field: &str, message: impl Into<String>) -> ApiError {
+        let mut error = ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::Validation, message);
+        error.body.field = Some(field.to_owned());
+        error
+    }
+
+    pub(crate) fn not_found() -> ApiError {
+        ApiError::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, "Not found")
+    }
+
+    fn conflict(code: ErrorCode, message: impl Into<String>) -> ApiError {
+        ApiError::new(StatusCode::CONFLICT, code, message)
+    }
+
+    /// Logged where it happened; the client gets a generic message.
     fn internal(e: impl std::fmt::Display) -> ApiError {
         tracing::error!("{e}");
-        ApiError::Internal
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorCode::Internal,
+            "Something went wrong on the server",
+        )
+    }
+
+    fn not_implemented() -> ApiError {
+        ApiError::new(
+            StatusCode::NOT_IMPLEMENTED,
+            ErrorCode::Internal,
+            "Not implemented yet",
+        )
     }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        match self {
-            ApiError::BadRequest(m) => (StatusCode::BAD_REQUEST, m).into_response(),
-            ApiError::NotFound => StatusCode::NOT_FOUND.into_response(),
-            ApiError::Internal => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        let mut response = (self.status, Json(self.body)).into_response();
+        if let Some(seconds) = self.retry_after_s {
+            response
+                .headers_mut()
+                .insert(axum::http::header::RETRY_AFTER, HeaderValue::from(seconds));
         }
+        response
+    }
+}
+
+/// `axum::Json` whose rejections (bad JSON, wrong fields) answer with [`ErrorBody`].
+pub struct JsonBody<T>(pub T);
+
+impl<S, T> FromRequest<S> for JsonBody<T>
+where
+    S: Send + Sync,
+    T: serde::de::DeserializeOwned,
+{
+    type Rejection = ApiError;
+    async fn from_request(req: axum::extract::Request, state: &S) -> Result<Self, ApiError> {
+        Json::<T>::from_request(req, state)
+            .await
+            .map(|Json(body)| JsonBody(body))
+            .map_err(|e| ApiError::bad_request(e.body_text()))
     }
 }
 
@@ -1205,7 +1387,7 @@ mod tests {
         );
         assert_eq!(
             String::from_utf8(body).unwrap(),
-            "{\"error\":\"not found\"}"
+            "{\"code\":\"not_found\",\"message\":\"Not found\",\"field\":null}"
         );
         let (status, _, body) = get(&app, "/movie/1", &[]).await;
         assert_eq!(
