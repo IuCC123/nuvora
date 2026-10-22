@@ -1,16 +1,27 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { defineConfig, loadEnv, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 import { cssVariables } from "@nuvora/tokens";
 
 /** `import "virtual:nuvora-tokens.css"` = the `:root` variables from @nuvora/tokens. No generated file to forget. */
 function tokensCss(): Plugin {
   const id = "virtual:nuvora-tokens.css";
+  const entry = join(import.meta.dirname, "../../packages/tokens/src/index.ts");
+  let server: ViteDevServer | undefined;
   return {
     name: "nuvora-tokens",
+    configureServer(s) {
+      server = s;
+    },
     resolveId: (source) => (source === id ? "\0" + id : undefined),
-    load: (resolved) => (resolved === "\0" + id ? cssVariables() : undefined),
+    async load(resolved) {
+      if (resolved !== "\0" + id) return undefined;
+      this.addWatchFile(entry);
+      // In dev, load tokens through Vite rather than this config's own import, so a token edit shows without a restart.
+      const mod = server ? ((await server.ssrLoadModule(entry)) as { cssVariables: typeof cssVariables }) : { cssVariables };
+      return mod.cssVariables();
+    },
   };
 }
 
