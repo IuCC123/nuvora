@@ -206,7 +206,7 @@ export interface paths {
         };
         /**
          * The file's font attachments, in stream order. Empty for files without any
-         *     (every MP4).
+         *     (every MP4). The ETag is the file's fingerprint.
          */
         get: operations["list_fonts"];
         put?: never;
@@ -1707,6 +1707,12 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["FontAttachment"][];
                 };
+            };
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description No valid session */
             401: {

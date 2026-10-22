@@ -11,6 +11,7 @@ mod ids;
 mod libraries;
 mod scan;
 mod store;
+mod subtitles;
 #[cfg(test)]
 mod test_support;
 mod views;
@@ -25,11 +26,12 @@ use nuvora_media::{DeviceProfile, ImageSize, MediaTools};
 use tokio::sync::watch;
 
 pub use accounts::{
-    AccountError, Credentials, NewUser, Role, Session, TokenHash, User, UserChanges,
+    AccountError, Credentials, NewUser, Role, Session, SubtitleMode, TokenHash, User, UserChanges,
 };
 pub use ids::{ArtworkId, FileId, ItemId, LibraryId, ParseIdError, UserId};
 pub use libraries::{LibraryError, LibraryInfo};
 pub use scan::{ScanIssue, ScanPhase, ScanProgress, ScanState, ScanStatus, ScanSummary};
+pub use subtitles::SubtitleSource;
 pub use views::{
     Artwork, Card, CatalogRev, Cursor, HOME_ROW_LIMIT, Home, InvalidCursor, Item, ItemKind,
     MAX_ROW_LIMIT, Movie, Row, RowKind, RowPage, StreamSource, Version, VersionMedia,

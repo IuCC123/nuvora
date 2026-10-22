@@ -955,7 +955,7 @@
     },
     "/api/files/{id}/fonts": {
       "get": {
-        "summary": "The file's font attachments, in stream order. Empty for files without any\n(every MP4).",
+        "summary": "The file's font attachments, in stream order. Empty for files without any\n(every MP4). The ETag is the file's fingerprint.",
         "operationId": "list_fonts",
         "parameters": [
           {
@@ -981,6 +981,9 @@
                 }
               }
             }
+          },
+          "304": {
+            "description": ""
           },
           "401": {
             "description": "No valid session",

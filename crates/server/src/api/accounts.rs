@@ -256,10 +256,7 @@ pub(super) async fn update_me(
     State(state): State<AppState>,
     signed_in: SignedIn,
     JsonBody(body): JsonBody<UpdateMeRequest>,
-) -> Result<Response, ApiError> {
-    if body.subtitle_mode.is_some() || body.subtitle_language.is_some() {
-        return Ok(StatusCode::NOT_IMPLEMENTED.into_response());
-    }
+) -> Result<Json<User>, ApiError> {
     let lib = &state.library;
     let me = signed_in.user.id;
     let mut changes = UserChanges {
@@ -267,6 +264,11 @@ pub(super) async fn update_me(
             .display_name
             .as_deref()
             .map(valid_display_name)
+            .transpose()?,
+        subtitle_mode: body.subtitle_mode.map(Into::into),
+        subtitle_language: body
+            .subtitle_language
+            .map(|language| language.as_deref().map(valid_language).transpose())
             .transpose()?,
         ..UserChanges::default()
     };
@@ -286,7 +288,7 @@ pub(super) async fn update_me(
         .update_user(me, me, changes, Some(signed_in.token), state.auth.now_ms())
         .await
         .map_err(account_error)?;
-    Ok(Json(User::from(user)).into_response())
+    Ok(Json(User::from(user)))
 }
 
 /// Starts a session for `user`: the `User` body plus the session cookie.
@@ -375,6 +377,18 @@ pub(super) fn valid_display_name(raw: &str) -> Result<String, ApiError> {
     Ok(name.to_owned())
 }
 
+/// Three ASCII letters, an ISO 639-2 code, stored lowercased.
+fn valid_language(raw: &str) -> Result<String, ApiError> {
+    let code = raw.trim();
+    if code.len() != 3 || !code.chars().all(|c| c.is_ascii_alphabetic()) {
+        return Err(ApiError::validation(
+            "subtitle_language",
+            "Use a three-letter language code, like \"spa\"",
+        ));
+    }
+    Ok(code.to_ascii_lowercase())
+}
+
 /// At least 8 characters. The upper bound keeps hashing cheap to refuse.
 pub(super) fn valid_password(field: &str, password: String) -> Result<String, ApiError> {
     if !(8..=256).contains(&password.chars().count()) {
@@ -390,8 +404,8 @@ impl From<nuvora_library::User> for User {
             username: u.username,
             display_name: u.display_name,
             role: u.role.into(),
-            subtitle_mode: SubtitleMode::Auto,
-            subtitle_language: None,
+            subtitle_mode: u.subtitle_mode.into(),
+            subtitle_language: u.subtitle_language,
         }
     }
 }
@@ -401,6 +415,26 @@ impl From<nuvora_library::Role> for Role {
         match r {
             nuvora_library::Role::Admin => Role::Admin,
             nuvora_library::Role::Member => Role::Member,
+        }
+    }
+}
+
+impl From<nuvora_library::SubtitleMode> for SubtitleMode {
+    fn from(m: nuvora_library::SubtitleMode) -> Self {
+        match m {
+            nuvora_library::SubtitleMode::Auto => SubtitleMode::Auto,
+            nuvora_library::SubtitleMode::Always => SubtitleMode::Always,
+            nuvora_library::SubtitleMode::Off => SubtitleMode::Off,
+        }
+    }
+}
+
+impl From<SubtitleMode> for nuvora_library::SubtitleMode {
+    fn from(m: SubtitleMode) -> Self {
+        match m {
+            SubtitleMode::Auto => nuvora_library::SubtitleMode::Auto,
+            SubtitleMode::Always => nuvora_library::SubtitleMode::Always,
+            SubtitleMode::Off => nuvora_library::SubtitleMode::Off,
         }
     }
 }
@@ -1011,5 +1045,54 @@ mod tests {
             app.login("admin", "new password").await.status,
             StatusCode::OK
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn subtitle_preferences_round_trip() {
+        let app = TestApp::new().await;
+        let cookie = app.setup_admin().await;
+        let patch = |body: serde_json::Value| {
+            let (app, cookie) = (&app, &cookie);
+            async move {
+                app.call("PATCH", "/api/auth/me", Some(cookie), Some(body))
+                    .await
+            }
+        };
+        let prefs = |user: &serde_json::Value| {
+            (
+                user["subtitle_mode"].clone(),
+                user["subtitle_language"].clone(),
+            )
+        };
+        let set = patch(json!({"subtitle_mode": "always", "subtitle_language": " SPA "})).await;
+        assert_eq!(set.status, StatusCode::OK);
+        assert_eq!(prefs(&set.json()), (json!("always"), json!("spa")));
+        let kept = patch(json!({"display_name": "Ana"})).await.json();
+        assert_eq!(prefs(&kept), (json!("always"), json!("spa")));
+        let state = app
+            .call("GET", "/api/auth/state", Some(&cookie), None)
+            .await
+            .json();
+        assert_eq!(prefs(&state["user"]), (json!("always"), json!("spa")));
+
+        let cleared = patch(json!({"subtitle_mode": "off", "subtitle_language": null}))
+            .await
+            .json();
+        assert_eq!(prefs(&cleared), (json!("off"), json!(null)));
+
+        let bad = patch(json!({"subtitle_language": "español"})).await;
+        assert_eq!(bad.status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            bad.json(),
+            json!({"code": "validation", "message": "Use a three-letter language code, like \"spa\"", "field": "subtitle_language"})
+        );
+        let unknown = patch(json!({"subtitle_mode": "sometimes"})).await;
+        assert_eq!(unknown.status, StatusCode::BAD_REQUEST);
+        assert_eq!(unknown.json()["code"], "bad_request");
+        let after = app
+            .call("GET", "/api/auth/state", Some(&cookie), None)
+            .await
+            .json();
+        assert_eq!(prefs(&after["user"]), (json!("off"), json!(null)));
     }
 }
