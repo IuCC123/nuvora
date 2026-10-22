@@ -117,6 +117,8 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
   useReleaseStream(video);
 
   const known = Number.isFinite(media.duration) && media.duration > 0;
+  // iPhone Safari has no element full screen, only the video's own player.
+  const videoFullscreen = (video as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null)?.webkitEnterFullscreen;
   const visible = !!notice || awake || media.paused || held.focus || held.hover || held.drag;
   const hold = (key: keyof typeof held, value: boolean) => setHeld((h) => (h[key] === value ? h : { ...h, [key]: value }));
 
@@ -177,7 +179,14 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
     },
     fullscreen() {
       if (document.fullscreenElement) void document.exitFullscreen();
-      else void root.current?.requestFullscreen().catch(() => {});
+      else if (document.fullscreenEnabled) void root.current?.requestFullscreen().catch(() => {});
+      else if (videoFullscreen) {
+        try {
+          videoFullscreen.call(video);
+        } catch {
+          // Before the video has loaded, Safari refuses; the next press works.
+        }
+      }
     },
     pip() {
       if (!video) return;
@@ -234,6 +243,7 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
   const playing = !media.paused;
   const level = media.muted || media.volume === 0 ? "muted" : media.volume < 0.5 ? "low" : "high";
   const pipSupported = document.pictureInPictureEnabled;
+  const canFullscreen = document.fullscreenEnabled || !!videoFullscreen;
 
   return (
     <div
@@ -367,9 +377,11 @@ function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, n
                     <PipIcon />
                   </ControlButton>
                 )}
-                <ControlButton label={fullscreen ? "Exit full screen" : "Full screen"} tip={`${fullscreen ? "Exit full screen" : "Full screen"} · F`} onClick={actions.fullscreen}>
-                  <FullscreenIcon exit={fullscreen} />
-                </ControlButton>
+                {canFullscreen && (
+                  <ControlButton label={fullscreen ? "Exit full screen" : "Full screen"} tip={`${fullscreen ? "Exit full screen" : "Full screen"} · F`} onClick={actions.fullscreen}>
+                    <FullscreenIcon exit={fullscreen} />
+                  </ControlButton>
+                )}
               </div>
             </div>
           </div>
