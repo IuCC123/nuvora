@@ -133,6 +133,7 @@ function PlayerView({ itemId, fileId, title, year, src, startAt, notice, onBack,
       if (!video) return;
       video.volume = Math.min(1, Math.max(0, Math.round(level * 100) / 100));
       if (level > 0) video.muted = false;
+      saveVolume({ volume: video.volume, muted: video.muted });
     },
     toggleMute() {
       if (!video) return;
@@ -142,6 +143,7 @@ function PlayerView({ itemId, fileId, title, year, src, startAt, notice, onBack,
       } else {
         video.muted = true;
       }
+      saveVolume({ volume: video.volume, muted: video.muted });
     },
     fullscreen() {
       if (document.fullscreenElement) void document.exitFullscreen();
@@ -227,7 +229,6 @@ function PlayerView({ itemId, fileId, title, year, src, startAt, notice, onBack,
           }}
           onLoadedData={(e) => !e.currentTarget.seeking && setReady(true)}
           onSeeked={() => setReady(true)}
-          onVolumeChange={(e) => saveVolume({ volume: e.currentTarget.volume, muted: e.currentTarget.muted })}
           onError={(e) => e.currentTarget.error?.code !== MediaError.MEDIA_ERR_ABORTED && onFailed()}
         />
       )}
