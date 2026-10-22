@@ -182,10 +182,15 @@ enum Carrier {
 }
 
 /// The token a request carries (raw text, as the client holds it), from the
-/// `Authorization: Bearer` header or else the session cookie.
+/// `Authorization: Bearer` header or else the session cookie. Another
+/// `Authorization` scheme (a proxy's Basic auth) is not ours and is ignored.
 fn presented_token(headers: &HeaderMap) -> Option<(String, Carrier)> {
-    if let Some(auth) = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok()) {
-        let token = auth.strip_prefix("Bearer ")?;
+    let bearer = headers
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().split_once(' '))
+        .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"));
+    if let Some((_, token)) = bearer {
         return Some((token.trim().to_owned(), Carrier::Bearer));
     }
     headers
