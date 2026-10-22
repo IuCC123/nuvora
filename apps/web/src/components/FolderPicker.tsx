@@ -9,6 +9,7 @@ import "../styles/picker.css";
  * Browse the server's folders and pick one. Inline, under the field it fills,
  * rather than a dialog: it is part of the form, and the form stays visible.
  * Up and Down move between folders, Right or Enter opens one, Left goes up.
+ * Escape cancels the picker alone, never the form around it.
  */
 export function FolderPicker({
   start,
@@ -69,7 +70,17 @@ export function FolderPicker({
   const canGoUp = data != null && !(data.parent == null && path === null);
 
   return (
-    <div className="picker" role="group" aria-label="Choose a folder" ref={pickerRoot}>
+    <div
+      className="picker"
+      role="group"
+      aria-label="Choose a folder"
+      ref={pickerRoot}
+      onKeyDown={(e) => {
+        if (e.key !== "Escape") return;
+        e.stopPropagation();
+        onCancel();
+      }}
+    >
       <div className="picker-bar">
         <button type="button" className="icon-btn picker-up" onClick={up} disabled={!canGoUp} aria-label="Up one folder" title="Up one folder">
           <ParentFolderIcon />

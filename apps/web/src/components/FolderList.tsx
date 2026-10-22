@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { folderCrumbs } from "@nuvora/core";
 import { FolderPicker } from "./FolderPicker";
 import { AlertIcon, FolderIcon, PlusIcon } from "./Icon";
@@ -28,6 +28,13 @@ export function FolderList({
   openPicker?: boolean;
 }) {
   const [picking, setPicking] = useState(openPicker && paths.length === 0);
+  const addButton = useRef<HTMLButtonElement>(null);
+  const wasPicking = useRef(picking);
+  // Closing the picker removes the focused control with it; the add button takes focus back.
+  useEffect(() => {
+    if (wasPicking.current && !picking) addButton.current?.focus();
+    wasPicking.current = picking;
+  }, [picking]);
   const labelId = useId();
   const errorId = useId();
   const last = paths.at(-1);
@@ -69,7 +76,7 @@ export function FolderList({
           onCancel={() => setPicking(false)}
         />
       ) : (
-        <button type="button" name={name} className="btn btn-secondary btn-small folder-add" onClick={() => setPicking(true)}>
+        <button ref={addButton} type="button" name={name} className="btn btn-secondary btn-small folder-add" onClick={() => setPicking(true)}>
           <PlusIcon size={16} />
           {paths.length ? "Add another folder" : "Choose a folder"}
         </button>
