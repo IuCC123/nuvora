@@ -1,7 +1,7 @@
 /* Player: the whole window is the picture. Black, not canvas, so letterboxing disappears. */
 .player {
   --player-pad: 32px;
-  --player-scrim: rgba(0, 0, 0, 0.78);
+  --player-scrim: rgba(0, 0, 0, 0.86);
   --player-hover: rgba(255, 255, 255, 0.12);
   --player-track: rgba(255, 255, 255, 0.22);
   --player-buffered: rgba(255, 255, 255, 0.4);
@@ -143,6 +143,7 @@
 .player-top,
 .player-bottom {
   position: relative;
+  isolation: isolate;
   pointer-events: auto;
   transition: transform var(--nv-motion-duration-base) var(--nv-motion-easing-enter);
 }
@@ -162,8 +163,8 @@
 }
 
 .player-bottom::before {
-  top: -96px;
-  background: linear-gradient(0deg, var(--player-scrim) 0%, rgba(0, 0, 0, 0.5) 55%, transparent);
+  top: -120px;
+  background: linear-gradient(0deg, var(--player-scrim) 0%, rgba(0, 0, 0, 0.62) 50%, transparent);
 }
 
 .player[data-controls="hidden"] .player-chrome {
@@ -291,6 +292,12 @@
 
 .player-btn:hover {
   background: var(--player-hover);
+}
+
+/* Bright frames (snow, sky) can show through the scrim; a soft shadow keeps the glyphs whole. */
+.player-btn svg,
+.player-time {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
 }
 
 .player-btn:active {

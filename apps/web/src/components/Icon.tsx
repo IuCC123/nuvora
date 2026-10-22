@@ -203,7 +203,7 @@ export function ArrowLeftIcon(p: IconProps) {
 /** A circular arrow with "10" inside: back when `forward` is false. */
 function Skip10({ forward, ...p }: IconProps & { forward: boolean }) {
   return (
-    <svg {...stroke({ size: 26, strokeWidth: 1.9, ...p })}>
+    <svg {...stroke({ size: 28, strokeWidth: 1.9, ...p })}>
       <g transform={forward ? "matrix(-1 0 0 1 24 0)" : undefined}>
         <path d="M4.2 8.5A8.8 8.8 0 1 1 3.4 13" />
         <path d="M3.6 3.8v4.9h4.9" />
@@ -248,6 +248,15 @@ export function FullscreenIcon({ exit, ...p }: IconProps & { exit: boolean }) {
   return (
     <svg {...stroke({ size: 22, strokeWidth: 2, ...p })}>
       <path d={exit ? "M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3" : "M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"} />
+    </svg>
+  );
+}
+
+export function RestartIcon(p: IconProps) {
+  return (
+    <svg {...stroke({ size: 18, strokeWidth: 2, ...p })}>
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
     </svg>
   );
 }
