@@ -20,6 +20,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/fs/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Suggests a library type for a folder the admin is about to add. */
+        get: operations["inspect_dir"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/libraries": {
         parameters: {
             query?: never;
@@ -298,6 +315,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/items/{id}/episodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A season's episodes in order, with the signed-in user's watch state and a
+         *     playback decision per version for the requesting device. 404 unless `id`
+         *     is a season. ETag as `GET /api/items/{id}`.
+         */
+        get: operations["get_episodes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/items/{id}/progress": {
         parameters: {
             query?: never;
@@ -329,14 +367,77 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Marks the movie watched, like finishing it. */
+        /**
+         * Marks the movie or episode watched, like finishing it. On a show or a
+         *     season, marks every episode in it watched; episodes already watched keep
+         *     their play count.
+         */
         put: operations["put_watched"];
         post?: never;
         /**
-         * Marks the movie unwatched: clears the position, the play count and the
-         *     last finish.
+         * Marks the movie or episode unwatched: clears the position, the play
+         *     count and the last finish. On a show or a season, every episode in it.
          */
         delete: operations["delete_watched"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/libraries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every library, in the order they were added. Any member may list them. */
+        get: operations["get_libraries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/libraries/{id}/index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Group headers for the library page: letters for the title sort (`#`,
+         *     then A to Z), decades for year, months for added. Same filters and ETag
+         *     as the items.
+         */
+        get: operations["get_library_index"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/libraries/{id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The library page grid. Per user, with the home ETag
+         *     (`"<catalog_rev>.<watch_rev>"`). A malformed cursor, or one minted for
+         *     another sort or order, is 400.
+         */
+        get: operations["get_library_items"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -490,6 +591,81 @@ export interface components {
             containers: string[];
             video: components["schemas"]["VideoSupport"][];
         };
+        /** @description One row of a season's episode list. */
+        Episode: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int32 */
+            index: number;
+            /** @description `"S1 · E5"`, or `"Special 2"`. */
+            label: string;
+            /** Format: int64 */
+            runtime_ms?: number | null;
+            thumb?: null | components["schemas"]["Image"];
+            /** @description From the file name, else `"Episode 5"` (`"Special 2"` in Specials). */
+            title: string;
+            /**
+             * @description Best first, each with its playback decision for the requesting device,
+             *     as on `MovieDetail`. Empty when every file of the episode is missing.
+             */
+            versions: components["schemas"]["Version"][];
+            watch: components["schemas"]["WatchState"];
+        };
+        /**
+         * @description `GET /api/items/{id}` of an episode id: what the player and an episode
+         *     page need, with the show around it.
+         */
+        EpisodeDetail: {
+            backdrop?: null | components["schemas"]["Image"];
+            /** Format: int64 */
+            id: number;
+            /** Format: int32 */
+            index: number;
+            label: string;
+            next?: null | components["schemas"]["EpisodeRef"];
+            overview?: string | null;
+            poster?: null | components["schemas"]["Image"];
+            /** Format: int64 */
+            runtime_ms?: number | null;
+            /** Format: int32 */
+            season: number;
+            /** Format: int64 */
+            season_id: number;
+            /** Format: int64 */
+            show_id: number;
+            show_title: string;
+            thumb?: null | components["schemas"]["Image"];
+            title: string;
+            versions: components["schemas"]["Version"][];
+            watch: components["schemas"]["WatchState"];
+        };
+        /** @description A pointer to one episode, for "Play S1 E5" buttons and "next episode". */
+        EpisodeRef: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int32
+             * @description Episode number within the season.
+             */
+            index: number;
+            /** @description `"S1 · E5"`, or `"Special 2"`. */
+            label: string;
+            /**
+             * Format: int64
+             * @description Where the signed-in user stopped; `None` unless in progress.
+             */
+            position_ms?: number | null;
+            /**
+             * Format: int32
+             * @description Season number, 0 for Specials.
+             */
+            season: number;
+            /** Format: int64 */
+            season_id: number;
+            thumb?: null | components["schemas"]["Image"];
+            /** @description From the file name, else `"Episode 5"` (`"Special 2"` in Specials). */
+            title: string;
+        };
         /**
          * @description Every API error answers with this body. `code` is stable; `message` is
          *     written for people and may change.
@@ -509,6 +685,21 @@ export interface components {
             name: string;
             /** @description Absolute; pass it back as `?path=` to open the folder. */
             path: string;
+        };
+        /**
+         * @description A quick look at a folder before adding it as a library: video files under
+         *     it, and how many of them are named like episodes. Counts at most 2,000
+         *     video files.
+         */
+        FsInspect: {
+            /** Format: int32 */
+            episode_like: number;
+            /** @description `shows` when more than half of the video files look like episodes. */
+            suggested_kind: components["schemas"]["LibraryKind"];
+            /** @description The count stopped at 2,000 files. */
+            truncated: boolean;
+            /** Format: int32 */
+            video_files: number;
         };
         /** @description One folder's subfolders. Files and hidden folders are never listed. */
         FsListing: {
@@ -534,7 +725,15 @@ export interface components {
             /** @description The first page, at most 40 cards. */
             items: components["schemas"]["PosterCard"][];
             kind: components["schemas"]["RowKind"];
-            /** @description Opaque cursor for `GET /api/rows/{row}?after=`. `None` when `items` is the whole row. */
+            /**
+             * Format: int64
+             * @description Set on `library` rows: the library page to open from "See all".
+             */
+            library_id?: number | null;
+            /**
+             * @description Opaque cursor for `GET /api/rows/{row}?after=` (plus `&library=` for a
+             *     library row). `None` when `items` is the whole row.
+             */
             next?: string | null;
             title: string;
             /**
@@ -560,14 +759,78 @@ export interface components {
          * @enum {string}
          */
         ImageSize: "small" | "large";
-        ItemDetail: components["schemas"]["MovieDetail"] & {
+        IndexGroup: {
+            /**
+             * @description Pass as `?after=` (with the same sort, order and filters) to load the
+             *     page that starts with this group. `None` for the first group.
+             */
+            after?: string | null;
+            /** Format: int32 */
+            count: number;
+            /**
+             * @description Stable: `"#"` and `"A"` to `"Z"` for the title sort, `"1990"` (the
+             *     decade) or `"unknown"` for year, `"2026-10"` or `"unknown"` for added.
+             */
+            key: string;
+            /** @description For the header: `"A"`, `"1990s"`, `"October 2026"`, `"Unknown year"`. */
+            label: string;
+        };
+        ItemDetail: (components["schemas"]["MovieDetail"] & {
             /** @enum {string} */
             kind: "movie";
+        }) | (components["schemas"]["ShowDetail"] & {
+            /** @enum {string} */
+            kind: "show";
+        }) | (components["schemas"]["SeasonDetail"] & {
+            /** @enum {string} */
+            kind: "season";
+        }) | (components["schemas"]["EpisodeDetail"] & {
+            /** @enum {string} */
+            kind: "episode";
+        });
+        /** @enum {string} */
+        ItemKind: "movie" | "show" | "season" | "episode";
+        /**
+         * @description The library grid's group headers, in grid order. Only groups with items.
+         *     Sorts without groups (`watched`, `runtime`) answer with no groups.
+         */
+        LibraryIndex: {
+            groups: components["schemas"]["IndexGroup"][];
         };
-        /** @enum {string} */
-        ItemKind: "movie";
-        /** @enum {string} */
-        LibraryKind: "movies";
+        /**
+         * @description Chosen when the library is added. Changing it later rebuilds the
+         *     library's items.
+         * @enum {string}
+         */
+        LibraryKind: "movies" | "shows";
+        /** @description One page of the library grid: movies, or shows for a TV library. */
+        LibraryPage: {
+            items: components["schemas"]["PosterCard"][];
+            /** @description Cursor for `?after=`; `None` on the last page. */
+            next?: string | null;
+            /**
+             * Format: int32
+             * @description Cards matching the filters, across every page.
+             */
+            total: number;
+        };
+        /**
+         * @description Library page sort. Default `title`.
+         * @enum {string}
+         */
+        LibrarySort: "title" | "year" | "added" | "watched" | "runtime";
+        /** @description A library as every member sees it, for the nav rail and the library page header. */
+        LibrarySummary: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int32
+             * @description Movies, or shows for a TV library, with at least one file present.
+             */
+            item_count: number;
+            kind: components["schemas"]["LibraryKind"];
+            name: string;
+        };
         LoginRequest: {
             password: string;
             username: string;
@@ -616,6 +879,11 @@ export interface components {
             kind: "unavailable";
             reason: string;
         };
+        /**
+         * @description A movie, a show, or (in Continue Watching) an episode. An episode card
+         *     carries its show's title, year and poster, `subtitle` names the episode,
+         *     `id` is the episode to play and `show_id` the show to open.
+         */
         PosterCard: {
             /** Format: int64 */
             id: number;
@@ -623,12 +891,31 @@ export interface components {
             poster?: null | components["schemas"]["Image"];
             /**
              * Format: float
-             * @description How far the signed-in user is into the movie, 0 to 1. `None` unless
-             *     it is in progress.
+             * @description How far the signed-in user is into the movie or episode, 0 to 1.
+             *     `None` unless it is in progress; a Next Up episode has none.
              */
             progress?: number | null;
+            /**
+             * Format: int64
+             * @description On episode cards: the show the episode belongs to.
+             */
+            show_id?: number | null;
+            /**
+             * @description A second line under the title: `"S1 · E4"` on an episode in progress,
+             *     `"Next episode · S1 · E5"` on a Next Up entry, `"3 new episodes"` on a
+             *     show in Recently Added.
+             */
+            subtitle?: string | null;
             title: string;
-            /** @description The signed-in user has finished the movie at least once. */
+            /**
+             * Format: int32
+             * @description On show cards: episodes the signed-in user has not watched.
+             */
+            unwatched_count?: number | null;
+            /**
+             * @description The signed-in user has finished the movie or episode at least once,
+             *     or every episode of the show.
+             */
             watched: boolean;
             /** Format: int32 */
             year?: number | null;
@@ -651,10 +938,15 @@ export interface components {
             /** Format: int64 */
             position_ms: number;
         };
+        /**
+         * @description A movie matches when any of its versions does. Ignored for TV libraries.
+         * @enum {string}
+         */
+        Resolution: "4k" | "1080p" | "720p" | "sd";
         /** @enum {string} */
         Role: "admin" | "member";
         /** @enum {string} */
-        RowKind: "continue_watching" | "recently_added" | "all_movies";
+        RowKind: "continue_watching" | "recently_added" | "all_movies" | "library";
         /** @description A later page of one row. */
         RowPage: {
             items: components["schemas"]["PosterCard"][];
@@ -704,6 +996,41 @@ export interface components {
             /** Format: int32 */
             unchanged: number;
         };
+        /**
+         * @description `GET /api/items/{id}` of a season id. Its episodes come from
+         *     `GET /api/items/{id}/episodes`.
+         */
+        SeasonDetail: {
+            backdrop?: null | components["schemas"]["Image"];
+            /** Format: int32 */
+            episode_count: number;
+            /** Format: int64 */
+            id: number;
+            /** Format: int32 */
+            index: number;
+            poster?: null | components["schemas"]["Image"];
+            /** Format: int64 */
+            show_id: number;
+            show_title: string;
+            title: string;
+            /** Format: int32 */
+            watched_count: number;
+        };
+        SeasonSummary: {
+            /** Format: int32 */
+            episode_count: number;
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int32
+             * @description 0 for Specials.
+             */
+            index: number;
+            /** @description `"Season 1"` or `"Specials"`. */
+            title: string;
+            /** Format: int32 */
+            watched_count: number;
+        };
         ServerInfo: {
             /** @description The listen address, e.g. `"0.0.0.0:8640"`. */
             bind: string;
@@ -724,6 +1051,38 @@ export interface components {
             password: string;
             username: string;
         };
+        /** @description A show's page. `next` is what Play starts. */
+        ShowDetail: {
+            backdrop?: null | components["schemas"]["Image"];
+            /**
+             * Format: int32
+             * @description Episodes with a file present, specials included.
+             */
+            episode_count: number;
+            /** Format: int64 */
+            id: number;
+            next?: null | components["schemas"]["EpisodeRef"];
+            overview?: string | null;
+            poster?: null | components["schemas"]["Image"];
+            /** @description Numbered seasons in order, then Specials (season 0) last. */
+            seasons: components["schemas"]["SeasonSummary"][];
+            title: string;
+            /**
+             * Format: int32
+             * @description The signed-in user's watched episodes, out of `episode_count`.
+             */
+            watched_count: number;
+            /**
+             * @description `"2024"`, or `"2019–2024"` once episodes carry years. `None` when no
+             *     year is known.
+             */
+            year_range?: string | null;
+        };
+        /**
+         * @description Default `asc` for `title`, `desc` for every other sort.
+         * @enum {string}
+         */
+        SortOrder: "asc" | "desc";
         SubtitleTrack: {
             codec: string;
             /** Format: int32 */
@@ -740,9 +1099,12 @@ export interface components {
         };
         /**
          * @description Every field is optional. `paths` replaces the whole list; removing a folder
-         *     removes its items from the catalog (never from disk).
+         *     removes its items from the catalog (never from disk). A different `kind`
+         *     rebuilds every item of the library and resets watch progress in it (ask
+         *     first); a scan then fills in artwork.
          */
         UpdateLibraryRequest: {
+            kind?: null | components["schemas"]["LibraryKind"];
             name?: string | null;
             paths?: string[] | null;
         };
@@ -816,7 +1178,14 @@ export interface components {
             /** Format: int32 */
             width: number;
         };
-        /** @description The signed-in user's state for one movie. */
+        /**
+         * @description Watch filter, for the signed-in user. A show is `watched` when every
+         *     episode is, `in_progress` when some are watched or started but not all,
+         *     `unwatched` when none is.
+         * @enum {string}
+         */
+        WatchFilter: "all" | "unwatched" | "in_progress" | "watched";
+        /** @description The signed-in user's state for one movie or episode. */
         WatchState: {
             /**
              * Format: int64
@@ -868,6 +1237,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FsListing"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    inspect_dir: {
+        parameters: {
+            query: {
+                /** @description An absolute folder. */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FsInspect"];
                 };
             };
             400: {
@@ -1754,6 +2171,53 @@ export interface operations {
             };
         };
     };
+    get_episodes: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description JSON DeviceProfile */
+                "Nuvora-Device"?: string | null;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Episode"][];
+                };
+            };
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     put_progress: {
         parameters: {
             query?: never;
@@ -1874,6 +2338,151 @@ export interface operations {
             };
         };
     };
+    get_libraries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySummary"][];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_library_index: {
+        parameters: {
+            query?: {
+                sort?: components["schemas"]["LibrarySort"];
+                order?: components["schemas"]["SortOrder"];
+                filter?: components["schemas"]["WatchFilter"];
+                res?: components["schemas"]["Resolution"];
+                hdr?: boolean;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryIndex"];
+                };
+            };
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_library_items: {
+        parameters: {
+            query?: {
+                sort?: components["schemas"]["LibrarySort"];
+                order?: components["schemas"]["SortOrder"];
+                /** @description Default `all`. */
+                filter?: components["schemas"]["WatchFilter"];
+                res?: components["schemas"]["Resolution"];
+                /** @description `true`: only movies with an HDR version. Ignored for TV libraries. */
+                hdr?: boolean;
+                /**
+                 * @description `next` from the previous page, or a group's `after` from the index.
+                 *     Only valid with the same `sort` and `order`; anything else is 400.
+                 */
+                after?: string;
+                /** @description Default 60, clamped to 1..=200. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryPage"];
+                };
+            };
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_row: {
         parameters: {
             query?: {
@@ -1881,6 +2490,11 @@ export interface operations {
                 after?: string;
                 /** @description Default 40, clamped to 1..=100. */
                 limit?: number;
+                /**
+                 * @description The library of a `library` row (`library_id` on the home row).
+                 *     Required for that row, ignored for the others.
+                 */
+                library?: number;
             };
             header?: never;
             path: {

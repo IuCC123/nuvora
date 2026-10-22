@@ -9,7 +9,7 @@
 //! |--------|-----------------------------|------------------------------------------|
 //! | GET    | /api/home                   | Home (first page of each row)            |
 //! | GET    | /api/rows/{row}             | Later pages of one home row              |
-//! | GET    | /api/items/{id}             | Movie detail (and the Player)            |
+//! | GET    | /api/items/{id}             | Movie, show, season or episode detail    |
 //! | PUT    | /api/items/{id}/progress    | Report where playback is                 |
 //! | PUT    | /api/items/{id}/watched     | Mark watched                             |
 //! | DELETE | /api/items/{id}/watched     | Mark unwatched                           |
@@ -19,8 +19,8 @@
 //! | POST   | /api/scan                   | Request a scan (admin; coalescing)       |
 //! | GET    | /api/openapi.json           | The spec                                 |
 //!
-//! Accounts, admin and watch routes live in [`accounts`], [`admin`] and
-//! [`watch`]. Access is set by the group a route is registered in
+//! Accounts, admin, watch, and show and library page routes live in
+//! [`accounts`], [`admin`], [`watch`] and [`browse`]. Access is set by the group a route is registered in
 //! ([`Access`]), which decides both the middleware and the spec's `security`,
 //! so the two cannot disagree.
 //!
@@ -30,6 +30,7 @@
 
 mod accounts;
 mod admin;
+mod browse;
 #[cfg(test)]
 mod test_app;
 mod watch;
@@ -65,7 +66,15 @@ use crate::auth::SignedIn;
 #[derive(OpenApi)]
 #[openapi(
     info(title = "Nuvora", version = "1"),
-    components(schemas(DeviceProfileWire, ImageSize, ErrorBody))
+    components(schemas(
+        DeviceProfileWire,
+        ImageSize,
+        ErrorBody,
+        browse::LibrarySort,
+        browse::SortOrder,
+        browse::WatchFilter,
+        browse::Resolution,
+    ))
 )]
 struct ApiDoc;
 
@@ -139,6 +148,10 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(get_home))
         .routes(routes!(get_row))
         .routes(routes!(get_item))
+        .routes(routes!(browse::get_episodes))
+        .routes(routes!(browse::get_libraries))
+        .routes(routes!(browse::get_library_items))
+        .routes(routes!(browse::get_library_index))
         .routes(routes!(watch::put_progress))
         .routes(routes!(watch::put_watched, watch::delete_watched))
         .routes(routes!(get_image))
@@ -152,6 +165,7 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(admin::scan_library))
         .routes(routes!(post_scan))
         .routes(routes!(admin::list_dirs))
+        .routes(routes!(admin::inspect_dir))
         .routes(routes!(admin::list_users, admin::create_user))
         .routes(routes!(admin::update_user, admin::delete_user))
         .routes(routes!(admin::get_server, admin::update_server));
@@ -255,8 +269,11 @@ pub struct HomeRow {
     pub total: u32,
     /// The first page, at most 40 cards.
     pub items: Vec<PosterCard>,
-    /// Opaque cursor for `GET /api/rows/{row}?after=`. `None` when `items` is the whole row.
+    /// Opaque cursor for `GET /api/rows/{row}?after=` (plus `&library=` for a
+    /// library row). `None` when `items` is the whole row.
     pub next: Option<String>,
+    /// Set on `library` rows: the library page to open from "See all".
+    pub library_id: Option<i64>,
 }
 
 /// A later page of one row.
@@ -269,11 +286,18 @@ pub struct RowPage {
 #[derive(Serialize, Deserialize, ToSchema, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum RowKind {
-    /// The signed-in user's movies in progress, most recently watched first.
+    /// The signed-in user's movies and episodes in progress, plus the next
+    /// episode of each show they are watching, most recent activity first.
     /// On home only when it has items.
     ContinueWatching,
+    /// Movies, and shows with new episodes, newest first.
     RecentlyAdded,
+    /// Every movie in every movie library, by title. No longer on home (each
+    /// library has its own row); still pages for clients that ask.
     AllMovies,
+    /// One library's movies or shows by title. Home has one per library, in
+    /// the order the libraries were added; `title` is the library's name.
+    Library,
 }
 
 impl From<RowKind> for nuvora_library::RowKind {
@@ -281,26 +305,37 @@ impl From<RowKind> for nuvora_library::RowKind {
         match k {
             RowKind::ContinueWatching => nuvora_library::RowKind::ContinueWatching,
             RowKind::RecentlyAdded => nuvora_library::RowKind::RecentlyAdded,
-            RowKind::AllMovies => nuvora_library::RowKind::AllMovies,
+            RowKind::AllMovies | RowKind::Library => nuvora_library::RowKind::AllMovies,
         }
     }
 }
 
 #[derive(Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
+#[expect(dead_code, reason = "contract first; the implementation follows")]
 pub struct RowQuery {
     /// `next` from the previous page; absent = from the start.
     pub after: Option<String>,
     /// Default 40, clamped to 1..=100.
     pub limit: Option<u32>,
+    /// The library of a `library` row (`library_id` on the home row).
+    /// Required for that row, ignored for the others.
+    pub library: Option<i64>,
 }
 
 #[derive(Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
+#[expect(dead_code, reason = "contract first; the implementation follows")]
 pub enum ItemKind {
     Movie,
+    Show,
+    Season,
+    Episode,
 }
 
+/// A movie, a show, or (in Continue Watching) an episode. An episode card
+/// carries its show's title, year and poster, `subtitle` names the episode,
+/// `id` is the episode to play and `show_id` the show to open.
 #[derive(Serialize, ToSchema)]
 pub struct PosterCard {
     pub id: i64,
@@ -308,11 +343,20 @@ pub struct PosterCard {
     pub title: String,
     pub year: Option<u16>,
     pub poster: Option<Image>,
-    /// How far the signed-in user is into the movie, 0 to 1. `None` unless
-    /// it is in progress.
+    /// How far the signed-in user is into the movie or episode, 0 to 1.
+    /// `None` unless it is in progress; a Next Up episode has none.
     pub progress: Option<f32>,
-    /// The signed-in user has finished the movie at least once.
+    /// The signed-in user has finished the movie or episode at least once,
+    /// or every episode of the show.
     pub watched: bool,
+    /// A second line under the title: `"S1 · E4"` on an episode in progress,
+    /// `"Next episode · S1 · E5"` on a Next Up entry, `"3 new episodes"` on a
+    /// show in Recently Added.
+    pub subtitle: Option<String>,
+    /// On episode cards: the show the episode belongs to.
+    pub show_id: Option<i64>,
+    /// On show cards: episodes the signed-in user has not watched.
+    pub unwatched_count: Option<u32>,
 }
 
 /// An artwork. URL: `/api/images/{id}/{size}`. Immutable: cache forever.
@@ -347,8 +391,12 @@ impl From<ImageSize> for nuvora_media::ImageSize {
 
 #[derive(Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[expect(dead_code, reason = "contract first; the implementation follows")]
 pub enum ItemDetail {
     Movie(MovieDetail),
+    Show(browse::ShowDetail),
+    Season(browse::SeasonDetail),
+    Episode(browse::EpisodeDetail),
 }
 
 #[derive(Serialize, ToSchema)]
@@ -590,6 +638,13 @@ async fn get_row(
     if if_none_match(&headers, &rev_etag(lib.rev(), me.watch_rev)) {
         return Ok(StatusCode::NOT_MODIFIED.into_response());
     }
+    if let RowKind::Library = row {
+        return Err(ApiError::new(
+            StatusCode::NOT_IMPLEMENTED,
+            ErrorCode::Internal,
+            "Not implemented yet",
+        ));
+    }
     let kind: nuvora_library::RowKind = row.into();
     let after = query
         .after
@@ -797,6 +852,7 @@ impl From<nuvora_library::Home> for HomeResponse {
                 total: row.total,
                 items: row.cards.into_iter().map(PosterCard::from).collect(),
                 next: row.next.map(|c| c.to_string()),
+                library_id: None,
             })
             .collect();
         HomeResponse { rows }
@@ -828,6 +884,9 @@ impl From<nuvora_library::Card> for PosterCard {
                 .resume
                 .map(|r| (r.position_ms as f64 / r.duration_ms.max(1) as f64).min(1.0) as f32),
             watched: card.watch.watched(),
+            subtitle: None,
+            show_id: None,
+            unwatched_count: None,
         }
     }
 }

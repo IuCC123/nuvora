@@ -17,7 +17,7 @@ use utoipa::ToSchema;
 use super::{ApiError, AppState, ErrorBody, JsonBody};
 use crate::auth::SignedIn;
 
-/// The signed-in user's state for one movie.
+/// The signed-in user's state for one movie or episode.
 #[derive(Serialize, ToSchema)]
 pub struct WatchState {
     /// Where to resume. `None` unless the movie is in progress.
@@ -77,7 +77,9 @@ pub(super) async fn put_progress(
     record(&state, &me, id, event).await
 }
 
-/// Marks the movie watched, like finishing it.
+/// Marks the movie or episode watched, like finishing it. On a show or a
+/// season, marks every episode in it watched; episodes already watched keep
+/// their play count.
 #[utoipa::path(
     put,
     path = "/api/items/{id}/watched",
@@ -92,8 +94,8 @@ pub(super) async fn put_watched(
     record(&state, &me, id, WatchEvent::Watched).await
 }
 
-/// Marks the movie unwatched: clears the position, the play count and the
-/// last finish.
+/// Marks the movie or episode unwatched: clears the position, the play
+/// count and the last finish. On a show or a season, every episode in it.
 #[utoipa::path(
     delete,
     path = "/api/items/{id}/watched",
