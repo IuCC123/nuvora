@@ -420,3 +420,16 @@
   color: var(--nv-color-text-secondary);
   font-size: var(--nv-type-small-size);
 }
+
+.tv-address {
+  display: inline-block;
+  margin: 0 0 16px;
+  padding: 10px 16px;
+  border: 1px solid var(--nv-color-hairline);
+  border-radius: 10px;
+  background: var(--nv-color-surface);
+  color: var(--nv-color-text-primary);
+  font-size: var(--nv-type-body-large-size);
+  font-variant-numeric: tabular-nums;
+  user-select: all;
+}

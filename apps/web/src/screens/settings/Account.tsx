@@ -17,7 +17,7 @@ import { serverError } from "../../lib/serverError";
 import { useForm } from "../../lib/useForm";
 import { Saved, SettingsPage } from "./SettingsPage";
 
-/** Every user's own name, password and subtitle preferences. */
+/** Every user's own name, password and subtitle preferences, and how to get the TV app. */
 export function SettingsAccount() {
   const user = useUser();
   if (!user) return null;
@@ -26,6 +26,7 @@ export function SettingsAccount() {
       <Profile user={user} />
       <Subtitles user={user} />
       <Password />
+      <TvApp />
     </SettingsPage>
   );
 }
@@ -170,6 +171,31 @@ function Password() {
           <Saved show={save.isSuccess && !form.dirty}>Password changed. Your other devices are signed out.</Saved>
         </div>
       </form>
+    </section>
+  );
+}
+
+/** The TV app's download, at this server's own short address (the server redirects `/tv` to the newest release). */
+function TvApp() {
+  const { host, protocol } = window.location;
+  // A browser on the server itself sees "localhost", which a TV can't reach.
+  const local = /^(localhost|127\.0\.0\.1|\[::1\])(:|$)/.test(host);
+  return (
+    <section className="settings-section" aria-labelledby="tv-app">
+      <h2 id="tv-app">Watch on your TV</h2>
+      <div>
+        <p className="settings-note">
+          The Nuvora app runs on Fire TV, Android TV and Google TV. On the TV, install Downloader from the app store, allow it to install apps, and
+          enter:
+        </p>
+        <p className="tv-address">{local ? `${protocol}//<this computer's address>${host.replace(/^[^:]*/, "")}/tv` : `${protocol}//${host}/tv`}</p>
+        <p className="settings-note">
+          {local
+            ? "The TV needs this computer's address on your network, like 192.168.1.20; the installer printed it. "
+            : ""}
+          Then open Nuvora on the TV and sign in with the same server address.
+        </p>
+      </div>
     </section>
   );
 }
