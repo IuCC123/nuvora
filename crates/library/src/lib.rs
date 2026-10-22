@@ -14,6 +14,7 @@ mod store;
 #[cfg(test)]
 mod test_support;
 mod views;
+mod watch_state;
 
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -33,6 +34,7 @@ pub use views::{
     Artwork, Card, CatalogRev, Cursor, HOME_ROW_LIMIT, Home, InvalidCursor, Item, ItemKind,
     MAX_ROW_LIMIT, Movie, Row, RowKind, RowPage, StreamSource, Version, VersionMedia,
 };
+pub use watch_state::{Resume, WatchError, WatchEvent, WatchRev, WatchState};
 
 /// Everything the catalog needs, already validated by the caller (the server's
 /// config loader). The catalog does not read config files or environment.
