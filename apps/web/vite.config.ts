@@ -29,7 +29,9 @@ function tokensCss(): Plugin {
  * Dev server only, with `VITE_FIXTURES=1`: serves fixture artwork from
  * `fixtures/images/<id>/<size>.webp` and one sample video for every stream URL
  * (`NUVORA_FIXTURE_VIDEO`, default: the synthetic library's Tears of Steel),
- * with Range support so the player can seek.
+ * with Range support so the player can seek. Subtitle tracks come from
+ * `fixtures/subtitles/<file>-<stream>.<vtt|ass>`, and the one embedded font is
+ * `fixtures/subtitles/Archivo.ttf`.
  */
 function fixtureAssets(video: string): Plugin {
   return {
@@ -43,6 +45,19 @@ function fixtureAssets(video: string): Plugin {
           if (!existsSync(file)) return void res.writeHead(404).end();
           res.writeHead(200, { "content-type": "image/webp", "cache-control": "public, max-age=31536000, immutable" });
           return void createReadStream(file).pipe(res);
+        }
+        const subtitle = /^\/api\/files\/(\d+)\/subtitles\/(\d+)(?:\?format=(vtt|ass))?$/.exec(req.url ?? "");
+        if (subtitle) {
+          const format = subtitle[3] ?? "vtt";
+          const file = join(import.meta.dirname, "fixtures/subtitles", `${subtitle[1]}-${subtitle[2]}.${format}`);
+          if (!existsSync(file)) return void res.writeHead(404).end();
+          res.writeHead(200, { "content-type": format === "vtt" ? "text/vtt; charset=utf-8" : "text/x-ssa; charset=utf-8", "cache-control": "no-store" });
+          return void createReadStream(file).pipe(res);
+        }
+        if (/^\/api\/files\/15\/fonts\/5$/.test(req.url ?? "")) {
+          res.writeHead(200, { "content-type": "font/ttf" });
+          const font = join(import.meta.dirname, "fixtures/subtitles/Archivo.ttf");
+          return void createReadStream(font).pipe(res);
         }
         if (!/^\/api\/files\/\d+\/stream$/.test(req.url ?? "")) return next();
         if (!existsSync(video)) return void res.writeHead(404).end();
@@ -76,6 +91,10 @@ export default defineConfig(({ mode }) => {
     // Dev: Vite serves the app with HMR; the Rust server answers /api (default bind, or NUVORA_SERVER).
     // The Host header stays Vite's, so it matches the browser's Origin and passes the server's CSRF check.
     server: fixtures ? {} : { proxy: { "/api": { target: env.NUVORA_SERVER ?? "http://127.0.0.1:8640", changeOrigin: false } } },
+    // JASSUB (styled subtitles) runs as a module worker that code-splits; it resolves its own worker,
+    // wasm and fallback font with `new URL(..., import.meta.url)`, which pre-bundling would break.
+    worker: { format: "es" },
+    optimizeDeps: { exclude: ["jassub"], include: ["jassub > throughput"] },
     build: {
       // Read by the Rust binary (rust-embed) for production.
       outDir: "dist",

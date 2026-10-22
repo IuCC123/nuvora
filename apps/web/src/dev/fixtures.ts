@@ -1,6 +1,6 @@
 import { accountRoute, hasLibraries, signedIn, signedInAsAdmin, type Reply } from "./fixtureAccounts";
 import { continueWatching, watchRoute, watchState, withWatch } from "./fixtureWatch";
-import type { FetchLike, HomeResponse, HttpMethod, ItemDetail, PosterCard, RowPage, ScanStatus, Version } from "@nuvora/core";
+import type { FetchLike, FontAttachment, HomeResponse, HttpMethod, ItemDetail, PosterCard, RowPage, ScanStatus, Version } from "@nuvora/core";
 
 /**
  * Dev-only transport (`VITE_FIXTURES=1`): answers the JSON endpoints from the
@@ -13,7 +13,12 @@ import type { FetchLike, HomeResponse, HttpMethod, ItemDetail, PosterCard, RowPa
  * matching path and query answers that status, 503 by default, until it is removed.
  *
  * Sample content: Blender Studio open movie titles and years. Runtimes, sizes,
- * codecs and the gradient artwork are invented.
+ * codecs and the gradient artwork are invented. Subtitles: Tears of Steel (13)
+ * has two SubRip tracks and a PGS one that needs conversion; "Lantern Street - 01"
+ * (15, reached only by its player URL until shows exist here) stands in for the
+ * owner's anime, with Japanese audio, a default-flagged Spanish ASS track with
+ * positioned signs, a French one and an embedded font. The track text and font
+ * are files the fixture plugin in `vite.config.ts` serves (`fixtures/subtitles`).
  */
 
 const movies = [
@@ -89,6 +94,8 @@ function defaultVersion(id: number, title: string, year: number): Version {
   };
 }
 
+const EPISODE = [15, "Lantern Street - 01", 2024] as const;
+
 const versionOverrides: Record<number, (v: Version) => Version[]> = {
   13: (v) => [
     {
@@ -104,8 +111,9 @@ const versionOverrides: Record<number, (v: Version) => Version[]> = {
         video: [{ codec: "VP9", profile: "Profile 0", width: 1920, height: 800, frame_rate: 24, bit_depth: 8, hdr: null }],
         audio: [{ index: 1, codec: "opus", channels: 2, layout: "Stereo", language: "eng", is_default: true }],
         subtitles: [
-          { index: 2, codec: "subrip", language: "eng", is_default: false, is_forced: false },
-          { index: 3, codec: "subrip", language: "spa", is_default: false, is_forced: false },
+          { index: 2, codec: "SRT", format: "srt", renderable: true, language: "eng", is_default: false, is_forced: false, is_hearing_impaired: false },
+          { index: 3, codec: "SRT", format: "srt", renderable: true, language: "spa", is_default: false, is_forced: false, is_hearing_impaired: false },
+          { index: 4, codec: "PGS", format: "image", renderable: false, language: "eng", title: "Commentary", is_default: false, is_forced: false, is_hearing_impaired: false },
         ],
       },
     },
@@ -126,10 +134,34 @@ const versionOverrides: Record<number, (v: Version) => Version[]> = {
   ],
   8: (v) => [{ ...v, summary: "", media: null, playback: { kind: "unavailable", reason: "ffprobe could not read the file's header." } }],
   9: () => [],
+  [EPISODE[0]]: (v) => [
+    {
+      ...v,
+      file_name: "[Ñ] Lantern Street - 01 [1080p] [3F2A91C0].mkv",
+      size_bytes: 318_000_000,
+      summary: "1080p · H.264 · AAC 2.0",
+      media: {
+        ...v.media!,
+        container: "mkv",
+        duration_ms: 1_420_000,
+        audio: [{ index: 1, codec: "aac", channels: 2, layout: "Stereo", language: "jpn", is_default: true }],
+        subtitles: [
+          { index: 2, codec: "ASS", format: "ass", renderable: true, language: "spa", title: "Español", is_default: true, is_forced: false, is_hearing_impaired: false },
+          { index: 3, codec: "ASS", format: "ass", renderable: true, language: "fre", title: "Complets", is_default: false, is_forced: false, is_hearing_impaired: false },
+        ],
+      },
+    },
+  ],
 };
 
+/** The fonts the episode's file embeds: Archivo, which its signs name. Served by the fixture plugin. */
+function fonts(fileId: number): FontAttachment[] | undefined {
+  if (fileId !== EPISODE[0]) return fileId > 0 && fileId <= movies.length ? [] : undefined;
+  return [{ index: 5, file_name: "Archivo-Bold.ttf", mime_type: "font/ttf", size_bytes: 40_748, url: `/api/files/${fileId}/fonts/5` }];
+}
+
 function item(id: number): ItemDetail | undefined {
-  const movie = movies.find(([m]) => m === id);
+  const movie = id === EPISODE[0] ? EPISODE : movies.find(([m]) => m === id);
   if (!movie) return undefined;
   const [, title, year] = movie;
   const base = defaultVersion(id, title, year);
@@ -202,6 +234,8 @@ function route(method: HttpMethod, path: string, query: URLSearchParams): unknow
     return scanStatus();
   }
   if (path === "/api/scan") return scanStatus();
+  const fontsMatch = /^\/api\/files\/(\d+)\/fonts$/.exec(path);
+  if (fontsMatch) return fonts(Number(fontsMatch[1]));
   const itemMatch = /^\/api\/items\/(\d+)$/.exec(path);
   if (itemMatch) return item(Number(itemMatch[1]));
   return undefined;

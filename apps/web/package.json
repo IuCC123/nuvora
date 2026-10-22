@@ -15,6 +15,7 @@
     "@nuvora/tokens": "workspace:*",
     "@tanstack/react-query": "^5",
     "@tanstack/react-router": "^1",
+    "jassub": "^2.5.23",
     "react": "^19",
     "react-dom": "^19"
   },

@@ -1,0 +1,29 @@
+[Script Info]
+; Nuvora fixture: a Spanish fansub-style track with positioned signs and a karaoke line.
+Title: Lantern Street 01 (Español)
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+YCbCr Matrix: TV.709
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,66,&H00FFFFFF,&H000000FF,&H00141414,&H80000000,-1,0,0,0,100,100,0,0,1,3.4,1.6,2,120,120,64,1
+Style: Thoughts,Arial,66,&H00F4E9D8,&H000000FF,&H00321E0A,&H80000000,-1,-1,0,0,100,100,0,0,1,3.4,1.6,2,120,120,64,1
+Style: Sign,Archivo,84,&H00FFFFFF,&H000000FF,&H00202020,&H00000000,-1,0,0,0,100,100,2,0,1,5,0,5,0,0,0,1
+Style: Title,Archivo,58,&H000DA0E5,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,6,0,1,0,0,7,0,0,0,1
+Style: Song,Arial,54,&H000DA0E5,&H00FFFFFF,&H00000000,&H80000000,-1,-1,0,0,100,100,1,0,1,2.6,1,8,120,120,48,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.50,0:00:03.00,Default,Celia,0,0,0,,¡Tenemos que darnos prisa!
+Dialogue: 0,0:00:03.20,0:00:06.00,Default,Thom,0,0,0,,La cúpula no aguantará\Notra noche.
+Dialogue: 1,0:00:00.00,0:00:20.00,Title,,0,0,0,,{\pos(96,84)\fad(400,0)}LANTERN STREET {\c&HFFFFFF&\fs40}· 01
+Dialogue: 2,0:00:01.50,0:00:12.00,Sign,,0,0,0,,{\pos(1430,430)\frz-7\fad(350,350)\3c&H1C2A4A&\bord6}ESTACIÓN\NCENTRAL
+Dialogue: 2,0:00:06.50,0:00:11.50,Sign,,0,0,0,,{\an1\pos(150,760)\frz4\fs52\c&H0DA0E5&\bord3\fad(250,250)}Andén 9 →
+Dialogue: 0,0:00:06.20,0:00:08.60,Thoughts,Celia,0,0,0,,Celia, ¿me oyes?
+Dialogue: 3,0:00:08.80,0:00:13.20,Song,,0,0,0,,{\k45}Lu{\k45}ces {\k55}en {\k45}la {\k80}ciu{\k110}dad
+Dialogue: 0,0:00:13.50,0:00:16.00,Default,Thom,0,0,0,,Una vez más, desde el principio.
+Dialogue: 0,0:00:16.50,0:00:19.50,Default,Celia,0,0,0,,¡Ahora!

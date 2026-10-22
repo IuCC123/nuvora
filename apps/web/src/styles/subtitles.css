@@ -1,0 +1,389 @@
+/* Subtitles: Nuvora's own cue overlay, the libass canvas, and the CC menu. */
+
+.player {
+  /* Medium: 32px at 1280×800, 45px at 1080p, 23px on a phone held upright. */
+  --subs-size: calc(2.2vh + 1.1vw);
+  /* Where cues rest with the controls hidden, and the gap they keep above the bar when it shows. */
+  --subs-rest: max(5vh, 24px);
+  --subs-gap: 12px;
+}
+
+/* Plain text tracks */
+
+.subs-plain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-family: var(--nv-font-family);
+  font-weight: var(--nv-font-weight-semibold);
+  color: #fff;
+}
+
+.subs-plain[data-size="small"] {
+  font-size: calc(var(--subs-size) * 0.8);
+}
+
+.subs-plain[data-size="medium"] {
+  font-size: var(--subs-size);
+}
+
+.subs-plain[data-size="large"] {
+  font-size: calc(var(--subs-size) * 1.25);
+}
+
+.subs-plain-group {
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2em;
+  transition: transform var(--nv-motion-duration-slow) var(--nv-motion-easing-standard);
+}
+
+.subs-plain-group[data-placement="bottom"] {
+  bottom: var(--subs-rest);
+}
+
+.subs-plain-group[data-placement="top"] {
+  top: var(--subs-rest);
+}
+
+/* While the controls show, cues rise just clear of the bottom bar (and drop below the top one). */
+.player[data-controls="shown"] .subs-plain-group {
+  transition-duration: var(--nv-motion-duration-base);
+}
+
+.player[data-controls="shown"] .subs-plain-group[data-placement="bottom"] {
+  transform: translateY(calc(-1 * max(0px, var(--player-bar, 0px) + var(--subs-gap) - var(--subs-rest))));
+}
+
+.player[data-controls="shown"] .subs-plain-group[data-placement="top"] {
+  transform: translateY(max(0px, 64px - var(--subs-rest)));
+}
+
+.subs-cue {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-inline-size: 60ch;
+  text-align: center;
+  line-height: 1.24;
+  letter-spacing: 0.005em;
+  text-wrap: balance;
+}
+
+.subs-line {
+  display: block;
+  width: fit-content;
+  padding: 0 0.1em;
+}
+
+.subs-line [data-i] {
+  font-style: italic;
+}
+
+.subs-line [data-b] {
+  font-weight: var(--nv-font-weight-bold);
+}
+
+.subs-line [data-u] {
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+}
+
+/* None: a soft outline only. Shadow (the default): the outline plus a soft drop shadow. Box: a dark plate, no outline. */
+.subs-plain[data-background="none"] .subs-line,
+.subs-plain[data-background="shadow"] .subs-line {
+  -webkit-text-stroke: 0.09em rgba(0, 0, 0, 0.72);
+  paint-order: stroke fill;
+}
+
+.subs-plain[data-background="shadow"] .subs-line {
+  text-shadow:
+    0 0.04em 0.1em rgba(0, 0, 0, 0.6),
+    0 0.08em 0.4em rgba(0, 0, 0, 0.55);
+}
+
+.subs-plain[data-background="box"] .subs-cue {
+  gap: 0;
+}
+
+.subs-plain[data-background="box"] .subs-line {
+  padding: 0.06em 0.4em;
+  background: rgba(8, 9, 10, 0.78);
+}
+
+.subs-plain[data-background="box"] .subs-line:first-child {
+  border-top-left-radius: var(--nv-radius-sm);
+  border-top-right-radius: var(--nv-radius-sm);
+}
+
+.subs-plain[data-background="box"] .subs-line:last-child {
+  border-bottom-left-radius: var(--nv-radius-sm);
+  border-bottom-right-radius: var(--nv-radius-sm);
+}
+
+/* Styled tracks: libass draws on a canvas the renderer sizes and places over the picture itself. */
+
+.subs-styled {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.subs-styled canvas {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* The CC menu */
+
+.subs-anchor {
+  position: relative;
+}
+
+.subs-menu {
+  position: absolute;
+  right: -4px;
+  bottom: calc(100% + 14px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  max-height: calc(100vh - 180px);
+  padding: 6px;
+  border: 1px solid var(--nv-color-hairline);
+  border-radius: var(--nv-radius-lg);
+  background: var(--nv-color-surface-raised);
+  box-shadow: var(--nv-shadow-lift);
+  color: var(--nv-color-text-primary);
+  text-align: left;
+  user-select: none;
+  transform-origin: bottom right;
+  animation: subs-menu-in var(--nv-motion-duration-fast) var(--nv-motion-easing-enter);
+}
+
+/* Focused only so Escape reaches it after a pointer opens it; its controls carry the visible focus. */
+.subs-menu:focus {
+  outline: none;
+}
+
+@keyframes subs-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+.subs-menu fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.subs-tracks {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.subs-heading {
+  float: left;
+  width: 100%;
+  padding: 8px 10px 6px;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.subs-track-list {
+  clear: both;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.subs-radio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.subs-track {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 10px 10px 8px;
+  border-radius: var(--nv-radius-md);
+  cursor: pointer;
+  transition: background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.subs-track:hover {
+  background: var(--nv-color-hairline);
+}
+
+.subs-track:has(.subs-radio:focus-visible) {
+  background: var(--nv-color-hairline);
+  outline: 2px solid var(--nv-color-focus-ring);
+  outline-offset: -2px;
+}
+
+.subs-track[data-disabled] {
+  cursor: default;
+}
+
+.subs-track[data-disabled]:hover {
+  background: none;
+}
+
+.subs-check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--nv-color-accent);
+}
+
+.subs-track-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.subs-track-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.subs-track-name {
+  font-weight: var(--nv-font-weight-medium);
+}
+
+.subs-track-title {
+  overflow: hidden;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subs-track[data-disabled] .subs-track-name,
+.subs-track[data-disabled] .subs-track-title {
+  color: var(--nv-color-text-muted);
+}
+
+.subs-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid var(--nv-color-overlay-border);
+  border-radius: var(--nv-radius-sm);
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-chip-size);
+  line-height: var(--nv-type-chip-line);
+  font-weight: var(--nv-font-weight-semibold);
+  letter-spacing: 0.02em;
+}
+
+.subs-note {
+  padding: 4px 10px 8px 38px;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+}
+
+.subs-style {
+  flex: none;
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+  padding: 12px 10px 8px;
+  border-top: 1px solid var(--nv-color-hairline);
+}
+
+.subs-segmented {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  align-items: center;
+}
+
+.subs-style-label {
+  float: left;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+}
+
+.subs-segments {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--nv-radius-md);
+  background: var(--nv-color-canvas);
+}
+
+.subs-segment {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 30px;
+  border-radius: var(--nv-radius-sm);
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  font-weight: var(--nv-font-weight-medium);
+  cursor: pointer;
+  transition:
+    background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.subs-segment:hover {
+  color: var(--nv-color-text-primary);
+}
+
+.subs-segment:has(.subs-radio:checked) {
+  background: var(--nv-color-hairline);
+  color: var(--nv-color-text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.subs-segment:has(.subs-radio:focus-visible) {
+  outline: 2px solid var(--nv-color-focus-ring);
+  outline-offset: 1px;
+}
+
+@media (max-width: 640px) {
+  .subs-menu {
+    right: -10px;
+    width: min(320px, calc(100vw - 24px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .subs-plain-group,
+  .player[data-controls="shown"] .subs-plain-group {
+    transition: none;
+  }
+
+  .subs-menu {
+    animation: none;
+  }
+}
