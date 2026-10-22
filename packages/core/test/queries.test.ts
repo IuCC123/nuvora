@@ -28,3 +28,20 @@ test("rowPages requests the row after each cursor", async () => {
   expect(def.getNextPageParam(page)).toBe("c9");
   expect(def.getNextPageParam({ items: [], next: null })).toBeUndefined();
 });
+
+test("the folder picker's query asks for the roots without a path and a folder with one", async () => {
+  const urls: string[] = [];
+  const client = createClient({
+    baseUrl: "",
+    device: { containers: [], video: [], audio: [] },
+    fetch: async (url) => {
+      urls.push(url);
+      return { ok: true, status: 200, json: async () => ({ path: "/", parent: null, dirs: [] }) };
+    },
+  });
+  const queries = createQueries(client);
+  await queries.adminFs(null).queryFn({ signal: { aborted: false } });
+  await queries.adminFs("/media/Movies & TV").queryFn({ signal: { aborted: false } });
+  expect(urls).toEqual(["/api/admin/fs", "/api/admin/fs?path=%2Fmedia%2FMovies%20%26%20TV"]);
+  expect(queries.adminFs(null).queryKey).toEqual(["admin", "fs", null]);
+});

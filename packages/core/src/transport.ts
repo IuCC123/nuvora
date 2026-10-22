@@ -36,8 +36,10 @@ export class ApiError extends Error {
     readonly status: number,
     message: string,
     readonly code: string | null = null,
-    /** The server's own explanation, when it sent one (`validation` errors name the field). */
+    /** The server's own explanation, when it sent one. */
     readonly detail: string | null = null,
+    /** The request field a `validation` error is about (`"username"`, `"paths"`). */
+    readonly field: string | null = null,
   ) {
     super(message);
   }

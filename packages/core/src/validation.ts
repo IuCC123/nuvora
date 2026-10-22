@@ -11,9 +11,12 @@ export function checkRequired(value: string, what: string): string | null {
   return value.trim() ? null : `Enter ${what}.`;
 }
 
+/** The server's rule: 1 to 32 letters, digits, `.`, `_` or `-`. */
 export function checkUsername(value: string): string | null {
-  if (!value.trim()) return "Enter a username.";
-  if (/\s/.test(value.trim())) return "Usernames can't contain spaces.";
+  if (!value) return "Enter a username.";
+  if (/\s/u.test(value)) return "Usernames can't contain spaces.";
+  if ([...value].length > 32) return "Use 32 characters or fewer.";
+  if (!/^[\p{L}\p{N}._-]+$/u.test(value)) return "Use only letters, digits, dots, dashes and underscores.";
   return null;
 }
 

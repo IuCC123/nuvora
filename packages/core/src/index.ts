@@ -6,8 +6,25 @@
  */
 export { createClient } from "./client";
 export type {
+  AdminClient,
+  AdminLibrary,
+  AdminUser,
+  AuthState,
   ClientOptions,
+  CreateLibraryRequest,
+  CreateUserRequest,
   DeviceProfile,
+  ErrorBody,
+  FsListing,
+  LoginRequest,
+  Role,
+  ServerInfo,
+  SetupRequest,
+  UpdateLibraryRequest,
+  UpdateMeRequest,
+  UpdateServerRequest,
+  UpdateUserRequest,
+  User,
   HomeResponse,
   HomeRow,
   Image,
@@ -43,7 +60,7 @@ export {
 export type { FileFact, LanguageName } from "./format";
 export { ApiError } from "./transport";
 export type { AbortSignalLike, FetchLike, HttpMethod, RequestInitLike, ResponseLike } from "./transport";
-export { describeError } from "./errors";
+export { describeError, errorCode } from "./errors";
 export type { ErrorCode } from "./errors";
 export { checkPassword, checkPasswordsMatch, checkRequired, checkUsername, PASSWORD_MIN_LENGTH } from "./validation";
 export { safeRedirect } from "./redirect";

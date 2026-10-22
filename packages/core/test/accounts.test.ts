@@ -41,7 +41,13 @@ test("an error body's code and message reach the ApiError", async () => {
   const { client } = clientAnswering(reply(409, { code: "setup_done", message: "already set up" }));
   const error = await client.startScan().catch((e: unknown) => e);
   expect(error).toBeInstanceOf(ApiError);
-  expect(error).toMatchObject({ status: 409, code: "setup_done", detail: "already set up" });
+  expect(error).toMatchObject({ status: 409, code: "setup_done", detail: "already set up", field: null });
+});
+
+test("a validation error names its field", async () => {
+  const { client } = clientAnswering(reply(400, { code: "validation", message: "Choose a folder", field: "paths" }));
+  const error = await client.admin.createLibrary({ name: "Movies", kind: "movies", paths: [] }).catch((e: unknown) => e);
+  expect(error).toMatchObject({ status: 400, code: "validation", detail: "Choose a folder", field: "paths" });
 });
 
 test("a plain-text error body leaves the code empty", async () => {
@@ -85,12 +91,19 @@ test("describeError gives one plain sentence per server code", () => {
     "Can't reach your Nuvora server. Check that it's running, then try again.",
   );
   expect(describeError(new ApiError(500, ""))).toBe("Something went wrong on the server. Try again.");
+  expect(describeError(new ApiError(409, "", "username_taken"))).toBe("That username is taken. Choose another.");
+  expect(describeError(new ApiError(400, "", "a_code_from_a_newer_server"))).toBe(
+    "Nuvora couldn't use that request. Reload the page and try again.",
+  );
 });
 
 test("form checks", () => {
   expect(checkUsername("")).toBe("Enter a username.");
   expect(checkUsername("jamie r")).toBe("Usernames can't contain spaces.");
   expect(checkUsername("jamie")).toBeNull();
+  expect(checkUsername("j.rivera_2-b")).toBeNull();
+  expect(checkUsername("jamie@home")).toBe("Use only letters, digits, dots, dashes and underscores.");
+  expect(checkUsername("a".repeat(33))).toBe("Use 32 characters or fewer.");
   expect(checkPassword("short")).toBe("Use at least 8 characters.");
   expect(checkPassword("long enough")).toBeNull();
   expect(checkPasswordsMatch("long enough", "")).toBe("Enter the password again.");

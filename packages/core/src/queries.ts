@@ -1,4 +1,18 @@
-import type { HomeResponse, HomeRow, ItemDetail, NuvoraClient, PosterCard, RowKind, RowPage, ScanStatus } from "./client";
+import type {
+  AdminLibrary,
+  AdminUser,
+  AuthState,
+  FsListing,
+  HomeResponse,
+  HomeRow,
+  ItemDetail,
+  NuvoraClient,
+  PosterCard,
+  RowKind,
+  RowPage,
+  ScanStatus,
+  ServerInfo,
+} from "./client";
 import type { AbortSignalLike } from "./transport";
 
 /**
@@ -28,6 +42,14 @@ export const queryKeys = {
   rows: ["row"] as const,
   item: (id: number) => ["item", id] as const,
   scan: ["scan"] as const,
+  /** Who is signed in. Set it from the login, setup and logout responses instead of refetching. */
+  auth: ["auth"] as const,
+  /** Prefix of every admin query; a sign-out drops them all. */
+  admin: ["admin"] as const,
+  adminLibraries: ["admin", "libraries"] as const,
+  adminFs: (path: string | null) => ["admin", "fs", path] as const,
+  adminUsers: ["admin", "users"] as const,
+  adminServer: ["admin", "server"] as const,
 };
 
 export interface Queries {
@@ -43,6 +65,13 @@ export interface Queries {
   rowPages(kind: RowKind, after: string): InfiniteQueryDef<RowPage, string>;
   /** Apps poll this while `isScanRunning`. */
   scanStatus(): QueryDef<ScanStatus>;
+  /** Read before any screen decides where to go: welcome, sign in, or the app. */
+  authState(): QueryDef<AuthState>;
+  adminLibraries(): QueryDef<AdminLibrary[]>;
+  /** One folder in the folder picker; `null` is the filesystem roots. */
+  adminFs(path: string | null): QueryDef<FsListing>;
+  adminUsers(): QueryDef<AdminUser[]>;
+  adminServer(): QueryDef<ServerInfo>;
 }
 
 export function createQueries(client: NuvoraClient): Queries {
@@ -57,6 +86,15 @@ export function createQueries(client: NuvoraClient): Queries {
       staleTime: 30_000,
     }),
     scanStatus: () => ({ queryKey: queryKeys.scan, queryFn: ({ signal }) => client.scanStatus(signal), staleTime: 0 }),
+    authState: () => ({ queryKey: queryKeys.auth, queryFn: ({ signal }) => client.authState(signal), staleTime: 60_000 }),
+    adminLibraries: () => ({
+      queryKey: queryKeys.adminLibraries,
+      queryFn: ({ signal }) => client.admin.libraries(signal),
+      staleTime: 0,
+    }),
+    adminFs: (path) => ({ queryKey: queryKeys.adminFs(path), queryFn: ({ signal }) => client.admin.fs(path, signal), staleTime: 30_000 }),
+    adminUsers: () => ({ queryKey: queryKeys.adminUsers, queryFn: ({ signal }) => client.admin.users(signal), staleTime: 0 }),
+    adminServer: () => ({ queryKey: queryKeys.adminServer, queryFn: ({ signal }) => client.admin.server(signal), staleTime: 0 }),
   };
 }
 
