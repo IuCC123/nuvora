@@ -27,13 +27,14 @@ export function FolderList({
   /** Start with the picker open when no folder is chosen yet. */
   openPicker?: boolean;
 }) {
-  const [picking, setPicking] = useState(openPicker && paths.length === 0);
+  // A picker open from the start leaves focus where the form put it; one opened with the button takes it.
+  const [picking, setPicking] = useState<{ takeFocus: boolean } | null>(openPicker && paths.length === 0 ? { takeFocus: false } : null);
   const addButton = useRef<HTMLButtonElement>(null);
-  const wasPicking = useRef(picking);
+  const wasPicking = useRef(!!picking);
   // Closing the picker removes the focused control with it; the add button takes focus back.
   useEffect(() => {
     if (wasPicking.current && !picking) addButton.current?.focus();
-    wasPicking.current = picking;
+    wasPicking.current = !!picking;
   }, [picking]);
   const labelId = useId();
   const errorId = useId();
@@ -69,14 +70,15 @@ export function FolderList({
       {picking ? (
         <FolderPicker
           start={start}
+          takeFocus={picking.takeFocus}
           onChoose={(path) => {
             if (!paths.includes(path)) onChange([...paths, path]);
-            setPicking(false);
+            setPicking(null);
           }}
-          onCancel={() => setPicking(false)}
+          onCancel={() => setPicking(null)}
         />
       ) : (
-        <button ref={addButton} type="button" name={name} className="btn btn-secondary btn-small folder-add" onClick={() => setPicking(true)}>
+        <button ref={addButton} type="button" name={name} className="btn btn-secondary btn-small folder-add" onClick={() => setPicking({ takeFocus: true })}>
           <PlusIcon size={16} />
           {paths.length ? "Add another folder" : "Choose a folder"}
         </button>

@@ -13,11 +13,14 @@ import "../styles/picker.css";
  */
 export function FolderPicker({
   start,
+  takeFocus = false,
   onChoose,
   onCancel,
 }: {
   /** The folder to open at; `null` opens the filesystem roots. */
   start: string | null;
+  /** Move focus in on opening: to the picker while it loads, then its first folder. Escape works from the start. */
+  takeFocus?: boolean;
   onChoose: (path: string) => void;
   onCancel: () => void;
 }) {
@@ -28,7 +31,11 @@ export function FolderPicker({
   const pickerRoot = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLUListElement>(null);
   /** After a move, which row takes focus once the new folder arrives: the folder we came up from, or the first. */
-  const focusNext = useRef<string | "first" | null>(null);
+  const focusNext = useRef<string | "first" | null>(takeFocus ? "first" : null);
+
+  useEffect(() => {
+    if (takeFocus) pickerRoot.current?.focus();
+  }, []);
 
   useEffect(() => {
     if (!settled || focusNext.current === null) return;
@@ -75,6 +82,7 @@ export function FolderPicker({
       role="group"
       aria-label="Choose a folder"
       ref={pickerRoot}
+      tabIndex={-1}
       onKeyDown={(e) => {
         if (e.key !== "Escape") return;
         e.stopPropagation();
