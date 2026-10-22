@@ -114,6 +114,8 @@ impl Library {
         };
         std::fs::create_dir_all(&config.data_dir).map_err(io)?;
         let db_path = config.data_dir.join("nuvora.db");
+        #[cfg(unix)]
+        owner_only(&config.data_dir, &db_path).map_err(io)?;
         let db = tokio::task::spawn_blocking(move || db::Db::open(&db_path, READERS))
             .await
             .map_err(|_| OpenError::Db(db::DbError::Panicked))??;
@@ -221,6 +223,39 @@ impl Library {
     pub fn artwork_path(&self, id: ArtworkId, size: ImageSize) -> Option<PathBuf> {
         self.inner.store.existing_path(id, size)
     }
+}
+
+/// The database holds password and session hashes, so the data directory is
+/// 0700 and the database 0600. SQLite creates `-wal` and `-shm` with the
+/// database's mode, so creating it 0600 before the first open covers them.
+/// A path this user cannot chmod (a mount owned by someone else) is left as
+/// it is, with a warning.
+#[cfg(unix)]
+fn owner_only(data_dir: &std::path::Path, db_path: &std::path::Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let restrict = |path: &std::path::Path, mode: u32| {
+        let Ok(meta) = std::fs::metadata(path) else {
+            return;
+        };
+        if meta.permissions().mode() & 0o777 == mode {
+            return;
+        }
+        if let Err(e) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)) {
+            tracing::warn!(path = %path.display(), "cannot restrict permissions to {mode:o}: {e}");
+        }
+    };
+    restrict(data_dir, 0o700);
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .open(db_path)?;
+    for suffix in ["", "-wal", "-shm"] {
+        let mut path = db_path.as_os_str().to_owned();
+        path.push(suffix);
+        restrict(std::path::Path::new(&path), 0o600);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -676,5 +711,37 @@ mod tests {
         eprintln!("recently_added plan: {}", plans[0]);
         eprintln!("all_movies plan: {}", plans[1]);
         assert!(median < Duration::from_millis(50), "median {median:?}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_data_dir_and_database_are_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let (root, data) = (dir.path().join("Movies"), dir.path().join("data"));
+        std::fs::create_dir_all(&root).unwrap();
+        let mode = |name: &str| {
+            std::fs::metadata(data.join(name))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777
+        };
+
+        let lib = open(&root, &data).await;
+        assert_eq!(mode(""), 0o700, "created 0700");
+        for name in ["nuvora.db", "nuvora.db-wal", "nuvora.db-shm"] {
+            assert_eq!(mode(name), 0o600, "{name} created 0600");
+        }
+        drop(lib);
+
+        std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let db = data.join("nuvora.db");
+        std::fs::set_permissions(&db, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let _lib = open(&root, &data).await;
+        assert_eq!(mode(""), 0o700, "tightened to 0700");
+        for name in ["nuvora.db", "nuvora.db-wal", "nuvora.db-shm"] {
+            assert_eq!(mode(name), 0o600, "{name} tightened to 0600");
+        }
     }
 }
