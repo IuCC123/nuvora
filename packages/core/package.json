@@ -1,0 +1,21 @@
+{
+  "name": "@nuvora/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Nuvora data layer shared by the web, Fire TV and Vega apps. Pure TypeScript: no DOM, no React, no Node.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "gen": "openapi-typescript openapi.json -o src/generated/schema.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "thumbhash": "^0.1.1"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7",
+    "typescript": "^5.9"
+  }
+}

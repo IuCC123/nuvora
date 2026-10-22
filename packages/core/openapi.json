@@ -1,0 +1,972 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Nuvora",
+    "description": "The nuvora binary: config, HTTP API, OpenAPI document, embedded web app.",
+    "license": {
+      "name": "AGPL-3.0-only",
+      "identifier": "AGPL-3.0-only"
+    },
+    "version": "1"
+  },
+  "paths": {
+    "/api/files/{id}/stream": {
+      "get": {
+        "summary": "Direct play. Delegates to `tower_http::services::ServeFile` with the\ncontainer's MIME type, which implements `Range` (206 + `Content-Range`),\n`If-Range`, `Last-Modified` and `HEAD`, and streams from disk without\nbuffering. First-frame latency is then disk + network + decoder.",
+        "operationId": "stream_file",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "416": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/home": {
+      "get": {
+        "operationId": "get_home",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeResponse"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/images/{id}/{size}": {
+      "get": {
+        "summary": "Reads the WebP from the store (tens of KB) and answers with\n`Cache-Control: public, max-age=31536000, immutable`. Bad ids are 404, and\nids are parsed to 16 bytes before any path is built.",
+        "operationId": "get_image",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "size",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ImageSize"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "image/webp": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/items/{id}": {
+      "get": {
+        "operationId": "get_item",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "Nuvora-Device",
+            "in": "header",
+            "description": "JSON DeviceProfile",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemDetail"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/scan": {
+      "get": {
+        "operationId": "get_scan",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanStatus"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Idempotent: while a scan runs, repeated calls queue at most one more.",
+        "operationId": "post_scan",
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AudioSupport": {
+        "type": "object",
+        "required": [
+          "codec",
+          "max_channels"
+        ],
+        "properties": {
+          "codec": {
+            "type": "string"
+          },
+          "max_channels": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "AudioTrack": {
+        "type": "object",
+        "required": [
+          "index",
+          "codec",
+          "channels",
+          "is_default"
+        ],
+        "properties": {
+          "channels": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "codec": {
+            "type": "string"
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "layout": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`\"5.1\"`, `\"Stereo\"`."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "DeviceProfile": {
+        "type": "object",
+        "description": "What a device decodes natively. Sent as compact JSON in the `Nuvora-Device`\nheader. Codec and container names are the server's canonical names\n(`h264`, `hevc`, `av1`, `vp9`; `aac`, `eac3`, `opus`; `mp4`, `mkv`, `webm`).\nUnknown names are ignored, never errors, so old servers accept new clients.",
+        "required": [
+          "containers",
+          "video",
+          "audio"
+        ],
+        "properties": {
+          "audio": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AudioSupport"
+            }
+          },
+          "containers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "video": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoSupport"
+            }
+          }
+        }
+      },
+      "HomeResponse": {
+        "type": "object",
+        "required": [
+          "rows"
+        ],
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HomeRow"
+            },
+            "description": "Render in order. Clients render unknown row kinds like any other row."
+          }
+        }
+      },
+      "HomeRow": {
+        "type": "object",
+        "required": [
+          "kind",
+          "title",
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PosterCard"
+            }
+          },
+          "kind": {
+            "$ref": "#/components/schemas/HomeRowKind"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "HomeRowKind": {
+        "type": "string",
+        "enum": [
+          "recently_added",
+          "all_movies"
+        ]
+      },
+      "Image": {
+        "type": "object",
+        "description": "An artwork. URL: `/api/images/{id}/{size}`. Immutable: cache forever.",
+        "required": [
+          "id",
+          "aspect_ratio",
+          "placeholder"
+        ],
+        "properties": {
+          "aspect_ratio": {
+            "type": "number",
+            "format": "float",
+            "description": "width / height, for layout before the image loads."
+          },
+          "id": {
+            "type": "string",
+            "description": "32 hex chars, content-addressed."
+          },
+          "placeholder": {
+            "type": "string",
+            "description": "ThumbHash, base64. Decode client-side into a blurred placeholder."
+          }
+        }
+      },
+      "ImageSize": {
+        "type": "string",
+        "description": "Sizes a client can request. Pixel widths are a server decision.",
+        "enum": [
+          "small",
+          "large"
+        ]
+      },
+      "ItemDetail": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MovieDetail"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "movie"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "ItemKind": {
+        "type": "string",
+        "enum": [
+          "movie"
+        ]
+      },
+      "MediaDetails": {
+        "type": "object",
+        "required": [
+          "container",
+          "video",
+          "audio",
+          "subtitles"
+        ],
+        "properties": {
+          "audio": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AudioTrack"
+            }
+          },
+          "bitrate": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "container": {
+            "type": "string"
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "subtitles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubtitleTrack"
+            }
+          },
+          "video": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoTrack"
+            }
+          }
+        }
+      },
+      "MovieDetail": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "versions"
+        ],
+        "properties": {
+          "backdrop": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image"
+              }
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "overview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "poster": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image"
+              }
+            ]
+          },
+          "runtime_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string"
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Version"
+            },
+            "description": "Best first. Empty when every file of the movie is currently missing."
+          },
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "Playback": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "url",
+              "mime_type",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "direct_play"
+                ]
+              },
+              "mime_type": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "reasons",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "needs_transcode"
+                ]
+              },
+              "reasons": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Human-readable: `\"HEVC video isn't supported on this device\"`."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The file could not be read (ffprobe failed); nothing will play it.",
+            "required": [
+              "reason",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "unavailable"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "What pressing Play does on the requesting device. Step 3 adds `hls`.\nClients must treat an unknown `kind` like `needs_transcode`."
+      },
+      "PosterCard": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "title"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ItemKind"
+          },
+          "poster": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ScanIssue": {
+        "type": "object",
+        "required": [
+          "path",
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "ScanPhase": {
+        "type": "string",
+        "enum": [
+          "discovering",
+          "reading",
+          "artwork",
+          "cleaning_up"
+        ]
+      },
+      "ScanStatus": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "state"
+            ],
+            "properties": {
+              "last": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ScanSummary"
+                  }
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "idle"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "phase",
+              "done",
+              "total",
+              "queued",
+              "state"
+            ],
+            "properties": {
+              "done": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "last": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ScanSummary"
+                  }
+                ]
+              },
+              "phase": {
+                "$ref": "#/components/schemas/ScanPhase"
+              },
+              "queued": {
+                "type": "boolean"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "running"
+                ]
+              },
+              "total": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      },
+      "ScanSummary": {
+        "type": "object",
+        "required": [
+          "finished_at",
+          "duration_ms",
+          "added",
+          "changed",
+          "moved",
+          "removed",
+          "unchanged",
+          "failed",
+          "issues"
+        ],
+        "properties": {
+          "added": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "changed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "finished_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix ms."
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScanIssue"
+            }
+          },
+          "moved": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "removed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "unchanged": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "SubtitleTrack": {
+        "type": "object",
+        "required": [
+          "index",
+          "codec",
+          "is_default",
+          "is_forced"
+        ],
+        "properties": {
+          "codec": {
+            "type": "string"
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "is_forced": {
+            "type": "boolean"
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Version": {
+        "type": "object",
+        "required": [
+          "file_id",
+          "file_name",
+          "size_bytes",
+          "summary",
+          "playback"
+        ],
+        "properties": {
+          "file_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "media": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MediaDetails",
+                "description": "`None` when the file could not be read."
+              }
+            ]
+          },
+          "playback": {
+            "$ref": "#/components/schemas/Playback"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "summary": {
+            "type": "string",
+            "description": "One line for the version picker and detail header, built server-side so\nevery client says the same thing: `\"4K · HEVC Main 10 · Dolby Vision · TrueHD 7.1\"`."
+          }
+        }
+      },
+      "VideoSupport": {
+        "type": "object",
+        "required": [
+          "codec",
+          "max_width",
+          "max_height",
+          "max_bit_depth",
+          "hdr"
+        ],
+        "properties": {
+          "codec": {
+            "type": "string"
+          },
+          "hdr": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Subset of `hdr10`, `hlg`, `dolby_vision`."
+          },
+          "max_bit_depth": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "max_height": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "max_width": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "VideoTrack": {
+        "type": "object",
+        "required": [
+          "codec",
+          "width",
+          "height"
+        ],
+        "properties": {
+          "bit_depth": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "codec": {
+            "type": "string",
+            "description": "Display name: `\"HEVC\"`, `\"H.264\"`, `\"AV1\"`."
+          },
+          "frame_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "hdr": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`None` for SDR; `\"HDR10\"`, `\"HLG\"`, `\"Dolby Vision P8\"`."
+          },
+          "height": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "profile": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "width": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

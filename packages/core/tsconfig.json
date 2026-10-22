@@ -1,0 +1,20 @@
+{
+  // `lib` has no "DOM" and `types` is empty: touching `window`, `document`,
+  // `localStorage`, `btoa` or DOM `fetch` types is a compile error here. That is
+  // how "a React Native app can import this unchanged" is enforced, not by review.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "types": [],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "skipLibCheck": false
+  },
+  "include": ["src"]
+}

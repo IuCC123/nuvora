@@ -1,0 +1,18 @@
+/* Base styles. Every value is a token variable from virtual:nuvora-tokens.css. */
+:root {
+  color-scheme: dark;
+  background: var(--nv-color-canvas);
+  color: var(--nv-color-text-primary);
+  font-family: var(--nv-font-family);
+}
+
+/* One focus style for every interactive element: keyboard and TV remotes alike. */
+:focus-visible {
+  outline: 2px solid var(--nv-color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--nv-radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0ms !important; }
+}
