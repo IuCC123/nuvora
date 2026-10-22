@@ -26,7 +26,8 @@ const VOLUME_STEP = 0.1;
  * The Nuvora player: the whole window is the picture, with a top bar (back,
  * title) and a bottom bar (timeline, transport, volume, picture-in-picture,
  * fullscreen) that fade away during playback. The URL comes from the cached
- * item's playback decision; `?t=` starts there before the first frame shows.
+ * item's playback decision; `?t=` starts there before the first frame shows,
+ * and follows every reported position so a reload resumes where the viewer was.
  */
 export function Player() {
   const { id } = useParams({ from: "/movie/$id/play" });
@@ -44,6 +45,13 @@ export function Player() {
     () => (canGoBack ? router.history.back() : void navigate({ to: "/movie/$id", params: { id }, replace: true })),
     [canGoBack, router, navigate, id],
   );
+  const keepPlace = useCallback(
+    (positionMs: number) => {
+      const seconds = Math.floor(positionMs / 1000);
+      void navigate({ to: "/movie/$id/play", params: { id }, search: { file, ...(seconds > 0 && { t: seconds }) }, replace: true, resetScroll: false });
+    },
+    [navigate, id, file],
+  );
   const version = movie?.versions.find((v) => v.file_id === file);
   const decided = version ? playState([version]) : undefined;
   const notice = failed ? playerFailed : movie && !version ? fileGone : decided?.kind === "blocked" ? decided.notice : undefined;
@@ -51,6 +59,7 @@ export function Player() {
 
   return (
     <PlayerView
+      key={`${id}:${file}`}
       itemId={id}
       fileId={file}
       title={movie?.title}
@@ -60,6 +69,7 @@ export function Player() {
       notice={notice}
       onBack={back}
       onFailed={() => setFailed(true)}
+      onPosition={keepPlace}
     />
   );
 }
@@ -70,16 +80,18 @@ interface PlayerViewProps {
   title: string | undefined;
   year: number | null | undefined;
   src: string | undefined;
-  /** Seconds. */
+  /** Seconds. Read once: the URL keeps moving with playback after that. */
   startAt: number | undefined;
   notice: NoticeText | undefined;
   onBack: () => void;
   onFailed: () => void;
+  onPosition: (positionMs: number) => void;
 }
 
 type PulseKind = "play" | "pause" | "back" | "forward" | "volume";
 
-function PlayerView({ itemId, fileId, title, year, src, startAt, notice, onBack, onFailed }: PlayerViewProps) {
+function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, notice, onBack, onFailed, onPosition }: PlayerViewProps) {
+  const [startAt] = useState(initialStart);
   const root = useRef<HTMLDivElement>(null);
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   const media = useMediaState(video);
@@ -91,7 +103,7 @@ function PlayerView({ itemId, fileId, title, year, src, startAt, notice, onBack,
   const { awake, wake, sleep } = useAwake(AUTO_HIDE_MS);
   const buffering = useHeldFor(media.starved && !!src, SPINNER_DELAY_MS);
   const lastPointer = useRef("mouse");
-  useProgressReporting(src ? video : null, itemId, fileId);
+  useProgressReporting(src ? video : null, itemId, fileId, onPosition);
   useReleaseStream(video);
 
   const known = Number.isFinite(media.duration) && media.duration > 0;
