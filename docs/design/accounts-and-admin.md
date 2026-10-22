@@ -68,6 +68,9 @@ Admin:
 
 - Every flag also reads an environment variable: `NUVORA_BIND`, `NUVORA_DATA_DIR`, `NUVORA_CONFIG`, `NUVORA_MOVIES` (colon-separated).
 - With auth in place the default bind becomes `0.0.0.0:8640`, so phones and TVs on the home network can reach the server. The non-loopback warning is removed.
+- The server shuts down gracefully on SIGTERM as well as Ctrl-C, because `docker stop` sends SIGTERM through tini.
+- The server writes only under the data directory. The container runs as an arbitrary uid with `HOME=/data`.
+- The Docker healthcheck and `scripts/install.sh` switch from their TCP and `/` probes to `GET /api/health`. The README's "don't expose this outside your home network until login ships" sentence is replaced with guidance on remote access.
 
 ## Web app
 
