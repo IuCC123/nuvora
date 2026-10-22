@@ -173,6 +173,12 @@ function TrackOption({ name, checked, disabled, onPick, children }: TrackOptionP
           onPick(pointer.current);
           pointer.current = false;
         }}
+        // A checked radio fires no change; clicking the current track again still picks it, which retries a failed load.
+        onClick={() => {
+          if (!checked) return;
+          onPick(pointer.current);
+          pointer.current = false;
+        }}
         onKeyDown={() => (pointer.current = false)}
       />
       <span className="subs-check" aria-hidden>

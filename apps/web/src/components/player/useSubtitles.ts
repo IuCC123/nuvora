@@ -113,13 +113,11 @@ export function useSubtitles(fileId: number, tracks: readonly SubtitleTrack[], a
     note = vtt.isError ? "failed" : "loading";
   }
 
-  const select = useCallback(
-    (track: SubtitleTrack | null) => {
-      setPicked({ index: track?.index ?? null });
-      if (user) saveSubtitleChoice(user.id, scope, rememberSubtitle(track));
-    },
-    [user, scope],
-  );
+  const select = (track: SubtitleTrack | null) => {
+    setPicked({ index: track?.index ?? null });
+    if (user) saveSubtitleChoice(user.id, scope, rememberSubtitle(track));
+    if (track && track.index === selected?.index && vtt.isError) void vtt.refetch();
+  };
   const toggle = () => {
     const next = selected
       ? null

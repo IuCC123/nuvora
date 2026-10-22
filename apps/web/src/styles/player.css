@@ -97,7 +97,8 @@
   margin-left: 46%;
 }
 
-.player-pulse[data-kind="volume"] {
+.player-pulse[data-kind="volume"],
+.player-pulse[data-kind^="subtitles"] {
   height: 56px;
   padding: 0 22px 0 18px;
 }

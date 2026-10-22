@@ -18,7 +18,7 @@ export function PlainSubtitles({ video, cues, style }: PlainSubtitlesProps) {
   const top = showing.filter((c) => c.placement === "top");
   const bottom = showing.filter((c) => c.placement === "bottom");
   return (
-    <div className="subs-plain" data-size={style.size} data-background={style.background} aria-live="off">
+    <div className="subs-plain" data-size={style.size} data-background={style.background} aria-hidden>
       {[top, bottom].map((group, i) => (
         <div key={i} className="subs-plain-group" data-placement={i === 0 ? "top" : "bottom"}>
           {group.map((cue) => (

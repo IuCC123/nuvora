@@ -114,10 +114,9 @@ interface PlayerViewProps {
   onPosition: (positionMs: number) => void;
 }
 
-type PulseKind = "play" | "pause" | "back" | "forward" | "volume" | "subtitles";
+type PulseKind = "play" | "pause" | "back" | "forward" | "volume" | "subtitles-on" | "subtitles-off";
 
-function PlayerView(props: PlayerViewProps) {
-  const { itemId, fileId, title, year, src, startAt: initialStart, notice, onBack, onFailed, onPosition } = props;
+function PlayerView({ itemId, fileId, title, year, src, startAt: initialStart, subtitleTracks, audioLanguage, subtitleScope, notice, onBack, onFailed, onPosition }: PlayerViewProps) {
   const [startAt] = useState(initialStart);
   const root = useRef<HTMLDivElement>(null);
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
@@ -132,7 +131,7 @@ function PlayerView(props: PlayerViewProps) {
   const lastPointer = useRef("mouse");
   useProgressReporting(src ? video : null, itemId, fileId, onPosition);
   useReleaseStream(video);
-  const subtitles = useSubtitles(fileId, props.subtitleTracks, props.audioLanguage, props.subtitleScope);
+  const subtitles = useSubtitles(fileId, subtitleTracks, audioLanguage, subtitleScope);
   const [subtitleStyle, setSubtitleStyle] = useState(loadSubtitleStyle);
   const changeSubtitleStyle = (style: SubtitleStyle) => {
     setSubtitleStyle(style);
@@ -214,7 +213,8 @@ function PlayerView(props: PlayerViewProps) {
       }
     },
     subtitles(track: SubtitleTrack | null) {
-      flash("subtitles", track ? subtitleLabel(track, languageName).name : "Subtitles off");
+      if (track) flash("subtitles-on", subtitleLabel(track, languageName).name);
+      else flash("subtitles-off", "Subtitles off");
     },
     pip() {
       if (!video) return;
@@ -352,9 +352,9 @@ function PlayerView(props: PlayerViewProps) {
             {pulse.kind === "pause" && <PauseIcon size={34} />}
             {pulse.kind === "back" && <Back10Icon size={36} />}
             {pulse.kind === "forward" && <Forward10Icon size={36} />}
-            {pulse.kind === "subtitles" && (
+            {(pulse.kind === "subtitles-on" || pulse.kind === "subtitles-off") && (
               <>
-                <SubtitlesIcon on={pulse.label !== "Subtitles off"} size={26} />
+                <SubtitlesIcon on={pulse.kind === "subtitles-on"} size={26} />
                 <span className="player-pulse-label">{pulse.label}</span>
               </>
             )}
