@@ -58,7 +58,9 @@ impl TestApp {
         TestApp::build(proxies, nuvora_media::VideoEncoder::Software).await
     }
 
-    /// A server that converts video with `encoder`.
+    /// A server that converts video with `encoder`. Only Macs have a
+    /// graphics encoder to test.
+    #[cfg(target_os = "macos")]
     pub async fn with_encoder(encoder: nuvora_media::VideoEncoder) -> TestApp {
         TestApp::build(&[], encoder).await
     }
