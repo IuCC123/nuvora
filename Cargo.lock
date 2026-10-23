@@ -1263,7 +1263,7 @@ dependencies = [
 
 [[package]]
 name = "nuvora-library"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "blake3",
  "futures",
@@ -1282,7 +1282,7 @@ dependencies = [
 
 [[package]]
 name = "nuvora-media"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "fast_image_resize",
  "image",
@@ -1298,7 +1298,7 @@ dependencies = [
 
 [[package]]
 name = "nuvora-server"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "argon2",
  "axum",

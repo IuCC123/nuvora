@@ -29,7 +29,7 @@ Usage: install.sh [--media PATH] [--port PORT] [--listen ADDR] [--dir DIR] [--ve
                   interface; 127.0.0.1 when a reverse proxy on this machine is
                   the only way in)
   --dir DIR       install directory (default ~/nuvora)
-  --version TAG   image version to run, e.g. 0.2.0 (default latest)
+  --version TAG   image version to run, e.g. 0.3.0 (default latest)
   --build         build the image from this checkout instead of downloading it
   --yes           never prompt; fail if a value is missing
 
