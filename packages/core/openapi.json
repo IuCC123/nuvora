@@ -1650,6 +1650,56 @@
         ]
       }
     },
+    "/api/files/{id}/previews": {
+      "get": {
+        "summary": "404 while the previews are still being made (asking moves the file to the\nfront of the queue; they are usually ready within a minute), or when the\nfile has no video.",
+        "operationId": "get_previews",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/files/{id}/stream": {
       "get": {
         "summary": "Direct play. Delegates to `tower_http::services::ServeFile` with the\ncontainer's MIME type, which implements `Range` (206 + `Content-Range`),\n`If-Range`, `Last-Modified` and `HEAD`, and streams from disk without\nbuffering. First-frame latency is then disk + network + decoder.",
@@ -2976,6 +3026,69 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/previews/{key}/{sheet}": {
+      "get": {
+        "operationId": "get_sheet",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sheet",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
           }
         },
         "security": [
@@ -5397,6 +5510,59 @@
           "medium",
           "large"
         ]
+      },
+      "PreviewInfo": {
+        "type": "object",
+        "description": "Where a file's previews are. Sheet `n` holds previews from\n`n * columns * rows`, left to right, then top to bottom, each\n`width` x `height` pixels; preview `i` shows the video at `i * interval_ms`.",
+        "required": [
+          "interval_ms",
+          "width",
+          "height",
+          "columns",
+          "rows",
+          "count",
+          "sheets"
+        ],
+        "properties": {
+          "columns": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Previews in all.",
+            "minimum": 0
+          },
+          "height": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "interval_ms": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "rows": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "sheets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "JPEG sheet URLs, in order. Immutable: cache forever."
+          },
+          "width": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
       },
       "ProgressRequest": {
         "type": "object",

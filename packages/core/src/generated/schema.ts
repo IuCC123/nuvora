@@ -361,6 +361,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/files/{id}/previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 404 while the previews are still being made (asking moves the file to the
+         *     front of the queue; they are usually ready within a minute), or when the
+         *     file has no video.
+         */
+        get: operations["get_previews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/files/{id}/stream": {
         parameters: {
             query?: never;
@@ -756,6 +777,22 @@ export interface paths {
         };
         /** Everyone else with an account who can sign in, by name. */
         get: operations["people"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/previews/{key}/{sheet}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_sheet"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1525,6 +1562,30 @@ export interface components {
         };
         /** @enum {string} */
         PosterSize: "small" | "medium" | "large";
+        /**
+         * @description Where a file's previews are. Sheet `n` holds previews from
+         *     `n * columns * rows`, left to right, then top to bottom, each
+         *     `width` x `height` pixels; preview `i` shows the video at `i * interval_ms`.
+         */
+        PreviewInfo: {
+            /** Format: int32 */
+            columns: number;
+            /**
+             * Format: int32
+             * @description Previews in all.
+             */
+            count: number;
+            /** Format: int32 */
+            height: number;
+            /** Format: int32 */
+            interval_ms: number;
+            /** Format: int32 */
+            rows: number;
+            /** @description JPEG sheet URLs, in order. Immutable: cache forever. */
+            sheets: string[];
+            /** Format: int32 */
+            width: number;
+        };
         /**
          * @description Where playback is. Clients send it every 10 s while playing, on pause,
          *     after a seek settles and when leaving the player.
@@ -3085,6 +3146,42 @@ export interface operations {
             };
         };
     };
+    get_previews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewInfo"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     stream_file: {
         parameters: {
             query?: never;
@@ -3987,6 +4084,43 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
+            };
+        };
+    };
+    get_sheet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+                sheet: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": number[];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -11,6 +11,7 @@ mod artwork;
 mod hls;
 mod name;
 mod playback;
+mod previews;
 mod probe;
 mod sidecar;
 mod subtitles;
@@ -31,6 +32,7 @@ pub use playback::{
     AudioOutput, AudioPlan, AudioSupport, DeviceProfile, Incompatibility, PlaybackDecision,
     StreamPlan, VideoPlan, VideoSupport,
 };
+pub use previews::{PREVIEW_VERSION, PreviewError, PreviewSheets, preview_interval_ms};
 pub use probe::{
     AudioCodec, AudioStream, ColorInfo, Container, HdrFormat, MediaInfo, PROBE_VERSION, ProbeError,
     SubtitleCodec, SubtitleStream, VideoCodec, VideoStream, probe,

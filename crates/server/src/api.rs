@@ -39,6 +39,7 @@ mod hls;
 mod home;
 mod metadata;
 mod party;
+mod previews;
 mod search;
 mod subtitles;
 #[cfg(test)]
@@ -191,6 +192,8 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(hls::get_playlist))
         .routes(routes!(hls::get_init))
         .routes(routes!(hls::get_segment))
+        .routes(routes!(previews::get_previews))
+        .routes(routes!(previews::get_sheet))
         .routes(routes!(subtitles::get_subtitle))
         .routes(routes!(subtitles::list_fonts))
         .routes(routes!(subtitles::get_font))

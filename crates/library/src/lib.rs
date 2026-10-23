@@ -12,6 +12,7 @@ mod home_layout;
 mod ids;
 mod libraries;
 mod metadata;
+mod previews;
 mod scan;
 mod search;
 mod shows;
@@ -43,6 +44,7 @@ pub use home_layout::HomeRowSpec;
 pub use ids::{ArtworkId, FileId, ItemId, LibraryId, ParseIdError, UserId};
 pub use libraries::{LibraryError, LibraryInfo};
 pub use metadata::read::{Credit, Extras};
+pub use previews::{PreviewKey, Previews};
 pub use scan::{ScanIssue, ScanPhase, ScanProgress, ScanState, ScanStatus, ScanSummary};
 pub use search::{EpisodeHit, PersonHit, PersonRole, SearchResults};
 pub use shows::{Episode, EpisodeRef, Season, SeasonSummary, Show};
@@ -143,6 +145,7 @@ struct Inner {
     store: Arc<store::ArtworkStore>,
     scan: scan::ScanHandle,
     metadata: metadata::MetadataHandle,
+    previews: previews::PreviewHandle,
 }
 
 impl Library {
@@ -169,6 +172,9 @@ impl Library {
             .await?;
         let store =
             Arc::new(store::ArtworkStore::new(config.data_dir.join("artwork")).map_err(io)?);
+        let preview_store =
+            Arc::new(previews::PreviewStore::new(config.data_dir.join("previews")).map_err(io)?);
+        let preview_tools = config.tools.clone();
         let scan = scan::ScanHandle::spawn(scan::ScanContext {
             db: db.clone(),
             store: Arc::clone(&store),
@@ -182,12 +188,19 @@ impl Library {
             scan.subscribe(),
             config.online_metadata,
         );
+        let previews = previews::PreviewHandle::spawn(
+            db.clone(),
+            preview_store,
+            preview_tools,
+            scan.subscribe(),
+        );
         Ok(Library {
             inner: Arc::new(Inner {
                 db,
                 store,
                 scan,
                 metadata,
+                previews,
             }),
         })
     }
@@ -335,6 +348,30 @@ impl Library {
             .db
             .read(move |c| views::stream_source(c, id))
             .await?)
+    }
+
+    /// The seek previews of `file`, or `None` while they are still to be made
+    /// (or it can't have any). Asking moves the file to the front of the queue.
+    pub async fn previews(&self, file: FileId) -> Result<Option<Previews>, QueryError> {
+        let key = self
+            .inner
+            .db
+            .read(move |c| previews::key_of(c, file))
+            .await?;
+        let Some(key) = key else { return Ok(None) };
+        match self.inner.previews.store.sheets(&key) {
+            Some(sheets) => Ok(Some(Previews { key, sheets })),
+            None => {
+                self.inner.previews.hurry(file);
+                Ok(None)
+            }
+        }
+    }
+
+    /// Path of sheet `n` of the previews named `key`, if it exists. No database
+    /// access: the key names the folder.
+    pub fn preview_sheet(&self, key: &PreviewKey, n: u32) -> Option<PathBuf> {
+        self.inner.previews.store.sheet(key, n)
     }
 
     /// Path of one stored artwork size, if it exists. No database access: the
@@ -528,14 +565,15 @@ mod tests {
         let lib = open(&root, &data).await;
         scan(&lib).await;
         let rev = lib.rev();
-        async fn data_version(lib: &Library) -> i64 {
-            lib.inner
-                .db
-                .read(|c| c.query_row("PRAGMA data_version", [], |r| r.get::<_, i64>(0)))
-                .await
+        // data_version counts other connections' commits as one connection
+        // sees them, so both readings come from the same connection.
+        let watcher = rusqlite::Connection::open(data.join("nuvora.db")).unwrap();
+        let data_version = || -> i64 {
+            watcher
+                .query_row("PRAGMA data_version", [], |r| r.get(0))
                 .unwrap()
-        }
-        let before = data_version(&lib).await;
+        };
+        let before = data_version();
 
         let summary = scan(&lib).await;
         assert_eq!(
@@ -550,7 +588,7 @@ mod tests {
         );
         assert_eq!(lib.rev(), rev, "catalog rev unchanged");
         assert_eq!(
-            data_version(&lib).await,
+            data_version(),
             before,
             "no transaction committed during the rescan"
         );
