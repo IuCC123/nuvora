@@ -150,7 +150,7 @@ Amber `#e5a00d` marks the primary action (Play), the current selection, focus ri
 
 ### Neutral
 
-Three stacked neutrals: `canvas` for the page, `surface` for posters and panels, `surface-raised` for menus, hovered rows and the active nav item. Body text uses `text-primary`. Metadata uses `text-secondary`. `text-muted` is the floor for small text and still clears 4.5:1 on the canvas.
+Three stacked neutrals: `canvas` for the page and the chrome, menus included (a hairline border and a soft shadow lift them off the page), `surface` for posters and panels, `surface-raised` for hovered rows, highlighted menu items and the active nav item. Body text uses `text-primary`. Metadata uses `text-secondary`. `text-muted` is the floor for small text and still clears 4.5:1 on the canvas.
 
 ### Named Rules
 
@@ -224,6 +224,6 @@ A movie without poster artwork gets a title card, never a cropped video frame. I
 ## Personal home screens
 
 - **Library icons.** Each library shows one of 22 preset line icons (24-unit grid, 1.75 stroke, same as the rest of the set) in the rail, on its home row and as the library page's heading, where it is amber. Movies default to the film icon and TV to the TV icon.
-- **Backgrounds.** Home can sit on a wash in one of six palettes (Dusk, Ocean, Forest, Ember, Aurora, Graphite), each three soft radial gradients at 14% to 42% opacity, or "From what you watch", the first poster on screen blurred 80px at 50%. Every background fades into the canvas within the first screen and a half, so rows stay on the canvas color for reading.
+- **Backgrounds.** Home can sit on a wash in one of six palettes (Dusk, Ocean, Forest, Ember, Aurora, Graphite), each three soft radial gradients at 14% to 42% opacity, or "Posters", the first poster on screen blurred 80px at 50%. Every background fades into the canvas within the first screen and a half, so rows stay on the canvas color for reading.
 - **Poster sizes.** Small 124px, medium 150px, large 196px. Everything else in a row scales from the card width.
-- **Customize panel.** A 440px panel from the right on `surface`, with swatches, a segmented size control, and the row list on `surface-raised`. Changes apply as they happen and save to the account.
+- **Customize panel.** A 440px panel from the right on `canvas`, like the menus, with swatches, a segmented size control, and the row list on `surface`. A row's move arrows appear on hover or focus (always on touch screens). Changes apply as they happen and save to the account, so the panel only speaks up when a save fails.

@@ -13,7 +13,7 @@
   overflow-y: auto;
   padding: 6px;
   border-radius: var(--nv-radius-lg);
-  background: var(--nv-color-surface-raised);
+  background: var(--nv-color-canvas);
   border: 1px solid var(--nv-color-hairline);
   box-shadow: var(--nv-shadow-lift);
   transform-origin: top left;
@@ -57,7 +57,7 @@
 
 .dropdown-item:hover,
 .dropdown-item:focus-visible {
-  background: var(--nv-color-hairline);
+  background: var(--nv-color-surface-raised);
   outline: none;
 }
 

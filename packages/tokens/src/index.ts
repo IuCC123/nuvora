@@ -9,9 +9,9 @@
  */
 export const tokens = {
   color: {
-    canvas: "#0f1012",          // app background
+    canvas: "#0f1012",          // app background, top bar, menus
     surface: "#1a1c1f",         // cards, panels
-    surfaceRaised: "#24272b",   // menus, hovered rows, active nav item
+    surfaceRaised: "#24272b",   // hovered rows, highlighted menu items, active nav item
     hairline: "#2c2f34",        // borders on surfaces
     divider: "#1d1f22",         // top bar and nav rail edges against the canvas
     overlayBorder: "rgba(255,255,255,0.18)", // chips over artwork

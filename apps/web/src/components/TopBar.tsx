@@ -1,12 +1,14 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { isScanRunning, queryKeys, type ScanStatus } from "@nuvora/core";
 import { queries } from "../nuvora";
 import { useStartScan } from "../lib/useStartScan";
 import { useUser } from "../lib/session";
 import { AccountMenu } from "./AccountMenu";
-import { MarkIcon, RefreshIcon, SpinIcon } from "./Icon";
+import { HomeCustomizer } from "./HomeCustomizer";
+import { MarkIcon, RefreshIcon, SlidersIcon, SpinIcon } from "./Icon";
 import { SearchBox } from "./SearchBox";
 import { WatchTogether } from "./party/WatchTogether";
 
@@ -28,6 +30,7 @@ export function TopBar() {
       </Link>
       <SearchBox />
       <div className="topbar-spacer" />
+      <CustomizeHome />
       {status?.state === "running" && (
         <div className="scan-pill">
           <SpinIcon className="scan-spin" />
@@ -59,6 +62,28 @@ export function TopBar() {
       <WatchTogether />
       <AccountMenu />
     </header>
+  );
+}
+
+/** Opens the home screen editor; shown on Home only. */
+function CustomizeHome() {
+  const home = useRouterState({ select: (s) => s.location.pathname === "/" });
+  const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  if (!home) return null;
+  const close = () => {
+    setOpen(false);
+    button.current?.focus();
+  };
+  return (
+    <>
+      <button ref={button} type="button" className="topbar-btn" onClick={() => setOpen(true)}>
+        <SlidersIcon size={18} />
+        <span className="topbar-btn-label">Customize</span>
+      </button>
+      {/* The top bar is its own stacking context, so the panel goes to the body to cover the page. */}
+      {open && createPortal(<HomeCustomizer onClose={close} />, document.body)}
+    </>
   );
 }
 

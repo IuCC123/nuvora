@@ -18,7 +18,8 @@
   width: min(440px, 100vw);
   display: flex;
   flex-direction: column;
-  background: var(--nv-color-surface);
+  background: var(--nv-color-canvas);
+  border-left: 1px solid var(--nv-color-hairline);
   box-shadow: -24px 0 60px rgb(0 0 0 / 0.45);
   outline: none;
   animation: customize-in var(--nv-motion-duration-base) var(--nv-motion-easing-enter);
@@ -41,7 +42,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 20px 12px 24px;
+  padding: 18px 16px 10px 24px;
 }
 
 .customize-head h2 {
@@ -57,13 +58,13 @@
   padding: 0 24px 24px;
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 28px;
 }
 
 .customize-loading {
   height: 320px;
   border-radius: var(--nv-radius-md);
-  background: var(--nv-color-surface-raised);
+  background: var(--nv-color-surface);
 }
 
 .customize-section h3 {
@@ -72,12 +73,6 @@
   line-height: var(--nv-type-small-line);
   font-weight: var(--nv-font-weight-semibold);
   color: var(--nv-color-text-primary);
-}
-
-.customize-hint {
-  margin: -6px 0 12px;
-  color: var(--nv-color-text-muted);
-  font-size: var(--nv-type-small-size);
 }
 
 .swatches {
@@ -118,7 +113,7 @@
 
 .swatch[aria-checked="true"] .swatch-fill {
   box-shadow:
-    0 0 0 2px var(--nv-color-surface),
+    0 0 0 2px var(--nv-color-canvas),
     0 0 0 4px var(--nv-color-accent);
 }
 
@@ -130,7 +125,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin: -8px -10px 4px 0;
 }
 
 .customize-rows-head h3 {
@@ -140,7 +135,7 @@
 .row-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -148,7 +143,7 @@
 
 .row-config {
   border-radius: var(--nv-radius-md);
-  background: var(--nv-color-surface-raised);
+  background: var(--nv-color-surface);
   transition: opacity var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
 }
 
@@ -159,9 +154,9 @@
 .row-config-line {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 52px;
-  padding: 6px 6px 6px 8px;
+  gap: 10px;
+  min-height: 44px;
+  padding: 4px 6px 4px 8px;
 }
 
 .row-config-grip {
@@ -174,11 +169,6 @@
 
 .row-config-icon {
   color: var(--nv-color-text-secondary);
-  flex: none;
-}
-
-.row-config-icon-space {
-  width: 18px;
   flex: none;
 }
 
@@ -209,29 +199,36 @@
   opacity: 0.45;
 }
 
-.row-config-actions {
+.row-config-actions,
+.row-config-move {
   display: flex;
   gap: 2px;
 }
 
-.icon-btn {
-  display: grid;
-  place-items: center;
+/* Drag is the quick way to reorder; the arrows are there for keyboards and touch. */
+@media (hover: hover) {
+  .row-config-move {
+    opacity: 0;
+    transition: opacity var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+  }
+
+  .row-config:hover .row-config-move,
+  .row-config:focus-within .row-config-move {
+    opacity: 1;
+  }
+}
+
+.customize-panel .icon-btn {
   width: 32px;
   height: 32px;
-  border: 0;
   border-radius: var(--nv-radius-sm);
-  background: none;
-  color: var(--nv-color-text-secondary);
-  cursor: pointer;
 }
 
-.icon-btn:hover:not(:disabled) {
-  background: var(--nv-color-surface);
-  color: var(--nv-color-text-primary);
+.row-config .icon-btn:hover:not(:disabled) {
+  background: var(--nv-color-surface-raised);
 }
 
-.icon-btn:disabled {
+.customize-panel .icon-btn:disabled {
   opacity: 0.3;
   cursor: default;
 }
@@ -267,7 +264,7 @@
   padding: 0 10px;
   border: 1px solid var(--nv-color-hairline);
   border-radius: var(--nv-radius-md);
-  background: var(--nv-color-surface);
+  background: var(--nv-color-canvas);
   color: var(--nv-color-text-primary);
   font: inherit;
   font-size: var(--nv-type-small-size);
@@ -280,20 +277,22 @@
 }
 
 .customize-footer {
-  position: sticky;
-  bottom: -24px;
+  flex: none;
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 0 -24px -24px;
-  padding: 14px 24px;
+  padding: 12px 24px;
   border-top: 1px solid var(--nv-color-hairline);
-  background: var(--nv-color-surface);
+  background: var(--nv-color-canvas);
+}
+
+.customize-footer .btn-quiet {
+  margin-left: -12px;
 }
 
 .customize-status {
   flex: 1;
-  color: var(--nv-color-text-muted);
+  color: var(--nv-color-danger);
   font-size: 12px;
 }
 

@@ -15,13 +15,13 @@ import {
   type PosterSize,
 } from "@nuvora/core";
 import { client, queries } from "../nuvora";
-import { ArrowDownIcon, ArrowUpIcon, CloseIcon, EyeIcon, EyeOffIcon, GripIcon, PencilIcon, PlusIcon, TrashIcon } from "./Icon";
+import { ArrowDownIcon, ArrowUpIcon, ClockIcon, CloseIcon, EyeIcon, EyeOffIcon, GripIcon, PencilIcon, PlusIcon, ResumeIcon, TrashIcon } from "./Icon";
 import { LibraryIcon } from "./LibraryIcon";
 import "../styles/customize.css";
 
 export const BACKGROUNDS: { value: HomeBackground; label: string }[] = [
   { value: "none", label: "None" },
-  { value: "ambient", label: "From what you watch" },
+  { value: "ambient", label: "Posters" },
   { value: "dusk", label: "Dusk" },
   { value: "ocean", label: "Ocean" },
   { value: "forest", label: "Forest" },
@@ -121,8 +121,23 @@ export function HomeCustomizer({ onClose }: { onClose: () => void }) {
     setDragging(null);
   };
 
+  const footer = (
+    <div className="customize-footer">
+      <button type="button" className="btn btn-quiet btn-small" onClick={() => reset.mutate()} disabled={reset.isPending}>
+        Reset to default
+      </button>
+      {/* Changes save as they happen; only a failure needs saying. */}
+      <span className="customize-status" role="status">
+        {save.isError ? "Couldn't save. Your next change will try again." : ""}
+      </span>
+      <button type="button" className="btn btn-primary btn-small" onClick={onClose}>
+        Done
+      </button>
+    </div>
+  );
+
   return (
-    <Shell onClose={onClose} panel={panel}>
+    <Shell onClose={onClose} panel={panel} footer={footer}>
       <section className="customize-section" aria-labelledby="customize-background">
         <h3 id="customize-background">Background</h3>
         <div className="swatches" role="radiogroup" aria-labelledby="customize-background">
@@ -157,16 +172,16 @@ export function HomeCustomizer({ onClose }: { onClose: () => void }) {
       <section className="customize-section" aria-labelledby="customize-rows">
         <div className="customize-rows-head">
           <h3 id="customize-rows">Rows</h3>
-          <button type="button" className="btn btn-secondary btn-small" onClick={addRow} disabled={!libraries.length}>
+          <button type="button" className="btn btn-quiet btn-small" onClick={addRow} disabled={!libraries.length}>
             <PlusIcon size={16} />
             Add row
           </button>
         </div>
-        <p className="customize-hint">Drag to reorder. Hidden rows stay here so you can bring them back.</p>
         <ol className="row-list" role="list">
           {rows.map((row, i) => {
             const library = libraries.find((l) => l.id === row.library_id);
             const name = rowName(row, library);
+            const detail = rowDetail(row);
             return (
               <li
                 key={row.id}
@@ -186,18 +201,20 @@ export function HomeCustomizer({ onClose }: { onClose: () => void }) {
                   <span className="row-config-grip" aria-hidden>
                     <GripIcon size={16} />
                   </span>
-                  {library ? <LibraryIcon icon={library.icon} kind={library.kind} size={18} className="row-config-icon" /> : <span className="row-config-icon-space" />}
+                  <RowIcon row={row} library={library} />
                   <span className="row-config-text">
                     <span className="row-config-name">{name}</span>
-                    {row.type === "library" && <span className="row-config-detail">{rowDetail(row)}</span>}
+                    {detail && <span className="row-config-detail">{detail}</span>}
                   </span>
                   <div className="row-config-actions">
-                    <button type="button" className="icon-btn" onClick={() => move(i, i - 1)} disabled={i === 0} aria-label={`Move ${name} up`}>
-                      <ArrowUpIcon size={16} />
-                    </button>
-                    <button type="button" className="icon-btn" onClick={() => move(i, i + 1)} disabled={i === rows.length - 1} aria-label={`Move ${name} down`}>
-                      <ArrowDownIcon size={16} />
-                    </button>
+                    <span className="row-config-move">
+                      <button type="button" className="icon-btn" onClick={() => move(i, i - 1)} disabled={i === 0} aria-label={`Move ${name} up`}>
+                        <ArrowUpIcon size={16} />
+                      </button>
+                      <button type="button" className="icon-btn" onClick={() => move(i, i + 1)} disabled={i === rows.length - 1} aria-label={`Move ${name} down`}>
+                        <ArrowDownIcon size={16} />
+                      </button>
+                    </span>
                     <button
                       type="button"
                       className="icon-btn"
@@ -229,23 +246,22 @@ export function HomeCustomizer({ onClose }: { onClose: () => void }) {
           })}
         </ol>
       </section>
-
-      <div className="customize-footer">
-        <button type="button" className="btn btn-quiet" onClick={() => reset.mutate()} disabled={reset.isPending}>
-          Reset to default
-        </button>
-        <span className="customize-status" role="status">
-          {save.isPending ? "Saving…" : save.isError ? "Couldn't save. Your last change will retry on the next edit." : save.isSuccess ? "Saved to your account" : ""}
-        </span>
-        <button type="button" className="btn btn-primary" onClick={onClose}>
-          Done
-        </button>
-      </div>
     </Shell>
   );
 }
 
-function Shell({ onClose, panel, children }: { onClose: () => void; panel: React.RefObject<HTMLDivElement | null>; children: React.ReactNode }) {
+/** The panel: a fixed head, the scrolling body, and a footer pinned to the bottom. */
+function Shell({
+  onClose,
+  panel,
+  footer,
+  children,
+}: {
+  onClose: () => void;
+  panel: React.RefObject<HTMLDivElement | null>;
+  footer?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div className="customize-layer" onKeyDown={(e) => e.key === "Escape" && onClose()}>
       <div className="customize-scrim" onClick={onClose} aria-hidden />
@@ -257,6 +273,7 @@ function Shell({ onClose, panel, children }: { onClose: () => void; panel: React
           </button>
         </div>
         <div className="customize-body">{children}</div>
+        {footer}
       </div>
     </div>
   );
@@ -331,10 +348,24 @@ function rowName(row: HomeRowConfig, library: LibrarySummary | undefined): strin
   return library?.name ?? "Library";
 }
 
-function rowDetail(row: HomeRowConfig): string {
+/**
+ * How a library row is sorted and filtered, when it isn't the library's own
+ * title order: "Date added · Unwatched". The direction is named only when it
+ * isn't the sort's usual one.
+ */
+function rowDetail(row: HomeRowConfig): string | null {
+  if (row.type !== "library") return null;
   const sort = row.sort ?? "title";
   const order = row.order ?? DEFAULT_ORDER[sort];
-  const parts = [`${SORT_LABELS[sort]}, ${ORDER_LABELS[sort][order].toLowerCase()}`];
-  if (row.filter && row.filter !== "all") parts.push(FILTER_LABELS[row.filter]);
+  const filtered = row.filter && row.filter !== "all";
+  if (sort === "title" && order === DEFAULT_ORDER.title && !filtered) return null;
+  const parts = [order === DEFAULT_ORDER[sort] ? SORT_LABELS[sort] : `${SORT_LABELS[sort]}, ${ORDER_LABELS[sort][order].toLowerCase()}`];
+  if (filtered) parts.push(FILTER_LABELS[row.filter!]);
   return parts.join(" · ");
+}
+
+function RowIcon({ row, library }: { row: HomeRowConfig; library: LibrarySummary | undefined }) {
+  if (row.type === "continue_watching") return <ResumeIcon size={18} className="row-config-icon" />;
+  if (row.type === "recently_added") return <ClockIcon size={18} className="row-config-icon" />;
+  return <LibraryIcon icon={library?.icon ?? null} kind={library?.kind ?? "movies"} size={18} className="row-config-icon" />;
 }

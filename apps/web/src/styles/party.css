@@ -94,17 +94,14 @@
 
 /* Panel and cards sit on the raised surface, so their avatars and quiet
    buttons step up a shade to stay visible. */
-.together-panel .avatar,
 .together-card .avatar {
   background: var(--nv-color-hairline);
 }
 
-.together-panel .btn-secondary,
 .together-card .btn-secondary {
   background: var(--nv-color-hairline);
 }
 
-.together-panel .btn-secondary:hover,
 .together-card .btn-secondary:hover {
   background: color-mix(in srgb, var(--nv-color-text-muted) 35%, var(--nv-color-hairline));
 }
@@ -121,7 +118,7 @@
   overflow-y: auto;
   padding: 16px;
   border-radius: var(--nv-radius-lg);
-  background: var(--nv-color-surface-raised);
+  background: var(--nv-color-canvas);
   border: 1px solid var(--nv-color-hairline);
   box-shadow: var(--nv-shadow-lift);
   transform-origin: top right;

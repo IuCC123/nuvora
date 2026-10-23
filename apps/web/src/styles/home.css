@@ -341,12 +341,6 @@
   isolation: isolate;
 }
 
-.home-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin: -14px var(--nv-layout-gutter) -18px;
-}
-
 /* Backgrounds: a wash at the top of Home that fades into the canvas. */
 .home-bg {
   background:

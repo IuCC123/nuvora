@@ -1,10 +1,7 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { HomeBackground, HomeRow } from "@nuvora/core";
 import { queries } from "../nuvora";
 import { Artwork } from "../components/Artwork";
-import { HomeCustomizer } from "../components/HomeCustomizer";
-import { SlidersIcon } from "../components/Icon";
 import { PosterRow } from "../components/PosterRow";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useUser } from "../lib/session";
@@ -15,26 +12,18 @@ import "../styles/home.css";
 export function Home() {
   useDocumentTitle(undefined);
   const { data } = useQuery(queries.home());
-  const [customizing, setCustomizing] = useState(false);
   if (!data) return null; // the route loader awaited it; errors render the route's errorComponent
   const rows = data.rows.filter((row) => row.items.length > 0);
   return (
     <div className="home" data-poster-size={data.poster_size}>
       <HomeBackdrop background={data.background} rows={rows} />
       <h1 className="sr-only">Home</h1>
-      <div className="home-toolbar">
-        <button type="button" className="btn btn-quiet btn-small" onClick={() => setCustomizing(true)}>
-          <SlidersIcon size={16} />
-          Customize
-        </button>
-      </div>
       {rows.length ? rows.map((row) => <PosterRow key={row.id ?? `${row.kind}-${row.library_id ?? ""}`} row={row} />) : <EmptyLibrary />}
-      {customizing && <HomeCustomizer onClose={() => setCustomizing(false)} />}
     </div>
   );
 }
 
-/** The chosen background behind the rows. "From what you watch" blurs the first poster on screen into a wash. */
+/** The chosen background behind the rows. "Posters" blurs the first poster on screen into a wash. */
 function HomeBackdrop({ background, rows }: { background: HomeBackground; rows: HomeRow[] }) {
   if (background === "none") return null;
   const art = background === "ambient" ? rows.flatMap((r) => r.items).find((c) => c.poster)?.poster : undefined;
