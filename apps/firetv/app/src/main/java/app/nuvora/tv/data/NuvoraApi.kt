@@ -95,6 +95,13 @@ class NuvoraApi(
     // ------------------------------------------------------- watch together
 
     /** Everyone else on the server, who can be invited. */
+    /** Null while the server is still making them; asking moves the file to the front of its queue. */
+    suspend fun previews(fileId: Long): PreviewInfo? = try {
+        get("/api/files/$fileId/previews", PreviewInfo.serializer())
+    } catch (e: ApiException) {
+        if (e.status == 404) null else throw e
+    }
+
     suspend fun people(): List<PartyPerson> = get("/api/people", ListSerializer(PartyPerson.serializer()))
 
     suspend fun invite(userId: Long): PartyView =
@@ -129,6 +136,14 @@ class NuvoraApi(
 
     /** An artwork URL; images are immutable, so caches may keep them forever. */
     fun imageUrl(image: Image, size: String = "small"): String = "$baseUrl/api/images/${image.id}/$size"
+
+    /** The bytes of a server path the API returned, such as a preview sheet. */
+    suspend fun bytes(path: String): ByteArray = withContext(Dispatchers.IO) {
+        call(request("GET", resolve(path).toHttpUrl())).use { response ->
+            if (!response.isSuccessful) throw error(response.code, response.body.string())
+            response.body.bytes()
+        }
+    }
 
     /** A server-relative URL the API returned (`playback.url`), made absolute. */
     fun resolve(url: String): String = if (url.startsWith("http")) url else baseUrl + url

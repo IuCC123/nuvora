@@ -134,6 +134,8 @@ private fun playable(id: Long, title: String, subtitle: String?, versions: List<
 
 private const val HIDE_AFTER_MS = 5_000L
 private const val REPORT_EVERY_MS = 10_000L
+/** A scrub lands this long after the last press. */
+private const val SCRUB_SETTLE_MS = 800L
 
 private enum class Menu { None, Subtitles, Audio }
 
@@ -166,6 +168,10 @@ private fun Player(nav: NavHostController, playable: Playable, startMs: Long, us
     val shownSubtitle = subtitles.firstOrNull { it.group.isTrackSelected(it.index) }
     val rootFocus = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
+    // Left and right with the controls hidden move a target; the video jumps there once the presses stop.
+    var scrub by remember { mutableStateOf<Long?>(null) }
+    var scrubMoves by remember { mutableIntStateOf(0) }
+    val previews = rememberScrubPreviews(api, version.fileId)
 
     fun show() {
         controls = true
@@ -286,6 +292,23 @@ private fun Player(nav: NavHostController, playable: Playable, startMs: Long, us
 
     fun seekBy(delta: Long) = seekTo(player.currentPosition + delta)
 
+    fun scrubBy(delta: Long) {
+        val end = (player.duration.takeIf { it > 0 } ?: duration).coerceAtLeast(0)
+        scrub = ((scrub ?: player.currentPosition) + delta).coerceIn(0, end)
+        scrubMoves++
+    }
+
+    fun commitScrub() {
+        scrub?.let(::seekTo)
+        scrub = null
+    }
+
+    LaunchedEffect(scrubMoves) {
+        if (scrub == null) return@LaunchedEffect
+        delay(SCRUB_SETTLE_MS)
+        commitScrub()
+    }
+
     fun play() {
         if (party.active) {
             party.play(if (player.playbackState == Player.STATE_ENDED) 0 else player.currentPosition)
@@ -313,6 +336,7 @@ private fun Player(nav: NavHostController, playable: Playable, startMs: Long, us
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key.nativeKeyCode) {
                     AndroidKeyEvent.KEYCODE_BACK, AndroidKeyEvent.KEYCODE_ESCAPE -> when {
+                        scrub != null -> { scrub = null; true }
                         menu != Menu.None -> { menu = Menu.None; show(); true }
                         controls && playing -> { controls = false; true }
                         else -> false
@@ -323,9 +347,13 @@ private fun Player(nav: NavHostController, playable: Playable, startMs: Long, us
                     AndroidKeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { seekBy(SKIP_MS * 3); true }
                     AndroidKeyEvent.KEYCODE_MEDIA_REWIND -> { seekBy(-SKIP_MS * 3); true }
                     AndroidKeyEvent.KEYCODE_CAPTIONS -> { menu = Menu.Subtitles; show(); true }
-                    AndroidKeyEvent.KEYCODE_DPAD_CENTER, AndroidKeyEvent.KEYCODE_ENTER -> if (!controls) { toggle(); true } else { touched++; false }
-                    AndroidKeyEvent.KEYCODE_DPAD_LEFT -> if (!controls && menu == Menu.None) { seekBy(-SKIP_MS); true } else { touched++; false }
-                    AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> if (!controls && menu == Menu.None) { seekBy(SKIP_MS); true } else { touched++; false }
+                    AndroidKeyEvent.KEYCODE_DPAD_CENTER, AndroidKeyEvent.KEYCODE_ENTER -> when {
+                        scrub != null -> { commitScrub(); true }
+                        !controls -> { toggle(); true }
+                        else -> { touched++; false }
+                    }
+                    AndroidKeyEvent.KEYCODE_DPAD_LEFT -> if (!controls && menu == Menu.None) { scrubBy(-scrubStep(event.nativeKeyEvent.repeatCount)); true } else { touched++; false }
+                    AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> if (!controls && menu == Menu.None) { scrubBy(scrubStep(event.nativeKeyEvent.repeatCount)); true } else { touched++; false }
                     AndroidKeyEvent.KEYCODE_DPAD_UP, AndroidKeyEvent.KEYCODE_DPAD_DOWN -> if (!controls) { show(); true } else { touched++; false }
                     else -> false
                 }
@@ -355,6 +383,8 @@ private fun Player(nav: NavHostController, playable: Playable, startMs: Long, us
         party.countdown?.let { seconds ->
             if (error == null) Countdown(seconds)
         }
+
+        scrub?.let { target -> if (error == null) ScrubBar(target, duration, previews) }
 
         AnimatedVisibility(controls && error == null, enter = fadeIn(), exit = fadeOut()) {
             Controls(
