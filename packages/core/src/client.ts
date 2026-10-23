@@ -44,11 +44,14 @@ export type Image = Schemas["Image"];
 export type ImageSize = Schemas["ImageSize"];
 export type ScanStatus = Schemas["ScanStatus"];
 export type DeviceProfile = Schemas["DeviceProfile"];
+export type VideoSupport = Schemas["VideoSupport"];
+export type AudioSupport = Schemas["AudioSupport"];
 export type AuthState = Schemas["AuthState"];
 export type User = Schemas["User"];
 export type Role = Schemas["Role"];
 export type SetupRequest = Schemas["SetupRequest"];
 export type LoginRequest = Schemas["LoginRequest"];
+export type AppSession = Schemas["AppSession"];
 export type UpdateMeRequest = Schemas["UpdateMeRequest"];
 export type AdminLibrary = Schemas["AdminLibrary"];
 export type CreateLibraryRequest = Schemas["CreateLibraryRequest"];
@@ -79,6 +82,11 @@ export interface ClientOptions {
   fetch: FetchLike;
   /** Measured once at startup by the app (it needs platform APIs this package must not touch). */
   device: DeviceProfile;
+  /**
+   * An app's session token (`appSignIn`), sent as `Authorization: Bearer`.
+   * The web leaves it out: its session is a cookie.
+   */
+  token?: string;
   /**
    * Called when a request comes back 401 because the session ended or never
    * existed (not for a wrong password). The app sends the person to Sign in.
@@ -120,6 +128,8 @@ export interface NuvoraClient {
   setup(body: SetupRequest): Promise<User>;
   /** 401 `bad_credentials` for any wrong detail; 429 `rate_limited` after five failures. */
   login(body: LoginRequest): Promise<User>;
+  /** Sign-in for apps: the session comes back as a token to pass as `token`, not a cookie. Same errors as `login`. */
+  appSignIn(body: LoginRequest): Promise<AppSession>;
   logout(): Promise<void>;
   /** The signed-in user's own name and password. A new password needs the current one. */
   updateMe(body: UpdateMeRequest): Promise<User>;
@@ -196,7 +206,11 @@ type Path<M extends HttpMethod = HttpMethod> = {
 }[keyof paths];
 
 export function createClient(options: ClientOptions): NuvoraClient {
-  const headers = { accept: "application/json", "nuvora-device": JSON.stringify(options.device) };
+  const headers: Record<string, string> = {
+    accept: "application/json",
+    "nuvora-device": JSON.stringify(options.device),
+    ...(options.token && { authorization: `Bearer ${options.token}` }),
+  };
 
   async function call<T>(
     method: HttpMethod,
@@ -257,6 +271,7 @@ export function createClient(options: ClientOptions): NuvoraClient {
     authState: (signal) => get<AuthState>("/api/auth/state", {}, signal),
     setup: (body) => post<User>("/api/setup", {}, body),
     login: (body) => post<User>("/api/auth/login", {}, body),
+    appSignIn: (body) => post<AppSession>("/api/auth/token", {}, body),
     logout: () => post<void>("/api/auth/logout"),
     updateMe: (body) => patch<User>("/api/auth/me", {}, body),
     reportProgress: (id, body, opts) => put("/api/items/{id}/progress", { id }, body, opts?.keepalive),

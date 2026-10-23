@@ -113,6 +113,13 @@ When Nuvora runs on the same network, the TV finds the server by itself, and fin
 
 To update the app, repeat step 3 and you stay signed in. The app is also on the [Releases](https://github.com/IuCC123/nuvora/releases/latest) page as `nuvora-tv.apk`.
 
+**On a Fire TV with Vega OS** (the Fire TV Stick 4K Select): Android apps don't run there, so Nuvora has a separate Vega app. It has Home, movie and show pages, Continue Watching and playback with resume; subtitles, search and Watch Together are still to come. Amazon only lets you install it from a computer:
+
+1. Register the stick as a developer device in your Amazon developer account, then turn on **Settings › My Fire TV › Developer options › Developer Mode** (press OK on the device name in **About** seven times if you don't see Developer options).
+2. Install Amazon's [Vega SDK](https://developer.amazon.com/docs/vega/latest/install-vega-sdk.html) and connect the stick over USB.
+3. Download `nuvora-vega_armv7.vpkg` from [Releases](https://github.com/IuCC123/nuvora/releases/latest) and run `vega device install-app --packagePath nuvora-vega_armv7.vpkg`.
+4. Open **Nuvora** and type your server's address.
+
 ## Organizing your files
 
 Nuvora goes by folder and file names, so a little order goes a long way:
@@ -201,9 +208,11 @@ cargo run -p nuvora-server -- --data-dir ./data # http://localhost:8640
 bun run dev                                     # web app with hot reload, proxying /api to :8640
 ```
 
-The code is split like this: `crates/` is the server (`media` knows files, `library` owns the database, `server` is the HTTP API), `packages/core` is the TypeScript data layer, `apps/web` is the web app, and `apps/firetv` is the TV app.
+The code is split like this: `crates/` is the server (`media` knows files, `library` owns the database, `server` is the HTTP API), `packages/core` is the TypeScript data layer, `apps/web` is the web app, `apps/firetv` is the TV app, and `apps/vega` is the Vega OS app.
 
 The TV app is written in Kotlin with Jetpack Compose for TV. With JDK 17+ and the Android SDK, run `./gradlew installDebug` in `apps/firetv` to build it and install it on a connected TV or emulator.
+
+The Vega OS app is in `apps/vega` (React Native for Vega, sharing `packages/core` with the web app). With the [Vega SDK](https://developer.amazon.com/docs/vega/latest/install-vega-sdk.html), `npm install` there (it also builds Shaka Player with Amazon's patches) and `npm run build:release` makes `build/<arch>-release/nuvora-vega_<arch>.vpkg`: `armv7` for Fire TV devices, `aarch64` or `x86_64` (your Mac's) for the Vega Virtual Device, where `vega run-app build/aarch64-release/nuvora-vega_aarch64.vpkg app.nuvora.vega.main -d VirtualDevice` runs it. The virtual device claims to decode HEVC but can't; the app notices and asks the server for H.264 instead.
 
 To keep a build running on a Mac without Docker, `scripts/macos-service.sh install --bin target/release/nuvora --data-dir ~/Nuvora` makes it a background service that starts when you log in and restarts if it stops. `status` and `uninstall` do what they say.
 

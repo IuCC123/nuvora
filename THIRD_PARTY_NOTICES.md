@@ -19,6 +19,12 @@ Nuvora includes or uses the following software. Each is © its authors and used 
 - **Coil**, Apache-2.0. https://coil-kt.github.io/coil
 - The ThumbHash decoder is a port of Evan Wallace's ThumbHash, MIT. https://github.com/evanw/thumbhash
 
+## Shipped in the Vega TV app
+
+- **Shaka Player** 4.8.5, Apache-2.0, https://github.com/shaka-project/shaka-player, with Amazon's patches and polyfills for Vega from https://github.com/AmazonAppDev/vega-video-sample (the sample is MIT-0; the polyfills are under Amazon's terms for Vega apps). They are downloaded and built when the app's dependencies install, not kept in this repository.
+- **React Native for Vega**, the W3C Media API and Async Storage for Vega, © Amazon, under the Vega SDK license. **React** and **React Native**, MIT.
+- **base-64**, **xmldom** and **thumbhash**, MIT; **fastestsmallesttextencoderdecoder**, CC0-1.0.
+
 ## Used by the server
 
 - **FFmpeg** (ffprobe and ffmpeg), run as separate programs, never linked. The Docker image installs Debian's `ffmpeg` package, built under GPL-2.0-or-later; its source is available from Debian (https://packages.debian.org/source/trixie/ffmpeg).

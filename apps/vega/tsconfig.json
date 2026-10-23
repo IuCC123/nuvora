@@ -1,0 +1,11 @@
+{
+  "extends": "@react-native/typescript-config",
+  "compilerOptions": {
+    "types": ["jest", "@amazon-devices/react-native-kepler"],
+    "paths": {
+      "@nuvora/core": ["../../packages/core/src/index.ts"],
+      "@nuvora/tokens": ["../../packages/tokens/src/index.ts"]
+    }
+  },
+  "exclude": ["node_modules", "build", "src/w3cmedia"]
+}

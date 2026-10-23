@@ -12,6 +12,7 @@ import {
   formatUptime,
   initials,
   safeRedirect,
+  type AppSession,
   type ResponseLike,
 } from "../src";
 
@@ -165,4 +166,25 @@ test("folderCrumbs walks from the root to the folder", () => {
   ]);
   expect(folderCrumbs("C:\\")).toEqual([{ name: "C:", path: "C:\\" }]);
   expect(folderCrumbs("")).toEqual([]);
+});
+
+test("an app signs in for a token, then sends it with every request", async () => {
+  const session: AppSession = { token: "t0k3n", user: { id: 1, username: "iucc", display_name: "IuCC", role: "admin", subtitle_mode: "auto" } };
+  const signIn = clientAnswering(reply(200, session));
+  expect(await signIn.client.appSignIn({ username: "iucc", password: "pw" })).toEqual(session);
+  expect(signIn.sent[0]).toMatchObject({ url: "/api/auth/token", method: "POST", body: '{"username":"iucc","password":"pw"}' });
+  expect(signIn.sent[0]!.headers.authorization).toBeUndefined();
+
+  const sent: { url: string; headers: Record<string, string> }[] = [];
+  const client = createClient({
+    baseUrl: "http://192.168.1.20:8640",
+    device: { containers: [], video: [], audio: [] },
+    token: session.token,
+    fetch: async (url, init) => {
+      sent.push({ url, headers: init.headers });
+      return reply(200, { rows: [] });
+    },
+  });
+  await client.home();
+  expect(sent[0]).toMatchObject({ url: "http://192.168.1.20:8640/api/home", headers: { authorization: "Bearer t0k3n" } });
 });
