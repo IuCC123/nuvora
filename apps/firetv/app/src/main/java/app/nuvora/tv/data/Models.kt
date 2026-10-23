@@ -12,6 +12,8 @@ data class Health(val status: String, val version: String = "")
 @Serializable
 data class AuthState(
     @SerialName("server_name") val serverName: String = "Nuvora",
+    /** Empty from servers older than 0.3. */
+    @SerialName("server_id") val serverId: String = "",
     @SerialName("setup_required") val setupRequired: Boolean = false,
     val user: User? = null,
 )

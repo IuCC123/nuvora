@@ -13,7 +13,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import android.view.inputmethod.InputMethodManager
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.lifecycle.compose.LifecycleStartEffect
@@ -26,6 +30,7 @@ import androidx.navigation.toRoute
 import app.nuvora.tv.data.LiveEvent
 import app.nuvora.tv.data.SavedServer
 import app.nuvora.tv.data.SessionStore
+import app.nuvora.tv.data.checkServer
 import app.nuvora.tv.ui.common.LocalApi
 import app.nuvora.tv.ui.common.LocalSessionEnded
 import app.nuvora.tv.ui.connect.ConnectScreen
@@ -44,7 +49,7 @@ import app.nuvora.tv.ui.together.followParty
 import kotlinx.serialization.Serializable
 
 @Serializable object ConnectRoute
-@Serializable data class SignInRoute(val url: String, val name: String)
+@Serializable data class SignInRoute(val url: String, val name: String, val id: String? = null)
 @Serializable object HomeRoute
 @Serializable data class LibraryRoute(val id: Long, val name: String)
 @Serializable data class MovieRoute(val id: Long)
@@ -81,6 +86,13 @@ fun NuvoraRoot(store: SessionStore) {
     // Per session, not per user record: saving a setting doesn't make a new API (nor reconnect).
     val api = remember(session?.server?.url, session?.token) { store.api() }
 
+    // Each time the app comes to the front: is the server still where we left it?
+    val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle, session?.server?.url) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { store.checkServer(context) }
+    }
+
     // Watch Together's live connection, while the app is in front and signed in.
     LifecycleStartEffect(api) {
         api?.let(store.party::start)
@@ -102,7 +114,7 @@ fun NuvoraRoot(store: SessionStore) {
         val onAuthScreen = nav.currentDestination?.let { it.hasRoute(ConnectRoute::class) || it.hasRoute(SignInRoute::class) } ?: true
         if (session == null && !onAuthScreen) {
             val last = store.servers().firstOrNull()
-            nav.navigate(if (last != null) SignInRoute(last.url, last.name) else ConnectRoute) {
+            nav.navigate(if (last != null) SignInRoute(last.url, last.name, last.id) else ConnectRoute) {
                 popUpTo(0) { inclusive = true }
             }
         }
@@ -124,13 +136,13 @@ fun NuvoraRoot(store: SessionStore) {
         CompositionLocalProvider(LocalSessionEnded provides { store.signOut() }) {
             NavHost(nav, startDestination = if (session == null) ConnectRoute else HomeRoute) {
                 composable<ConnectRoute> {
-                    ConnectScreen(store, onFound = { server -> nav.navigate(SignInRoute(server.url, server.name)) })
+                    ConnectScreen(store, onFound = { server -> nav.navigate(SignInRoute(server.url, server.name, server.id)) })
                 }
                 composable<SignInRoute> { entry ->
                     val route = entry.toRoute<SignInRoute>()
                     SignInScreen(
                         store = store,
-                        server = SavedServer(route.url, route.name),
+                        server = SavedServer(route.url, route.name, route.id),
                         onSignedIn = { nav.navigate(HomeRoute) { popUpTo(0) { inclusive = true } } },
                         onChangeServer = { nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } } },
                     )

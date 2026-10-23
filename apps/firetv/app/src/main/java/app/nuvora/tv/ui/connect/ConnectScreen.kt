@@ -18,6 +18,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,6 +27,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.Brush
@@ -36,12 +41,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import app.nuvora.tv.data.ApiException
 import app.nuvora.tv.data.SavedServer
 import app.nuvora.tv.data.SessionStore
+import app.nuvora.tv.data.discoverServers
 import app.nuvora.tv.data.findServer
 import app.nuvora.tv.ui.common.NvButton
 import app.nuvora.tv.ui.common.NvIcons
@@ -50,16 +57,25 @@ import app.nuvora.tv.ui.common.rememberInitialFocus
 import app.nuvora.tv.ui.theme.Nv
 import kotlinx.coroutines.launch
 
-/** The first screen: which Nuvora server to use. */
+/** The first screen: which Nuvora server to use, from the network, the recent ones, or typed. */
 @Composable
 fun ConnectScreen(store: SessionStore, onFound: (SavedServer) -> Unit) {
     val scope = rememberCoroutineScope()
     val leave = rememberLeaveTextScreen()
-    val recent = remember { store.servers() }
+    val context = LocalContext.current
+    val nearby by remember { discoverServers(context) }.collectAsStateWithLifecycle(emptyList())
+    val recent = remember { store.servers() }.filter { saved -> nearby.none { it.url == saved.url || it.id == saved.id } }
     var address by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val focus = rememberInitialFocus()
+    val firstNearby = remember { FocusRequester() }
+    var fieldFocused by remember { mutableStateOf(false) }
+
+    // The first server to turn up takes focus, unless the person has started on the address.
+    LaunchedEffect(nearby.firstOrNull()?.id) {
+        if (nearby.isNotEmpty() && fieldFocused && address.isEmpty()) runCatching { firstNearby.requestFocus() }
+    }
 
     fun connect(typed: String) {
         if (busy) return
@@ -77,12 +93,32 @@ fun ConnectScreen(store: SessionStore, onFound: (SavedServer) -> Unit) {
         Text("Connect to your server", style = MaterialTheme.typography.displaySmall, color = Nv.textPrimary)
         Spacer(Modifier.height(12.dp))
         Text(
-            "Type the address of your Nuvora server: the installer prints it, and it's in your browser's address bar, " +
-                "for example 192.168.1.20:8640.",
+            if (nearby.isNotEmpty()) {
+                "Choose your server, or type the address of another."
+            } else {
+                "Type the address of your Nuvora server: the installer prints it, and it's in your browser's address bar, " +
+                    "for example 192.168.1.20:8640."
+            },
             style = MaterialTheme.typography.bodyLarge,
             color = Nv.textSecondary,
         )
         Spacer(Modifier.height(28.dp))
+        if (nearby.isNotEmpty()) {
+            Text("ON YOUR NETWORK", style = MaterialTheme.typography.labelSmall, color = Nv.textMuted)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                nearby.take(3).forEachIndexed { i, server ->
+                    NvButton(
+                        "${server.name} · ${server.url.removePrefix("http://")}",
+                        { connect(server.url) },
+                        modifier = if (i == 0) Modifier.focusRequester(firstNearby) else Modifier,
+                        icon = NvIcons.Server,
+                        enabled = !busy,
+                    )
+                }
+            }
+            Spacer(Modifier.height(28.dp))
+        }
         NvField(
             value = address,
             onValueChange = { address = it },
@@ -91,7 +127,7 @@ fun ConnectScreen(store: SessionStore, onFound: (SavedServer) -> Unit) {
             keyboardType = KeyboardType.Uri,
             imeAction = ImeAction.Go,
             onIme = { connect(address) },
-            modifier = Modifier.initialFocus(focus),
+            modifier = Modifier.initialFocus(focus).onFocusChanged { fieldFocused = it.isFocused },
         )
         Spacer(Modifier.height(18.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {

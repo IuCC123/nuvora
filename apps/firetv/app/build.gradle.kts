@@ -15,6 +15,7 @@ android {
         targetSdk = 36
         versionCode = (project.findProperty("nuvora.versionCode") as String?)?.toInt() ?: 200
         versionName = (project.findProperty("nuvora.versionName") as String?) ?: "0.2.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -85,4 +86,7 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.okhttp)
     testImplementation(libs.junit)
+    androidTestImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.junit)
 }

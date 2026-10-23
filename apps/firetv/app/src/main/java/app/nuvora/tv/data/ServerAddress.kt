@@ -47,7 +47,7 @@ suspend fun findServer(store: SessionStore, typed: String): Result<SavedServer> 
                     ApiException(0, "setup_required", "This server isn't set up yet. Open $url in a browser to create the first account."),
                 )
             }
-            return Result.success(SavedServer(url, state.serverName))
+            return Result.success(SavedServer(url, state.serverName, state.serverId.ifEmpty { null }))
         } catch (e: ApiException) {
             last = e
         }

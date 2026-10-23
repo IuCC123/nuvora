@@ -8,9 +8,13 @@ import kotlinx.serialization.builtins.ListSerializer
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
-/** A server this TV has connected to, for the list on the connect screen. */
+/**
+ * A server this TV has connected to, for the list on the connect screen.
+ * [id] (the server's `server_id`) recognizes it at a new address; null for
+ * one saved before servers had ids, until it next answers.
+ */
 @Serializable
-data class SavedServer(val url: String, val name: String)
+data class SavedServer(val url: String, val name: String, val id: String? = null)
 
 /** Signed in to one server. */
 data class Session(val server: SavedServer, val token: String, val user: User)
@@ -50,6 +54,7 @@ class SessionStore(context: Context, profile: DeviceProfile) {
             .putString("servers", json.encodeToString(ListSerializer(SavedServer.serializer()), servers.take(8)))
             .putString("server_url", server.url)
             .putString("server_name", server.name)
+            .putString("server_id", server.id)
             .putString("token", session.token)
             .putString("user", json.encodeToString(User.serializer(), session.user))
             .apply()
@@ -66,6 +71,24 @@ class SessionStore(context: Context, profile: DeviceProfile) {
         prefs.edit().remove("token").remove("user").apply()
         party.stop()
         _session.value = null
+    }
+
+    /** The signed-in server answered with its id; keep it so a move can be followed. */
+    fun rememberServerId(id: String) = updateServer { it.copy(id = id) }
+
+    /** The signed-in server is at [url] now; the session carries on there. */
+    fun moveServer(url: String) = updateServer { it.copy(url = url) }
+
+    private fun updateServer(change: (SavedServer) -> SavedServer) {
+        val current = _session.value ?: return
+        val server = change(current.server)
+        val servers = listOf(server) + servers().filter { it.url != current.server.url && it.url != server.url }
+        prefs.edit()
+            .putString("servers", json.encodeToString(ListSerializer(SavedServer.serializer()), servers.take(8)))
+            .putString("server_url", server.url)
+            .putString("server_id", server.id)
+            .apply()
+        _session.value = current.copy(server = server)
     }
 
     /** The signed-in account changed on the server (a setting saved). */
@@ -97,6 +120,7 @@ class SessionStore(context: Context, profile: DeviceProfile) {
         val token = prefs.getString("token", null) ?: return null
         val user = prefs.getString("user", null)
             ?.let { runCatching { json.decodeFromString(User.serializer(), it) }.getOrNull() } ?: return null
-        return Session(SavedServer(url, prefs.getString("server_name", null) ?: "Nuvora"), token, user)
+        val server = SavedServer(url, prefs.getString("server_name", null) ?: "Nuvora", prefs.getString("server_id", null))
+        return Session(server, token, user)
     }
 }

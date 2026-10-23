@@ -68,7 +68,9 @@ The Nuvora TV app runs on Amazon Fire TV and on Android TV and Google TV. It has
 1. Install **Downloader** (by AFTVnews) from the Amazon Appstore.
 2. Allow it to install apps: **Settings › My Fire TV › Developer options › Install unknown apps**, then turn on Downloader. No Developer options? Go to **Settings › My Fire TV › About** and press OK on the device name seven times, then look again.
 3. Open Downloader and enter your server's address followed by **/tv**, for example `http://192.168.1.20:8640/tv`. It downloads the newest TV app; choose **Install**.
-4. Open **Nuvora**, type the server's address (`192.168.1.20` is enough when it uses port 8640) and sign in.
+4. Open **Nuvora**. Your server shows up under **On your network**: choose it and sign in. If it doesn't show up, type its address instead (`192.168.1.20` is enough when it uses port 8640).
+
+The TV finds the server on its own, and finds it again if its address changes, when Nuvora runs on the same network. With Docker that needs host networking, which works on Linux: see the note in [`compose.yaml`](compose.yaml). Otherwise, type the address once.
 
 **On Android TV or Google TV:** the same, with Downloader from the Play Store; allow it to install apps when the TV asks.
 
