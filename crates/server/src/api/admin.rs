@@ -561,6 +561,9 @@ pub(super) async fn update_server(
         .set_server_name(name.to_owned())
         .await
         .map_err(ApiError::internal)?;
+    if let Some(announcer) = &state.server.announcer {
+        announcer.rename(name);
+    }
     server_info(&state).await.map(Json)
 }
 

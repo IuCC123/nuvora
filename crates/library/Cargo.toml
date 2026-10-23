@@ -15,6 +15,7 @@ tokio = { version = "1", features = ["rt", "sync", "macros", "fs"] }
 futures = "0.3"
 walkdir = "2"
 blake3 = "1"
+getrandom = "0.3"
 thiserror = "2"
 tracing = "0.1"
 serde = { version = "1", features = ["derive"] }

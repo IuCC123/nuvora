@@ -908,6 +908,11 @@ export interface components {
             title?: string | null;
         };
         AuthState: {
+            /**
+             * @description Stays the same when the server's address changes, so a client can
+             *     recognize it again on the network.
+             */
+            server_id: string;
             server_name: string;
             /** @description True until the first admin exists. The web app then shows the welcome flow. */
             setup_required: boolean;

@@ -8,6 +8,9 @@ services:
     user: "${NUVORA_UID:-10001}:${NUVORA_GID:-10001}"
     ports:
       - "${NUVORA_LISTEN:-0.0.0.0}:${NUVORA_PORT:-8640}:8640"
+    # TVs find Nuvora on the network by themselves only with host networking
+    # (Linux). To use it, delete the two `ports` lines above and uncomment:
+    # network_mode: host
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     volumes:

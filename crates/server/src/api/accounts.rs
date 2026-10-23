@@ -22,7 +22,7 @@ use super::{ApiError, AppState, ErrorBody, ErrorCode, JsonBody};
 use crate::auth::{self, SESSION_TTL, SignedIn};
 
 /// Shown until the admin names the server.
-const DEFAULT_SERVER_NAME: &str = "Nuvora";
+pub const DEFAULT_SERVER_NAME: &str = "Nuvora";
 const MAX_USERNAME_CHARS: usize = 32;
 
 #[derive(Serialize, ToSchema)]
@@ -45,6 +45,9 @@ pub struct AuthState {
     /// The signed-in user, or `None` without a valid session.
     pub user: Option<User>,
     pub server_name: String,
+    /// Stays the same when the server's address changes, so a client can
+    /// recognize it again on the network.
+    pub server_id: String,
 }
 
 #[derive(Serialize, ToSchema, Clone)]
@@ -142,6 +145,7 @@ pub(super) async fn auth_state(
         setup_required: lib.setup_required().await.map_err(ApiError::internal)?,
         user: session.map(|s| User::from(s.user)),
         server_name: server_name(lib).await?,
+        server_id: state.server.id.clone(),
     }))
 }
 
@@ -522,7 +526,12 @@ mod tests {
         let state = app.call("GET", "/api/auth/state", None, None).await.json();
         assert_eq!(
             state,
-            json!({"setup_required": true, "user": null, "server_name": "Nuvora"})
+            json!({
+                "setup_required": true,
+                "user": null,
+                "server_name": "Nuvora",
+                "server_id": "0123456789abcdef0123456789abcdef",
+            })
         );
 
         let short = app
@@ -557,6 +566,7 @@ mod tests {
                     "subtitle_language": null,
                 },
                 "server_name": "Nuvora",
+                "server_id": "0123456789abcdef0123456789abcdef",
             })
         );
 

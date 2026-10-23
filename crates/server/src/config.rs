@@ -2,7 +2,8 @@
 //! the catalog takes. The only place that reads files, flags or env for config.
 //! Every flag also reads an environment variable: `NUVORA_CONFIG`,
 //! `NUVORA_BIND`, `NUVORA_DATA_DIR`, `NUVORA_MOVIES` (a path list,
-//! `:`-separated, `;` on Windows) and `NUVORA_TRUSTED_PROXY` (comma-separated).
+//! `:`-separated, `;` on Windows), `NUVORA_TRUSTED_PROXY` (comma-separated)
+//! and `NUVORA_DISCOVERY`.
 //!
 //! The config file and `--movies` only add libraries and folders that do not
 //! exist yet; after that the admin panel owns them.
@@ -14,6 +15,7 @@
 //! data_dir = "/var/lib/nuvora"     # default: the platform data dir
 //! ffmpeg = "/usr/bin/ffmpeg"       # default: PATH
 //! ffprobe = "/usr/bin/ffprobe"
+//! discovery = true                 # announce on the local network so TVs find it
 //!
 //! [[library]]
 //! key = "movies"                   # stable identity; renaming `name` keeps ids
@@ -66,6 +68,10 @@ pub struct ServeArgs {
         value_delimiter = ','
     )]
     pub trusted_proxy: Vec<String>,
+    /// Announce the server on the local network (mDNS), so the TV app finds
+    /// it without an address (default: true).
+    #[arg(long, env = "NUVORA_DISCOVERY")]
+    pub discovery: Option<bool>,
 }
 
 /// Validated configuration.
@@ -77,6 +83,7 @@ pub struct Config {
     pub ffmpeg: Option<PathBuf>,
     pub ffprobe: Option<PathBuf>,
     pub trusted_proxies: Vec<IpNet>,
+    pub discovery: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -110,6 +117,7 @@ struct FileConfig {
     data_dir: Option<PathBuf>,
     ffmpeg: Option<PathBuf>,
     ffprobe: Option<PathBuf>,
+    discovery: Option<bool>,
     #[serde(default)]
     library: Vec<FileLibrary>,
 }
@@ -213,6 +221,7 @@ pub fn load(args: &ServeArgs) -> Result<Config, ConfigError> {
             .filter(|p| !p.trim().is_empty())
             .map(|p| p.parse())
             .collect::<Result<_, _>>()?,
+        discovery: args.discovery.or(file.discovery).unwrap_or(true),
     })
 }
 
@@ -238,7 +247,25 @@ mod tests {
             data_dir: Some("/tmp/nuvora-test-data".into()),
             movies,
             trusted_proxy: vec![],
+            discovery: None,
         }
+    }
+
+    #[test]
+    fn discovery_is_on_unless_the_file_or_a_flag_says_off() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(load(&args(None, vec![])).unwrap().discovery);
+        let toml = dir.path().join("nuvora.toml");
+        std::fs::write(&toml, "discovery = false\n").unwrap();
+        assert!(!load(&args(Some(toml.clone()), vec![])).unwrap().discovery);
+        let flag = ServeArgs {
+            discovery: Some(true),
+            ..args(Some(toml), vec![])
+        };
+        assert!(
+            load(&flag).unwrap().discovery,
+            "the flag wins over the file"
+        );
     }
 
     #[test]
@@ -301,7 +328,8 @@ mod tests {
                 "NUVORA_BIND",
                 "NUVORA_DATA_DIR",
                 "NUVORA_MOVIES",
-                "NUVORA_TRUSTED_PROXY"
+                "NUVORA_TRUSTED_PROXY",
+                "NUVORA_DISCOVERY"
             ]
         );
         if cfg!(unix) {

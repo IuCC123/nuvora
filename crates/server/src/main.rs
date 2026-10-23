@@ -4,6 +4,7 @@
 mod api;
 mod auth;
 mod config;
+mod discovery;
 mod net;
 mod party;
 mod transcode;
@@ -81,6 +82,14 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
 
     let listener = TcpListener::bind(config.bind).await?;
     let bind = listener.local_addr()?;
+    let id = library.server_id().await?;
+    let announcer = if config.discovery {
+        let name = library.server_name().await?;
+        let name = name.as_deref().unwrap_or(api::DEFAULT_SERVER_NAME);
+        discovery::Announcer::start(&id, name, bind)
+    } else {
+        None
+    };
     let state = api::AppState {
         library: library.clone(),
         auth: Arc::new(auth::Auth::new(net::TrustedProxies::new(
@@ -89,12 +98,15 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
         transcoder: transcode::Transcoder::new(tools.clone(), &config.data_dir),
         parties: Arc::new(party::Parties::default()),
         server: Arc::new(api::ServerSetup {
+            id,
+            announcer,
             data_dir: config.data_dir,
             bind,
             tools,
             started: Instant::now(),
         }),
     };
+    let server = state.server.clone();
     let parties = state.parties.clone();
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(15));
@@ -113,6 +125,9 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
+    if let Some(announcer) = &server.announcer {
+        announcer.stop();
+    }
     Ok(())
 }
 

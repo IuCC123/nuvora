@@ -82,6 +82,8 @@ impl TestApp {
             transcoder: crate::transcode::Transcoder::new(tools.clone(), &dir.path().join("data")),
             parties: Default::default(),
             server: Arc::new(ServerSetup {
+                id: "0123456789abcdef0123456789abcdef".into(),
+                announcer: None,
                 data_dir: dir.path().join("data"),
                 bind: "127.0.0.1:8640".parse().unwrap(),
                 tools,

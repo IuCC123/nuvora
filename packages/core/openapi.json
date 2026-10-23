@@ -3432,9 +3432,14 @@
         "type": "object",
         "required": [
           "setup_required",
-          "server_name"
+          "server_name",
+          "server_id"
         ],
         "properties": {
+          "server_id": {
+            "type": "string",
+            "description": "Stays the same when the server's address changes, so a client can\nrecognize it again on the network."
+          },
           "server_name": {
             "type": "string"
           },

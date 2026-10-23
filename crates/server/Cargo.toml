@@ -32,6 +32,7 @@ argon2 = "0.5"
 password-hash = { version = "0.5", features = ["getrandom"] }
 sha2 = "0.10"
 directories = "6"
+mdns-sd = { version = "0.21", default-features = false }
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

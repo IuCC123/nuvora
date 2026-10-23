@@ -12,6 +12,7 @@ export function useUser(): User | null {
 export function setSessionUser(user: User | null) {
   queryClient.setQueryData<AuthState>(queryKeys.auth, (previous) => ({
     server_name: previous?.server_name ?? "Nuvora",
+    server_id: previous?.server_id ?? "",
     setup_required: false,
     user,
   }));

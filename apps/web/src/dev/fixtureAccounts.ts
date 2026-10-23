@@ -206,7 +206,7 @@ function route(method: HttpMethod, path: string, query: URLSearchParams, body: u
   if (path === "/api/health") return ok({ status: "ok", version: "0.1.0" });
   if (path === "/api/auth/state") {
     const user = me();
-    return ok({ setup_required: state.users.length === 0, user: user ? publicUser(user) : null, server_name: state.serverName } satisfies AuthState);
+    return ok({ setup_required: state.users.length === 0, user: user ? publicUser(user) : null, server_name: state.serverName, server_id: "fixture-server" } satisfies AuthState);
   }
   if (path === "/api/setup" && method === "POST") return setup(body as SetupRequest);
   if (path === "/api/auth/login" && method === "POST") return login(body as LoginRequest);

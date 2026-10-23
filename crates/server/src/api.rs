@@ -32,6 +32,7 @@
 //! empty body, and when they carry an `Origin` it must match the `Host`.
 
 mod accounts;
+pub use accounts::DEFAULT_SERVER_NAME;
 mod admin;
 mod browse;
 mod hls;
@@ -111,6 +112,9 @@ pub struct AppState {
 
 /// Facts about this process for the admin panel's General page.
 pub struct ServerSetup {
+    /// See `Library::server_id`.
+    pub id: String,
+    pub announcer: Option<crate::discovery::Announcer>,
     pub data_dir: PathBuf,
     pub bind: SocketAddr,
     pub tools: MediaTools,

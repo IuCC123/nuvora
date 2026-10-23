@@ -145,6 +145,7 @@ pub struct Credentials {
 }
 
 const SERVER_NAME: &str = "server_name";
+const SERVER_ID: &str = "server_id";
 
 const USER_SELECT: &str = "SELECT u.id, u.username, u.display_name, u.role, u.created_at, \
      u.disabled_at IS NOT NULL, \
@@ -535,6 +536,30 @@ impl Library {
             .await?)
     }
 
+    /// This server's identity, made at random the first time it is asked for
+    /// and kept for the life of the database. Clients use it to recognize the
+    /// same server after its address changes.
+    pub async fn server_id(&self) -> Result<String, QueryError> {
+        let mut bytes = [0u8; 16];
+        getrandom::fill(&mut bytes).expect("the operating system's random source works");
+        let fresh: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+        Ok(self
+            .inner
+            .db
+            .write(move |tx| {
+                tx.execute(
+                    "INSERT OR IGNORE INTO setting (key, value) VALUES (?1, ?2)",
+                    params![SERVER_ID, fresh],
+                )?;
+                tx.query_row(
+                    "SELECT value FROM setting WHERE key = ?1",
+                    [SERVER_ID],
+                    |r| r.get(0),
+                )
+            })
+            .await?)
+    }
+
     pub async fn set_server_name(&self, name: String) -> Result<(), QueryError> {
         Ok(self
             .inner
@@ -598,5 +623,42 @@ impl Library {
             .await?;
         self.inner.metadata.request();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroUsize;
+    use std::time::Duration;
+
+    use nuvora_media::MediaTools;
+
+    use crate::{Library, LibraryConfig};
+
+    async fn open(dir: &std::path::Path) -> Library {
+        Library::open(LibraryConfig {
+            data_dir: dir.to_path_buf(),
+            libraries: vec![],
+            tools: MediaTools::locate(None, None).await.unwrap(),
+            probe_concurrency: NonZeroUsize::new(1).unwrap(),
+            settle_window: Duration::ZERO,
+            online_metadata: false,
+        })
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn server_id_is_made_once_and_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = open(dir.path()).await.server_id().await.unwrap();
+        assert_eq!(first.len(), 32);
+        assert!(first.bytes().all(|b| b.is_ascii_hexdigit()), "{first}");
+        let lib = open(dir.path()).await;
+        assert_eq!(lib.server_id().await.unwrap(), first);
+        assert_eq!(lib.server_id().await.unwrap(), first);
+
+        let other = tempfile::tempdir().unwrap();
+        assert_ne!(open(other.path()).await.server_id().await.unwrap(), first);
     }
 }
