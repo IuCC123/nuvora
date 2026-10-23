@@ -55,6 +55,15 @@ impl TestApp {
 
     /// A server started with `--trusted-proxy` for each of `proxies`.
     pub async fn behind(proxies: &[&str]) -> TestApp {
+        TestApp::build(proxies, nuvora_media::VideoEncoder::Software).await
+    }
+
+    /// A server that converts video with `encoder`.
+    pub async fn with_encoder(encoder: nuvora_media::VideoEncoder) -> TestApp {
+        TestApp::build(&[], encoder).await
+    }
+
+    async fn build(proxies: &[&str], encoder: nuvora_media::VideoEncoder) -> TestApp {
         let dir = tempfile::tempdir().unwrap();
         let movies = dir.path().join("movies");
         std::fs::create_dir_all(&movies).unwrap();
@@ -79,7 +88,11 @@ impl TestApp {
             auth: Arc::new(crate::auth::Auth::new(crate::net::TrustedProxies::new(
                 proxies.iter().map(|p| p.parse().unwrap()).collect(),
             ))),
-            transcoder: crate::transcode::Transcoder::new(tools.clone(), &dir.path().join("data")),
+            transcoder: crate::transcode::Transcoder::new(
+                tools.clone(),
+                encoder.clone(),
+                &dir.path().join("data"),
+            ),
             parties: Default::default(),
             server: Arc::new(ServerSetup {
                 id: "0123456789abcdef0123456789abcdef".into(),
@@ -87,6 +100,7 @@ impl TestApp {
                 data_dir: dir.path().join("data"),
                 bind: "127.0.0.1:8640".parse().unwrap(),
                 tools,
+                encoder,
                 started: Instant::now(),
             }),
         };

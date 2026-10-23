@@ -66,6 +66,7 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
         .init();
     let config = config::load(&args)?;
     let tools = MediaTools::locate(config.ffprobe.clone(), config.ffmpeg.clone()).await?;
+    let encoder = transcode::pick_encoder(&tools, config.hardware_encoding).await;
     let cores = std::thread::available_parallelism().map_or(2, |n| n.get());
     let probe_concurrency =
         NonZeroUsize::new(cores.min(MAX_PROBE_CONCURRENCY)).expect("at least one");
@@ -95,7 +96,7 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
         auth: Arc::new(auth::Auth::new(net::TrustedProxies::new(
             config.trusted_proxies,
         ))),
-        transcoder: transcode::Transcoder::new(tools.clone(), &config.data_dir),
+        transcoder: transcode::Transcoder::new(tools.clone(), encoder.clone(), &config.data_dir),
         parties: Arc::new(party::Parties::default()),
         server: Arc::new(api::ServerSetup {
             id,
@@ -103,6 +104,7 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
             data_dir: config.data_dir,
             bind,
             tools,
+            encoder,
             started: Instant::now(),
         }),
     };

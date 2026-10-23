@@ -19,4 +19,15 @@ services:
     environment:
       TZ: ${TZ:-UTC}
       NUVORA_TRUSTED_PROXY: ${NUVORA_TRUSTED_PROXY:-}
+      NUVORA_HARDWARE_ENCODING: ${NUVORA_HARDWARE_ENCODING:-auto}
+    # Convert video on the graphics chip (Linux). Intel or AMD: uncomment the
+    # next two lines, and set NUVORA_RENDER_GID in .env to the output of
+    # `getent group render | cut -d: -f3`.
+    # devices: ["/dev/dri:/dev/dri"]
+    # group_add: ["${NUVORA_RENDER_GID}"]
+    # NVIDIA, with the NVIDIA Container Toolkit installed: uncomment these.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: all, capabilities: [gpu, video] }]
     restart: unless-stopped

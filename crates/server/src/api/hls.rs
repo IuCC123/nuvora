@@ -338,6 +338,95 @@ mod tests {
         assert!(starts.iter().all(|t| *t >= 0), "{starts:?}");
     }
 
+    #[cfg(target_os = "macos")]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn videotoolbox_converts_into_the_same_six_second_segments() {
+        let app = TestApp::with_encoder(nuvora_media::VideoEncoder::VideoToolbox).await;
+        let admin = app.setup_admin().await;
+        let dir = app.path("movies/Long (2020)");
+        std::fs::create_dir_all(&dir).unwrap();
+        let movie = dir.join("Long (2020).mkv");
+        let status = Command::new("ffmpeg")
+            .args(["-y", "-nostdin", "-v", "error", "-f", "lavfi"])
+            .args(["-i", "testsrc2=size=1280x720:rate=24:duration=20"])
+            .args(["-f", "lavfi", "-i", "sine=frequency=440:duration=20"])
+            .args([
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-pix_fmt",
+                "yuv420p",
+                "-g",
+                "24",
+            ])
+            .args(["-c:a", "ac3"])
+            .arg(&movie)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        app.scan().await;
+        let movies = app.get("/api/rows/all_movies", &admin).await.json();
+        let id = movies["items"][0]["id"].as_i64().unwrap();
+        let detail = app.get(&format!("/api/items/{id}"), &admin).await.json();
+        let file = detail["versions"][0]["file_id"].as_i64().unwrap();
+        let base = format!("/api/files/{file}/hls/h264-720.a1-aac2/");
+
+        let playlist = app
+            .get(&format!("{base}main.m3u8?session=vt"), &admin)
+            .await;
+        let text = String::from_utf8(playlist.body).unwrap();
+        let lengths: Vec<&str> = text
+            .lines()
+            .filter_map(|l| l.strip_prefix("#EXTINF:"))
+            .collect();
+        // The last runs to the end of the source, whose audio makes it 20.006 s.
+        assert_eq!(
+            lengths[..3],
+            ["6.000000,", "6.000000,", "6.000000,"],
+            "{text}"
+        );
+        assert!(
+            lengths.len() == 4 && lengths[3].starts_with("2.00"),
+            "{text}"
+        );
+
+        let mut stream = app
+            .get(&format!("{base}init.mp4?session=vt"), &admin)
+            .await
+            .body;
+        for n in 0..4 {
+            let segment = app.get(&format!("{base}{n}.m4s?session=vt"), &admin).await;
+            assert_eq!(segment.status, StatusCode::OK, "segment {n}");
+            stream.extend(segment.body);
+        }
+        let joined = app.path("joined.mp4");
+        std::fs::write(&joined, stream).unwrap();
+        let tools = nuvora_media::MediaTools::locate(None, None).await.unwrap();
+        let keyframes = nuvora_media::keyframes(&tools, &joined, 0).await.unwrap();
+        assert_eq!(
+            keyframes,
+            [0.0, 6.0, 12.0, 18.0],
+            "a keyframe where each segment starts, none elsewhere"
+        );
+
+        // A jump into the middle starts a run there, seeking on the chip too.
+        let init = app
+            .get(&format!("{base}init.mp4?session=vt-jump"), &admin)
+            .await
+            .body;
+        let last = app
+            .get(&format!("{base}3.m4s?session=vt-jump"), &admin)
+            .await;
+        assert_eq!(last.status, StatusCode::OK);
+        let jumped = app.path("jumped.mp4");
+        std::fs::write(&jumped, [init, last.body].concat()).unwrap();
+        assert_eq!(
+            nuvora_media::keyframes(&tools, &jumped, 0).await.unwrap(),
+            [18.0]
+        );
+    }
+
     /// Every `tfdt` (fragment start, in its track's timescale) in a segment.
     fn fragment_starts(segment: &[u8]) -> Vec<i64> {
         let mut out = Vec::new();

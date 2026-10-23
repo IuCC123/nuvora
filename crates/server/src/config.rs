@@ -2,8 +2,8 @@
 //! the catalog takes. The only place that reads files, flags or env for config.
 //! Every flag also reads an environment variable: `NUVORA_CONFIG`,
 //! `NUVORA_BIND`, `NUVORA_DATA_DIR`, `NUVORA_MOVIES` (a path list,
-//! `:`-separated, `;` on Windows), `NUVORA_TRUSTED_PROXY` (comma-separated)
-//! and `NUVORA_DISCOVERY`.
+//! `:`-separated, `;` on Windows), `NUVORA_TRUSTED_PROXY` (comma-separated),
+//! `NUVORA_DISCOVERY` and `NUVORA_HARDWARE_ENCODING`.
 //!
 //! The config file and `--movies` only add libraries and folders that do not
 //! exist yet; after that the admin panel owns them.
@@ -16,6 +16,7 @@
 //! ffmpeg = "/usr/bin/ffmpeg"       # default: PATH
 //! ffprobe = "/usr/bin/ffprobe"
 //! discovery = true                 # announce on the local network so TVs find it
+//! hardware_encoding = "auto"       # or "off", "videotoolbox", "nvenc", "vaapi"
 //!
 //! [[library]]
 //! key = "movies"                   # stable identity; renaming `name` keeps ids
@@ -72,6 +73,22 @@ pub struct ServeArgs {
     /// it without an address (default: true).
     #[arg(long, env = "NUVORA_DISCOVERY")]
     pub discovery: Option<bool>,
+    /// Convert video on the graphics chip: `auto` (default) uses the first
+    /// one that works here, `off` always uses the processor.
+    #[arg(long, env = "NUVORA_HARDWARE_ENCODING", value_enum)]
+    pub hardware_encoding: Option<HardwareEncoding>,
+}
+
+/// Which encoder converts video; see `nuvora_media::VideoEncoder`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum HardwareEncoding {
+    #[default]
+    Auto,
+    Off,
+    Videotoolbox,
+    Nvenc,
+    Vaapi,
 }
 
 /// Validated configuration.
@@ -84,6 +101,7 @@ pub struct Config {
     pub ffprobe: Option<PathBuf>,
     pub trusted_proxies: Vec<IpNet>,
     pub discovery: bool,
+    pub hardware_encoding: HardwareEncoding,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -118,6 +136,7 @@ struct FileConfig {
     ffmpeg: Option<PathBuf>,
     ffprobe: Option<PathBuf>,
     discovery: Option<bool>,
+    hardware_encoding: Option<HardwareEncoding>,
     #[serde(default)]
     library: Vec<FileLibrary>,
 }
@@ -222,6 +241,10 @@ pub fn load(args: &ServeArgs) -> Result<Config, ConfigError> {
             .map(|p| p.parse())
             .collect::<Result<_, _>>()?,
         discovery: args.discovery.or(file.discovery).unwrap_or(true),
+        hardware_encoding: args
+            .hardware_encoding
+            .or(file.hardware_encoding)
+            .unwrap_or_default(),
     })
 }
 
@@ -248,7 +271,39 @@ mod tests {
             movies,
             trusted_proxy: vec![],
             discovery: None,
+            hardware_encoding: None,
         }
+    }
+
+    #[test]
+    fn hardware_encoding_is_auto_unless_named() {
+        use clap::Parser;
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            load(&args(None, vec![])).unwrap().hardware_encoding,
+            HardwareEncoding::Auto
+        );
+        let toml = dir.path().join("nuvora.toml");
+        std::fs::write(&toml, "hardware_encoding = \"videotoolbox\"\n").unwrap();
+        assert_eq!(
+            load(&args(Some(toml.clone()), vec![]))
+                .unwrap()
+                .hardware_encoding,
+            HardwareEncoding::Videotoolbox
+        );
+        let mut cli = crate::Cli::try_parse_from(["nuvora", "--hardware-encoding", "off"]).unwrap();
+        cli.serve.config = Some(toml.clone());
+        cli.serve.data_dir = Some(dir.path().into());
+        assert_eq!(
+            load(&cli.serve).unwrap().hardware_encoding,
+            HardwareEncoding::Off,
+            "the flag wins"
+        );
+        std::fs::write(&toml, "hardware_encoding = \"gpu\"\n").unwrap();
+        assert!(
+            load(&args(Some(toml), vec![])).is_err(),
+            "an unknown name is an error, not a silent default"
+        );
     }
 
     #[test]
@@ -329,7 +384,8 @@ mod tests {
                 "NUVORA_DATA_DIR",
                 "NUVORA_MOVIES",
                 "NUVORA_TRUSTED_PROXY",
-                "NUVORA_DISCOVERY"
+                "NUVORA_DISCOVERY",
+                "NUVORA_HARDWARE_ENCODING"
             ]
         );
         if cfg!(unix) {

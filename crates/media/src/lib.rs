@@ -8,6 +8,7 @@
 //! ffprobe's JSON shape and the image codecs stay private to this crate.
 
 mod artwork;
+mod encoder;
 mod hls;
 mod name;
 mod playback;
@@ -23,6 +24,7 @@ pub use artwork::{
     ArtworkError, ArtworkRole, ArtworkSource, Frame, ImageSize, PIPELINE_VERSION, Placeholder,
     RenderedArtwork,
 };
+pub use encoder::{DEFAULT_VAAPI_DEVICE, VideoEncoder, hardware_candidates};
 pub use hls::{HlsError, INIT_SEGMENT, Run, SEGMENT_SECONDS, Segments, keyframes, landing};
 pub use name::{
     EpisodeName, IdentityKey, MovieName, PARSE_VERSION, PathClass, ShowName, classify_path,

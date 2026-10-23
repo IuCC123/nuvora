@@ -1738,6 +1738,11 @@ export interface components {
             /** Format: int64 */
             uptime_s: number;
             version: string;
+            /**
+             * @description What converts video for devices that can't play a file as it is:
+             *     `"x264 (processor)"`, `"VideoToolbox (Apple graphics)"`.
+             */
+            video_encoder: string;
         };
         /**
          * @description Creates the first admin. Usernames are 1 to 32 letters, digits, `.`, `_` or

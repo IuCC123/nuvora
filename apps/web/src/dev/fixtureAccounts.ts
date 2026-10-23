@@ -282,6 +282,7 @@ function adminRoute(self: StoredUser, method: HttpMethod, path: string, query: U
       bind: "0.0.0.0:8640",
       ffmpeg: { path: "/usr/bin/ffmpeg", version: "7.1.1" },
       ffprobe: { path: "/usr/bin/ffprobe", version: "7.1.1" },
+      video_encoder: "x264 (processor)",
       uptime_s: Math.floor((Date.now() - STARTED) / 1000),
     } satisfies ServerInfo);
   }

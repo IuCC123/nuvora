@@ -174,6 +174,9 @@ pub struct ServerInfo {
     pub bind: String,
     pub ffmpeg: ToolInfo,
     pub ffprobe: ToolInfo,
+    /// What converts video for devices that can't play a file as it is:
+    /// `"x264 (processor)"`, `"VideoToolbox (Apple graphics)"`.
+    pub video_encoder: String,
     pub uptime_s: u64,
 }
 
@@ -583,6 +586,7 @@ async fn server_info(state: &AppState) -> Result<ServerInfo, ApiError> {
             path: on_path(tools.ffprobe()).display().to_string(),
             version: tools.ffprobe_version().to_owned(),
         },
+        video_encoder: server.encoder.label().to_owned(),
         uptime_s: server.started.elapsed().as_secs(),
     })
 }

@@ -6033,6 +6033,7 @@
           "bind",
           "ffmpeg",
           "ffprobe",
+          "video_encoder",
           "uptime_s"
         ],
         "properties": {
@@ -6059,6 +6060,10 @@
           },
           "version": {
             "type": "string"
+          },
+          "video_encoder": {
+            "type": "string",
+            "description": "What converts video for devices that can't play a file as it is:\n`\"x264 (processor)\"`, `\"VideoToolbox (Apple graphics)\"`."
           }
         }
       },

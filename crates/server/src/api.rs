@@ -119,6 +119,8 @@ pub struct ServerSetup {
     pub data_dir: PathBuf,
     pub bind: SocketAddr,
     pub tools: MediaTools,
+    /// What converts video; see `transcode::pick_encoder`.
+    pub encoder: nuvora_media::VideoEncoder,
     pub started: Instant,
 }
 

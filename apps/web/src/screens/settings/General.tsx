@@ -119,6 +119,7 @@ function About({ server }: { server: ServerInfo }) {
     ["Data folder", server.data_dir],
     ["FFmpeg", server.ffmpeg.version, server.ffmpeg.path],
     ["FFprobe", server.ffprobe.version, server.ffprobe.path],
+    ["Converts video with", server.video_encoder],
     ["Running for", formatUptime(server.uptime_s)],
   ];
   return (

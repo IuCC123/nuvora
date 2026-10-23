@@ -118,9 +118,16 @@ Set these in `.env` next to `compose.yaml`, then run `docker compose up -d`:
 | `NUVORA_IMAGE` | `ghcr.io/iucc123/nuvora:latest` | Image and version to run |
 | `NUVORA_UID`, `NUVORA_GID` | `10001` | User and group Nuvora runs as; must be able to read your media and write `data` (the installer sets yours) |
 | `NUVORA_TRUSTED_PROXY` | | Your reverse proxy's address or network, see below |
+| `NUVORA_HARDWARE_ENCODING` | `auto` | Convert video on the graphics chip when one works: `auto`, `off`, or `videotoolbox`, `nvenc`, `vaapi` |
 | `TZ` | `UTC` | Time zone, e.g. `Europe/Amsterdam` |
 
 The image is published for x86-64 and ARM64 (Raspberry Pi 4/5, Apple Silicon, most recent NAS boxes).
+
+### Converting on the graphics chip
+
+Most of the time a device plays your files as they are. When it can't (a codec the TV lacks, a bitrate too high for the network), Nuvora converts the video as it plays. By default it uses the graphics chip when one works, which takes far less processor time: Apple's VideoToolbox on a Mac, NVIDIA's NVENC, or VA-API for Intel and AMD graphics on Linux. It tries each at startup with a short test clip and falls back to the processor (x264) when none works. **Settings › General** shows which one is in use.
+
+In Docker, the container needs the graphics chip passed in: see the commented lines in [`compose.yaml`](compose.yaml). Without them, Nuvora converts on the processor as before.
 
 ## Remote access
 

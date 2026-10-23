@@ -21,8 +21,11 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     && install -D target/release/nuvora /out/nuvora
 
 FROM debian:trixie-slim
+# FFmpeg brings the VA-API drivers for AMD; Intel's (18 MB) only exists for x86-64.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg ca-certificates tini \
+    && if [ "$(dpkg --print-architecture)" = amd64 ]; then \
+        apt-get install -y --no-install-recommends intel-media-va-driver; fi \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 nuvora \
     && useradd --system --uid 10001 --gid nuvora --home-dir /data --shell /usr/sbin/nologin nuvora \

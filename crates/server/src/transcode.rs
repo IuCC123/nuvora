@@ -17,9 +17,46 @@ use std::time::{Duration, Instant};
 
 use nuvora_library::StreamSource;
 use nuvora_media::{
-    HlsError, INIT_SEGMENT, MediaInfo, MediaTools, Run, Segments, StreamPlan, VideoPlan,
+    HlsError, INIT_SEGMENT, MediaInfo, MediaTools, Run, Segments, StreamPlan, VideoEncoder,
+    VideoPlan, hardware_candidates,
 };
 use tokio::process::{Child, Command};
+
+use crate::config::HardwareEncoding;
+
+/// The encoder for converted video: the one the setting names, or with
+/// `auto` the first graphics encoder that converts a test clip here, else x264.
+pub async fn pick_encoder(tools: &MediaTools, setting: HardwareEncoding) -> VideoEncoder {
+    let candidates = match setting {
+        HardwareEncoding::Off => vec![],
+        HardwareEncoding::Auto => hardware_candidates(),
+        HardwareEncoding::Videotoolbox => vec![VideoEncoder::VideoToolbox],
+        HardwareEncoding::Nvenc => vec![VideoEncoder::Nvenc],
+        HardwareEncoding::Vaapi => vec![VideoEncoder::Vaapi {
+            device: nuvora_media::DEFAULT_VAAPI_DEVICE.into(),
+        }],
+    };
+    for candidate in candidates {
+        match tools.try_encoder(&candidate).await {
+            Ok(()) => {
+                tracing::info!(
+                    encoder = candidate.label(),
+                    "converting video on the graphics chip"
+                );
+                return candidate;
+            }
+            // With `auto`, a chip this machine lacks is the usual case, not a problem.
+            Err(reason) if setting == HardwareEncoding::Auto => {
+                tracing::debug!(encoder = candidate.label(), %reason, "not usable here");
+            }
+            Err(reason) => {
+                tracing::warn!(encoder = candidate.label(), %reason, "the chosen encoder doesn't work here; using the processor");
+            }
+        }
+    }
+    tracing::info!("converting video on the processor (x264)");
+    VideoEncoder::Software
+}
 
 /// A session nobody has requested anything of for this long is removed.
 const IDLE: Duration = Duration::from_secs(90);
@@ -66,6 +103,7 @@ pub enum TranscodeError {
 
 pub struct Transcoder {
     tools: MediaTools,
+    encoder: VideoEncoder,
     root: PathBuf,
     sessions: Mutex<HashMap<SessionKey, Arc<Session>>>,
     /// Keyframe times by file fingerprint, for the few most recent files.
@@ -74,6 +112,7 @@ pub struct Transcoder {
 
 pub struct Session {
     tools: MediaTools,
+    encoder: VideoEncoder,
     dir: PathBuf,
     path: PathBuf,
     media: MediaInfo,
@@ -104,11 +143,12 @@ struct Activity {
 impl Transcoder {
     /// Clears what a previous process left in `<data>/transcode` and starts
     /// the housekeeping task.
-    pub fn new(tools: MediaTools, data_dir: &Path) -> Arc<Transcoder> {
+    pub fn new(tools: MediaTools, encoder: VideoEncoder, data_dir: &Path) -> Arc<Transcoder> {
         let root = data_dir.join("transcode");
         let _ = std::fs::remove_dir_all(&root);
         let transcoder = Arc::new(Transcoder {
             tools,
+            encoder,
             root,
             sessions: Mutex::new(HashMap::new()),
             keyframes: Mutex::new(Vec::new()),
@@ -150,6 +190,7 @@ impl Transcoder {
         tokio::fs::create_dir_all(&dir).await?;
         let session = Arc::new(Session {
             tools: self.tools.clone(),
+            encoder: self.encoder.clone(),
             dir,
             path: source.path,
             media: source.media,
@@ -353,6 +394,7 @@ impl Session {
             first,
             seek,
             dir: &self.dir,
+            encoder: &self.encoder,
         }
         .args();
         let child = Command::new(self.tools.ffmpeg())

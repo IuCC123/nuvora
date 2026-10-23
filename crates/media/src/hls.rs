@@ -28,7 +28,7 @@ use std::time::Duration;
 
 use tokio::process::Command;
 
-use crate::{AudioOutput, MediaInfo, MediaTools, StreamPlan, VideoCodec, VideoPlan};
+use crate::{AudioOutput, MediaInfo, MediaTools, StreamPlan, VideoCodec, VideoEncoder, VideoPlan};
 
 /// Target length of a converted segment.
 pub const SEGMENT_SECONDS: f64 = 6.0;
@@ -234,6 +234,8 @@ pub struct Run<'a> {
     pub seek: Option<f64>,
     /// Segments and the init segment are written here.
     pub dir: &'a Path,
+    /// For converted video.
+    pub encoder: &'a VideoEncoder,
 }
 
 impl Run<'_> {
@@ -260,7 +262,10 @@ impl Run<'_> {
             }
             push(&["-ss", &format!("{seek:.3}")]);
         }
-        push(&["-i"]);
+        if self.plan.video != VideoPlan::Copy {
+            a.extend(self.encoder.input_args());
+        }
+        a.push("-i".into());
         a.push(self.path.as_os_str().to_owned());
         let mut push = |items: &[&str]| a.extend(items.iter().map(OsString::from));
         let video = self.media.video.first();
@@ -269,6 +274,7 @@ impl Run<'_> {
             push(&["-map", &format!("0:{}", audio.stream)]);
         }
         push(&["-sn", "-dn", "-map_metadata", "-1", "-map_chapters", "-1"]);
+        let mut converted = Vec::new();
         match self.plan.video {
             VideoPlan::Copy => {
                 push(&["-c:v", "copy"]);
@@ -278,34 +284,15 @@ impl Run<'_> {
                 }
             }
             VideoPlan::H264 { max_height } => {
+                // Keyframes only where segments start: the muxer cuts at every one.
                 let forced: Vec<String> = (self.first..self.segments.len())
                     .map(|i| format!("{:.3}", self.segments.start(i)))
                     .collect();
-                push(&[
-                    "-c:v",
-                    "libx264",
-                    "-preset",
-                    "veryfast",
-                    "-crf",
-                    "21",
-                    "-maxrate",
-                    "12M",
-                    "-bufsize",
-                    "24M",
-                    "-profile:v",
-                    "high",
-                    "-vf",
-                    &format!("scale=-2:min(ih\\,{max_height}),format=yuv420p"),
-                    // Keyframes only where segments start: the muxer cuts at every one.
-                    "-x264-params",
-                    "scenecut=0:keyint=100000:min-keyint=1",
-                    "-forced-idr",
-                    "1",
-                    "-force_key_frames",
-                    &forced.join(","),
-                ]);
+                converted = self.encoder.output_args(max_height, &forced.join(","));
             }
         }
+        a.extend(converted);
+        let mut push = |items: &[&str]| a.extend(items.iter().map(OsString::from));
         match self.plan.audio.map(|a| a.output) {
             None => {}
             Some(AudioOutput::Copy) => push(&["-c:a", "copy"]),
