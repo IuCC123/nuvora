@@ -157,7 +157,9 @@ bun run dev                                     # web app with hot reload, proxy
 
 The TV app is in `apps/firetv` (Kotlin, Jetpack Compose for TV); with JDK 17+ and the Android SDK, `./gradlew installDebug` there builds it and installs it on a connected TV or emulator.
 
-Tests: `cargo test --workspace` and `bun test`; `bun run typecheck` for TypeScript; `./gradlew testDebugUnitTest` in `apps/firetv`. After changing the API, `bun run gen:api` regenerates the TypeScript client's types. To try the Docker image from your checkout, run `scripts/install.sh --build`.
+To keep a build running on a Mac without Docker, `scripts/macos-service.sh install --bin target/release/nuvora --data-dir ~/Nuvora` makes it a background service that starts when you log in and restarts if it stops; `status` and `uninstall` do what they say.
+
+Tests: `cargo test --workspace` and `bun test`; `bun run typecheck` for TypeScript; `./gradlew testDebugUnitTest` in `apps/firetv`, and `./gradlew connectedDebugAndroidTest` there with an emulator running. After changing the API, `bun run gen:api` regenerates the TypeScript client's types. To try the Docker image from your checkout, run `scripts/install.sh --build`.
 
 The layout: `crates/` is the server (`media` knows files, `library` owns the database, `server` is the HTTP API), `packages/core` is the TypeScript data layer, `apps/web` is the web app, and `apps/firetv` is the TV app.
 
