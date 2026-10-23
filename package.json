@@ -1,6 +1,7 @@
 {
   "name": "nuvora",
   "private": true,
+  "license": "AGPL-3.0-only",
   "workspaces": ["packages/*", "apps/*"],
   "scripts": {
     "gen:api": "cargo run -q -p nuvora-server -- openapi > packages/core/openapi.json && bun run --cwd packages/core gen",

@@ -164,3 +164,7 @@ The layout: `crates/` is the server (`media` knows files, `library` owns the dat
 Nuvora stands on [FFmpeg](https://ffmpeg.org), [JASSUB](https://github.com/ThaUnknown/jassub) and [hls.js](https://github.com/video-dev/hls.js), among others; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Descriptions and artwork come from [Wikipedia](https://www.wikipedia.org) and [Wikidata](https://www.wikidata.org), [AniList](https://anilist.co), [TVmaze](https://www.tvmaze.com) and, with your own key, [TMDB](https://www.themoviedb.org).
 
 Made with [T3 Code](https://t3.codes).
+
+## License
+
+Nuvora is free software under the [GNU Affero General Public License v3.0](LICENSE). You can use, change and share it. If you share a changed version, or run one that other people use over a network, you must offer them its source under the same license.
