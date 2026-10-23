@@ -173,6 +173,8 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, source, star
   const party = usePartyPlayer(src ? video : null, itemId, fileId, startAt);
   useReleaseStream(video);
   const subtitles = useSubtitles(fileId, subtitleTracks, audioLanguage, subtitleScope);
+  // Previews a new video doesn't have yet are made within a minute or so.
+  const { data: previews } = useQuery({ ...queries.previews(fileId), refetchInterval: (q) => (q.state.data === null ? 15_000 : false) });
   const [subtitleStyle, setSubtitleStyle] = useState(loadSubtitleStyle);
   const changeSubtitleStyle = (style: SubtitleStyle) => {
     setSubtitleStyle(style);
@@ -491,7 +493,7 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, source, star
           <div ref={bar} className="player-bottom" onPointerEnter={(e) => e.pointerType === "mouse" && hold("hover", true)} onPointerLeave={() => hold("hover", false)}>
             <div className="player-timeline">
               <span className="player-time">{formatClock(media.time * 1000)}</span>
-              <Scrubber video={video} duration={media.duration} buffered={media.buffered} onSeek={actions.seek} onDragChange={(d) => hold("drag", d)} />
+              <Scrubber video={video} duration={media.duration} buffered={media.buffered} previews={previews ?? null} onSeek={actions.seek} onDragChange={(d) => hold("drag", d)} />
               <button
                 type="button"
                 className="player-time player-time-end"

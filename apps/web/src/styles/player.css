@@ -463,9 +463,10 @@
 }
 
 .scrubber-tip {
+  --half: 26px;
   position: absolute;
   bottom: calc(100% + 8px);
-  left: clamp(26px, calc(var(--at) * 100%), calc(100% - 26px));
+  left: clamp(var(--half), calc(var(--at) * 100%), calc(100% - var(--half)));
   padding: 4px 8px;
   border-radius: var(--nv-radius-sm);
   background: var(--nv-color-surface-raised);
@@ -477,6 +478,23 @@
   white-space: nowrap;
   pointer-events: none;
   transform: translateX(-50%);
+}
+
+/* With a preview, the tip is the frame with the time under it; half of 224 px plus padding keeps it on screen. */
+.scrubber-tip[data-preview="true"] {
+  --half: 116px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 5px;
+}
+
+.scrubber-frame {
+  display: block;
+  border-radius: 3px;
+  background-color: var(--nv-color-video);
+  background-repeat: no-repeat;
 }
 
 /* Volume: the slider opens beside the mute button on hover or keyboard focus. */

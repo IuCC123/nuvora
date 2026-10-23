@@ -71,6 +71,7 @@ export type SubtitleTrack = Schemas["SubtitleTrack"];
 export type SubtitleFormat = Schemas["SubtitleFormat"];
 export type SubtitleMode = Schemas["SubtitleMode"];
 export type FontAttachment = Schemas["FontAttachment"];
+export type PreviewInfo = Schemas["PreviewInfo"];
 
 export interface ClientOptions {
   /** Origin of the Nuvora server, e.g. `""` (same origin, web) or `"http://192.168.1.10:8640"` (TV). */
@@ -131,6 +132,8 @@ export interface NuvoraClient {
   markUnwatched(id: number): Promise<void>;
   /** A file's embedded fonts, which its styled subtitle tracks may name. Empty for most files. */
   fonts(fileId: number, signal?: AbortSignalLike): Promise<FontAttachment[]>;
+  /** A file's seek previews; `null` while the server is still making them (asking hurries them along). */
+  previews(fileId: number, signal?: AbortSignalLike): Promise<PreviewInfo | null>;
   /** Admin role only; anyone else gets 403. */
   admin: AdminClient;
   /** Watch Together. Live updates arrive on the `/api/live` WebSocket. */
@@ -260,6 +263,11 @@ export function createClient(options: ClientOptions): NuvoraClient {
     markWatched: (id) => put("/api/items/{id}/watched", { id }),
     markUnwatched: (id) => remove("/api/items/{id}/watched", { id }),
     fonts: (fileId, signal) => get<FontAttachment[]>("/api/files/{id}/fonts", { id: fileId }, signal),
+    previews: (fileId, signal) =>
+      get<PreviewInfo>("/api/files/{id}/previews", { id: fileId }, signal).catch((e: unknown) => {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }),
     party: {
       people: (signal) => get<PartyPerson[]>("/api/people", {}, signal),
       status: (signal) => get<PartyStatus>("/api/party", {}, signal),

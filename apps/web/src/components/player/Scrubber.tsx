@@ -1,24 +1,29 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
-import { formatClock } from "@nuvora/core";
+import { formatClock, previewFrame, type PreviewInfo } from "@nuvora/core";
 
 interface ScrubberProps {
   video: HTMLVideoElement | null;
   /** Seconds; `NaN` until metadata loads. */
   duration: number;
   buffered: readonly (readonly [number, number])[];
+  /** Seek previews, shown above the time under the pointer once the server has made them. */
+  previews: PreviewInfo | null;
   onSeek: (seconds: number) => void;
   onDragChange: (dragging: boolean) => void;
 }
 
 const PAGE_SECONDS = 60;
+/** CSS px; previews are made 320 px wide, sharp enough at this size. */
+const PREVIEW_WIDTH = 224;
 
 /**
  * The timeline. The played bar follows the video every frame (a CSS variable
  * set outside React), so it moves smoothly even on a 20 s clip. Hover shows the
- * time under the pointer; dragging seeks live and lands exactly on release.
+ * time under the pointer, and the frame there once previews exist; dragging
+ * seeks live and lands exactly on release.
  * The arrow keys reach the player's own 10 s skip; Home, End and Page keys are handled here.
  */
-export function Scrubber({ video, duration, buffered, onSeek, onDragChange }: ScrubberProps) {
+export function Scrubber({ video, duration, buffered, previews, onSeek, onDragChange }: ScrubberProps) {
   const root = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<number | null>(null);
   const [drag, setDrag] = useState<number | null>(null);
@@ -37,6 +42,11 @@ export function Scrubber({ video, duration, buffered, onSeek, onDragChange }: Sc
     follow();
     return () => cancelAnimationFrame(frame);
   }, [video, duration, known, drag]);
+
+  // Fetch every sheet up front, so the first hover over any part of the video is instant.
+  useEffect(() => {
+    for (const sheet of previews?.sheets ?? []) new Image().src = sheet;
+  }, [previews]);
 
   const fractionAt = (clientX: number) => {
     const rect = root.current!.getBoundingClientRect();
@@ -79,6 +89,8 @@ export function Scrubber({ video, duration, buffered, onSeek, onDragChange }: Sc
 
   const tip = drag ?? hover;
   const now = video?.currentTime ?? 0;
+  const frame = tip !== null && known && previews ? previewFrame(previews, tip * duration) : null;
+  const scale = frame ? PREVIEW_WIDTH / frame.width : 1;
   return (
     <div
       ref={root}
@@ -110,7 +122,19 @@ export function Scrubber({ video, duration, buffered, onSeek, onDragChange }: Sc
       </div>
       <span className="scrubber-thumb" />
       {tip !== null && known && (
-        <span className="scrubber-tip" style={{ "--at": tip } as CSSProperties} aria-hidden>
+        <span className="scrubber-tip" data-preview={frame !== null} style={{ "--at": tip } as CSSProperties} aria-hidden>
+          {frame && (
+            <span
+              className="scrubber-frame"
+              style={{
+                width: frame.width * scale,
+                height: frame.height * scale,
+                backgroundImage: `url(${frame.sheet})`,
+                backgroundSize: `${frame.sheetWidth * scale}px ${frame.sheetHeight * scale}px`,
+                backgroundPosition: `${-frame.x * scale}px ${-frame.y * scale}px`,
+              }}
+            />
+          )}
           {formatClock(tip * duration * 1000)}
         </span>
       )}

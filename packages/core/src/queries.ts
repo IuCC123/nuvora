@@ -14,6 +14,7 @@ import type {
   SearchResponse,
   NuvoraClient,
   PosterCard,
+  PreviewInfo,
   RowKind,
   RowPage,
   ScanStatus,
@@ -68,6 +69,7 @@ export const queryKeys = {
   adminMetadata: ["admin", "metadata"] as const,
   homeLayout: ["home-layout"] as const,
   search: (q: string) => ["search", q] as const,
+  previews: (fileId: number) => ["previews", fileId] as const,
 };
 
 /**
@@ -124,6 +126,8 @@ export interface Queries {
   homeLayout(): QueryDef<HomeLayout>;
   /** `q` as typed; callers skip blank queries. */
   search(q: string): QueryDef<SearchResponse>;
+  /** Seek previews never change once made; `null` until they are, so poll while it is. */
+  previews(fileId: number): QueryDef<PreviewInfo | null>;
 }
 
 /** Long enough that the screen's mount reuses its loader's request, short enough that a revisit shows other admins' changes. */
@@ -161,6 +165,7 @@ export function createQueries(client: NuvoraClient): Queries {
       staleTime: 30_000,
     }),
     scanStatus: () => ({ queryKey: queryKeys.scan, queryFn: ({ signal }) => client.scanStatus(signal), staleTime: 0 }),
+    previews: (fileId) => ({ queryKey: queryKeys.previews(fileId), queryFn: ({ signal }) => client.previews(fileId, signal), staleTime: Infinity }),
     authState: () => ({ queryKey: queryKeys.auth, queryFn: ({ signal }) => client.authState(signal), staleTime: 60_000 }),
     adminLibraries: () => ({ queryKey: queryKeys.adminLibraries, queryFn: ({ signal }) => client.admin.libraries(signal), staleTime: ADMIN_FRESH }),
     adminFs: (path) => ({ queryKey: queryKeys.adminFs(path), queryFn: ({ signal }) => client.admin.fs(path, signal), staleTime: 30_000 }),
