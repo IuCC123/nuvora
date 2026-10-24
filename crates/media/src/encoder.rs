@@ -21,9 +21,6 @@ use crate::MediaTools;
 /// The render node VA-API drivers open on Linux.
 pub const DEFAULT_VAAPI_DEVICE: &str = "/dev/dri/renderD128";
 
-/// Upper bound on any converted stream, whatever the encoder.
-const MAX_RATE: &str = "12M";
-const BUFFER: &str = "24M";
 /// Far beyond any video: keyframes come only when forced.
 const NO_GOP: &str = "100000";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
@@ -72,7 +69,7 @@ impl VideoEncoder {
     /// at the `forced` times (comma-separated seconds) and nowhere else.
     pub(crate) fn output_args(&self, max_height: u32, forced: &str) -> Vec<OsString> {
         let scale = format!("scale=-2:min(ih\\,{max_height})");
-        let bitrate = bitrate_for(max_height);
+        let (target, max, buffer) = rates_for(max_height);
         let args: Vec<String> = match self {
             VideoEncoder::Software => [
                 "-c:v",
@@ -82,9 +79,9 @@ impl VideoEncoder {
                 "-crf",
                 "21",
                 "-maxrate",
-                MAX_RATE,
+                max,
                 "-bufsize",
-                BUFFER,
+                buffer,
                 "-profile:v",
                 "high",
                 "-vf",
@@ -100,9 +97,9 @@ impl VideoEncoder {
                 "-c:v",
                 "h264_videotoolbox",
                 "-b:v",
-                bitrate,
+                target,
                 "-maxrate",
-                MAX_RATE,
+                max,
                 "-profile:v",
                 "high",
                 "-vf",
@@ -124,9 +121,9 @@ impl VideoEncoder {
                 "-b:v",
                 "0",
                 "-maxrate",
-                MAX_RATE,
+                max,
                 "-bufsize",
-                BUFFER,
+                buffer,
                 "-profile:v",
                 "high",
                 "-vf",
@@ -144,9 +141,9 @@ impl VideoEncoder {
                 "-c:v",
                 "h264_vaapi",
                 "-b:v",
-                bitrate,
+                target,
                 "-maxrate",
-                MAX_RATE,
+                max,
                 "-profile:v",
                 "high",
                 "-vf",
@@ -163,13 +160,16 @@ impl VideoEncoder {
     }
 }
 
-/// For encoders that take a target bitrate instead of a quality.
-fn bitrate_for(max_height: u32) -> &'static str {
+/// Target, ceiling and buffer. The target is for the encoders that take a
+/// bitrate instead of a quality; the ceiling holds every encoder's busiest
+/// scenes to what a home network carries.
+fn rates_for(max_height: u32) -> (&'static str, &'static str, &'static str) {
     match max_height {
-        0..=480 => "2500k",
-        481..=720 => "5M",
-        721..=1080 => "8M",
-        _ => "16M",
+        0..=480 => ("2500k", "12M", "24M"),
+        481..=720 => ("5M", "12M", "24M"),
+        721..=1080 => ("8M", "12M", "24M"),
+        1081..=1440 => ("16M", "24M", "48M"),
+        _ => ("30M", "40M", "80M"),
     }
 }
 

@@ -108,8 +108,10 @@ const HLS_VIDEO: [VideoCodec; 4] = [
 /// Audio codecs fMP4 HLS carries on every player (MP3, FLAC and Opus in
 /// fMP4 are patchy: hls.js rejects MP3 there).
 const HLS_AUDIO: [AudioCodec; 3] = [AudioCodec::Aac, AudioCodec::Ac3, AudioCodec::Eac3];
-/// Converted video is never taller than this: the encoder must keep up in software.
-const MAX_CONVERT_HEIGHT: u32 = 1080;
+/// H.264's own 4K ceiling: level 5.2 stops at 4096 wide, and so do the
+/// graphics encoders. An 8K source converts to 4K.
+const MAX_CONVERT_WIDTH: u32 = 4096;
+const MAX_CONVERT_HEIGHT: u32 = 2160;
 
 impl DeviceProfile {
     /// Used when a request carries no profile: H.264 8-bit 1080p SDR + AAC
@@ -164,13 +166,8 @@ impl DeviceProfile {
             VideoPlan::Copy
         } else {
             let h264 = self.video.iter().find(|s| s.codec == VideoCodec::H264)?;
-            let source = if video.height == 0 {
-                MAX_CONVERT_HEIGHT
-            } else {
-                video.height
-            };
             VideoPlan::H264 {
-                max_height: source.min(h264.max_height).min(MAX_CONVERT_HEIGHT),
+                max_height: converted_height(video, h264),
             }
         };
         let audio = match audio {
@@ -229,6 +226,19 @@ impl DeviceProfile {
             Some(_) => None,
         }
     }
+}
+
+/// The source's own height, unless the device's H.264 decoder or H.264 itself
+/// stops short of it. The encoder keeps the shape, so a wide film is held to
+/// the width as well. Even, as 4:2:0 video must be.
+fn converted_height(video: &VideoStream, h264: &VideoSupport) -> u32 {
+    let mut height = h264.max_height.min(MAX_CONVERT_HEIGHT);
+    if video.width > 0 && video.height > 0 {
+        let max_width = h264.max_width.min(MAX_CONVERT_WIDTH);
+        let fits_width = u64::from(max_width) * u64::from(video.height) / u64::from(video.width);
+        height = height.min(video.height).min(fits_width as u32);
+    }
+    height - height % 2
 }
 
 impl StreamPlan {
@@ -611,8 +621,8 @@ mod tests {
             Some("copy.a1-aac2")
         );
         assert_eq!(plan(&dts, &chromium()).as_deref(), Some("copy.a1-aac6"));
-        // HEVC on an H.264-only device: converted, never taller than 1080, and
-        // its sound converted with it, so both start at the same moment.
+        // HEVC on an H.264-only device: converted, no taller than the device
+        // decodes, and its sound converted with it, so both start at the same moment.
         let uhd = media(
             Container::Matroska,
             video(VideoCodec::Hevc, 3840, 2160, 10, HdrFormat::Sdr),
@@ -621,6 +631,45 @@ mod tests {
         assert_eq!(
             plan(&uhd, &DeviceProfile::baseline()).as_deref(),
             Some("h264-1080.a1-aac2")
+        );
+        // A 4K device gets 4K: Dolby Vision 5 has no HDR10 base to pass through.
+        let dv5 = media(
+            Container::Matroska,
+            video(
+                VideoCodec::Hevc,
+                3840,
+                2160,
+                10,
+                HdrFormat::DolbyVision {
+                    profile: 5,
+                    compatibility: 0,
+                },
+            ),
+            aac(2),
+        );
+        assert_eq!(
+            plan(&dv5, &chromium()).as_deref(),
+            Some("h264-2160.a1-aac2")
+        );
+        // 8K is beyond H.264 itself.
+        let eight_k = media(
+            Container::Matroska,
+            video(VideoCodec::Av1, 7680, 4320, 10, HdrFormat::Sdr),
+            aac(2),
+        );
+        assert_eq!(
+            plan(&eight_k, &chromium()).as_deref(),
+            Some("h264-2160.a1-aac2")
+        );
+        // A 2.40:1 4K film on a 1920-wide device: 1920x800, not 2592x1080.
+        let scope = media(
+            Container::Matroska,
+            video(VideoCodec::Hevc, 3840, 1600, 10, HdrFormat::Sdr),
+            aac(2),
+        );
+        assert_eq!(
+            plan(&scope, &DeviceProfile::baseline()).as_deref(),
+            Some("h264-800.a1-aac2")
         );
         let sd = media(
             Container::Avi,
@@ -643,6 +692,7 @@ mod tests {
             "copy.a1",
             "copy.none",
             "h264-1080.a2-aac2",
+            "h264-2160.a2-aac6",
             "h264-720.a0-aac6",
             "copy.a12-aac1",
         ] {
