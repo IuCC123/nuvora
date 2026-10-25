@@ -25,8 +25,11 @@ const AUDIO_PROBES: readonly (readonly [codec: string, mime: string])[] = [
  * `MediaSource.isTypeSupported` (falling back to `canPlayType`). The facts go
  * to the server, which makes the playback decision for every client the same way.
  *
- * Containers: mp4 always; webm via `video/webm`; mkv on Chromium (see
- * `isChromium`). The server's codec checks still apply to the streams inside.
+ * Containers: mp4 always; Matroska and WebM wherever the browser opens them
+ * itself or can rewrap them here (see `opensNatively` and `platform/rewrap`),
+ * so their files play straight from disk instead of through the server. The
+ * server's codec checks still apply to the streams inside, and the codec probes
+ * ask about MP4, which is what a rewrapped file becomes.
  * HDR: `(dynamic-range: high)` plus a 30-bit screen gates hdr10/hlg; Dolby
  * Vision only where `dvh1.08.06` probes true (Safari).
  */
@@ -42,8 +45,33 @@ export function probeDeviceProfile(): DeviceProfile {
   });
   // Browsers downmix multichannel audio themselves, so channel count never blocks playback.
   const audio = AUDIO_PROBES.filter(([, mime]) => supports(mime)).map(([codec]) => ({ codec, max_channels: 8 }));
-  const containers = ["mp4", ...(supports('video/webm; codecs="vp9"') ? ["webm"] : []), ...(isChromium() ? ["mkv"] : [])];
+  const containers = ["mp4", ...(opensWebm() || canRewrap() ? ["webm"] : []), ...(isChromium() || canRewrap() ? ["mkv"] : [])];
   return { containers, video, audio };
+}
+
+/**
+ * Whether `<video src>` opens a file of this type here. When it doesn't, the
+ * player rewraps the file in the browser (`platform/rewrap`) instead.
+ */
+export function opensNatively(mime: string): boolean {
+  if (mime === "video/x-matroska") return isChromium();
+  if (mime === "video/webm") return opensWebm();
+  return true;
+}
+
+/** Whether this browser can rewrap a Matroska or WebM file it can't open itself. */
+export function canRewrap(): boolean {
+  return mediaSourceClass() !== undefined;
+}
+
+function opensWebm(): boolean {
+  return supports('video/webm; codecs="vp9"');
+}
+
+/** `ManagedMediaSource` is iPhone Safari's Media Source Extensions; it isn't in TypeScript's DOM lib yet. */
+export function mediaSourceClass(): typeof MediaSource | undefined {
+  if (typeof MediaSource !== "undefined") return MediaSource;
+  return (globalThis as { ManagedMediaSource?: typeof MediaSource }).ManagedMediaSource;
 }
 
 let probeElement: HTMLVideoElement | undefined;
@@ -55,10 +83,9 @@ function supports(mime: string): boolean {
 }
 
 /**
- * Chromium plays H.264/AAC Matroska but reports "" for `video/x-matroska`, so
- * the probe cannot see it. Most libraries are MKV, so declaring it keeps them
- * playable before Step 3. If a file still fails, the player's `error` event
- * shows the same "can't play" notice as a server-side refusal.
+ * Chromium opens Matroska (H.264, HEVC, AV1, VP9 inside) but reports "" for
+ * `video/x-matroska`, so the probe cannot see it. If a file still fails, the
+ * player falls back to the server's stream.
  */
 function isChromium(): boolean {
   const brands = (navigator as NavigatorWithHints).userAgentData?.brands ?? [];

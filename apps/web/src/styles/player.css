@@ -590,3 +590,21 @@
     display: none;
   }
 }
+
+/* How the file reaches the screen: "Direct play", "Converting video" and so on. */
+.player-mode {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--nv-color-overlay-border);
+  border-radius: var(--nv-radius-sm);
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-chip-size);
+  line-height: var(--nv-type-chip-line);
+  font-weight: var(--nv-font-weight-semibold);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: default;
+}

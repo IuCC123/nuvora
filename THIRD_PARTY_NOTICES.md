@@ -6,6 +6,7 @@ Nuvora includes or uses the following software. Each is © its authors and used 
 
 - **JASSUB** (styled ASS/SSA subtitles in the browser) and the libraries it is built from: libass (ISC), FreeType (FTL or GPL-2.0-or-later), FriBidi (LGPL-2.1-or-later), HarfBuzz (MIT) and others. License: `LGPL-2.1-or-later AND (FTL OR GPL-2.0-or-later) AND MIT AND MIT-Modern-Variant AND ISC AND NTP AND Zlib AND BSL-1.0`. JASSUB is loaded as a separate module, unmodified; its source is at https://github.com/ThaUnknown/jassub.
 - **hls.js**, Apache-2.0. https://github.com/video-dev/hls.js
+- **Mediabunny** (reads Matroska and writes MP4 in the browser, for files the browser can't open itself), MPL-2.0. Loaded as a separate module, unmodified; its source is at https://github.com/Vanilagy/mediabunny.
 - **React** and **React DOM**, MIT. https://react.dev
 - **TanStack Router** and **TanStack Query**, MIT. https://tanstack.com
 - **Inter** and **Archivo** typefaces, SIL Open Font License 1.1, via Fontsource.

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useCanGoBack, useNavigate, useParams, useRouter, useRouterState, useSearch } from "@tanstack/react-router";
-import { audioLanguage, formatClock, subtitleLabel, type EpisodeDetail, type EpisodeRef, type SubtitleTrack } from "@nuvora/core";
-import { client, queries } from "../nuvora";
+import { audioLanguage, formatClock, subtitleLabel, type EpisodeDetail, type EpisodeRef, type SubtitleTrack, type Version } from "@nuvora/core";
+import { client, queries, servedClient } from "../nuvora";
 import { ArrowLeftIcon, Back10Icon, Forward10Icon, FullscreenIcon, PauseIcon, PipIcon, PlayIcon, SpinIcon, SubtitlesIcon, VolumeIcon } from "../components/Icon";
 import { Notice, type NoticeText } from "../components/Notice";
 import { NextEpisodeButton } from "../components/player/NextEpisodeButton";
+import { PlaybackMode, playbackMode, type Mode } from "../components/player/PlaybackMode";
 import { PlainSubtitles } from "../components/player/PlainSubtitles";
 import { PlayerTitle } from "../components/player/PlayerTitle";
 import { Scrubber } from "../components/player/Scrubber";
@@ -15,6 +16,7 @@ import { UpNext } from "../components/player/UpNext";
 import { initials } from "@nuvora/core";
 import { usePartyPlayer } from "../components/party/usePartyPlayer";
 import { useHls } from "../components/player/useHls";
+import { useRewrap } from "../components/player/useRewrap";
 import { useSubtitles } from "../components/player/useSubtitles";
 import { Volume } from "../components/player/Volume";
 import { languageName } from "../lib/languageName";
@@ -24,6 +26,7 @@ import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useMediaState } from "../lib/useMediaState";
 import { useProgressReporting } from "../lib/useProgressReporting";
 import { loadVolume, saveVolume } from "../lib/volumeMemory";
+import { opensNatively } from "../platform/deviceProfile";
 import "../styles/player.css";
 import "../styles/subtitles.css";
 
@@ -65,6 +68,9 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
   const movie = data?.kind === "movie" || data?.kind === "episode" ? data : undefined;
   const episode = movie?.kind === "episode" ? movie : undefined;
   const [failed, setFailed] = useState(false);
+  // The server's own stream for a file this browser was told it could play directly but couldn't.
+  const [served, setServed] = useState<{ file: number; playback: Version["playback"] } | null>(null);
+  const asking = useRef(false);
   useDocumentTitle(episode ? `${episode.show_title} · ${episode.label}` : movie?.title);
   useLeaveFullscreen();
 
@@ -97,17 +103,39 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
   }, [id, file]);
   const decided = version ? playState([version]) : undefined;
   const notice = failed ? playerFailed : movie && !version ? fileGone : decided?.kind === "blocked" ? decided.notice : undefined;
-  const playback = notice ? undefined : version?.playback;
+  const fromServer = served?.file === file;
+  const playback = notice ? undefined : fromServer ? served.playback : version?.playback;
   const source: Source | undefined =
     playback?.kind === "direct_play"
-      ? { kind: "direct", url: client.resolve(playback.url) }
+      ? { kind: opensNatively(playback.mime_type) ? "direct" : "rewrap", url: client.resolve(playback.url) }
       : playback?.kind === "hls"
         ? { kind: "hls", url: client.resolve(playback.url) }
         : undefined;
+  const mode = playback ? playbackMode(playback, source?.kind === "rewrap") : undefined;
+
+  // A file that won't play directly here after all gets the server's stream, from where it stopped.
+  const fallBack = useCallback(() => {
+    if (version?.playback.kind !== "direct_play" || fromServer) return setFailed(true);
+    if (asking.current) return;
+    asking.current = true;
+    servedClient.item(id).then(
+      (item) => {
+        asking.current = false;
+        const versions = item.kind === "movie" || item.kind === "episode" ? item.versions : [];
+        const stream = versions.find((v) => v.file_id === file)?.playback;
+        if (stream?.kind === "hls") setServed({ file, playback: stream });
+        else setFailed(true);
+      },
+      () => {
+        asking.current = false;
+        setFailed(true);
+      },
+    );
+  }, [version, fromServer, id, file]);
 
   return (
     <PlayerView
-      key={`${id}:${file}`}
+      key={`${id}:${file}:${fromServer ? "server" : "file"}`}
       itemId={id}
       fileId={file}
       title={episode?.show_title ?? movie?.title}
@@ -115,13 +143,14 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
       episode={episode}
       onNext={playNext}
       source={source}
+      mode={mode}
       startAt={startAt}
       subtitleTracks={version?.media?.subtitles ?? NO_TRACKS}
       audioLanguage={version?.media ? audioLanguage(version.media.audio) : null}
       subtitleScope={episode ? `show:${episode.show_id}` : `movie:${id}`}
       notice={notice}
       onBack={back}
-      onFailed={() => setFailed(true)}
+      onFailed={fallBack}
       onPosition={keepPlace}
     />
   );
@@ -129,8 +158,8 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
 
 const NO_TRACKS: SubtitleTrack[] = [];
 
-/** The file as it is, or streamed through the server as HLS. */
-type Source = { kind: "direct" | "hls"; url: string };
+/** The file as it is (opened by the browser, or rewrapped here), or streamed through the server as HLS. */
+type Source = { kind: "direct" | "rewrap" | "hls"; url: string };
 
 interface PlayerViewProps {
   itemId: number;
@@ -140,6 +169,7 @@ interface PlayerViewProps {
   episode: EpisodeDetail | undefined;
   onNext: (next: EpisodeRef) => void;
   source: Source | undefined;
+  mode: Mode | undefined;
   /** Seconds. Read once: the URL keeps moving with playback after that. */
   startAt: number | undefined;
   subtitleTracks: readonly SubtitleTrack[];
@@ -154,7 +184,7 @@ interface PlayerViewProps {
 
 type PulseKind = "play" | "pause" | "back" | "forward" | "volume" | "subtitles-on" | "subtitles-off";
 
-function PlayerView({ itemId, fileId, title, year, episode, onNext, source, startAt: initialStart, subtitleTracks, audioLanguage, subtitleScope, notice, onBack, onFailed, onPosition }: PlayerViewProps) {
+function PlayerView({ itemId, fileId, title, year, episode, onNext, source, mode, startAt: initialStart, subtitleTracks, audioLanguage, subtitleScope, notice, onBack, onFailed, onPosition }: PlayerViewProps) {
   const [startAt] = useState(initialStart);
   const src = source?.url;
   const root = useRef<HTMLDivElement>(null);
@@ -169,7 +199,13 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, source, star
   const buffering = useHeldFor(media.starved && !!src, SPINNER_DELAY_MS);
   const lastPointer = useRef("mouse");
   useProgressReporting(src ? video : null, itemId, fileId, onPosition);
-  useHls(video, source?.kind === "hls" ? source.url : undefined, startAt, onFailed);
+  // On failure, keep the place first, so the server's stream picks up from here.
+  const fail = () => {
+    if (video && video.currentTime > 0) onPosition(Math.floor(video.currentTime * 1000));
+    onFailed();
+  };
+  useHls(video, source?.kind === "hls" ? source.url : undefined, startAt, fail);
+  useRewrap(video, source?.kind === "rewrap" ? source.url : undefined, startAt, fail);
   const party = usePartyPlayer(src ? video : null, itemId, fileId, startAt);
   useReleaseStream(video);
   const subtitles = useSubtitles(fileId, subtitleTracks, audioLanguage, subtitleScope);
@@ -373,7 +409,7 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, source, star
           }}
           onLoadedData={(e) => !e.currentTarget.seeking && setReady(true)}
           onSeeked={() => setReady(true)}
-          onError={(e) => source?.kind === "direct" && e.currentTarget.error?.code !== MediaError.MEDIA_ERR_ABORTED && onFailed()}
+          onError={(e) => source && source.kind !== "hls" && e.currentTarget.error?.code !== MediaError.MEDIA_ERR_ABORTED && fail()}
         />
       )}
       {src && (
@@ -472,6 +508,7 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, source, star
             <ArrowLeftIcon />
           </button>
           <PlayerTitle title={title} year={year} episode={episode} />
+          <PlaybackMode mode={mode} />
           {party.active && party.others.length > 0 && (
             <div className="party-with" title={`Watching with ${party.others.map((m) => m.display_name).join(", ")}`}>
               <span className="party-with-faces" aria-hidden>

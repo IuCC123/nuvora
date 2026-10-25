@@ -15,11 +15,25 @@ export function onUnauthorized(handler: () => void) {
   unauthorized = handler;
 }
 
+const device = probeDeviceProfile();
+
 /** App-wide singletons. The only place the web app wires platform APIs into @nuvora/core. */
 export const client = createClient({
   baseUrl: "",
   fetch: transport,
-  device: probeDeviceProfile(),
+  device,
+  onUnauthorized: () => unauthorized(),
+});
+
+/**
+ * The same browser declaring no containers, so the server answers every Play
+ * with its own stream. The player asks it when a file it was told to play
+ * directly won't play here after all.
+ */
+export const servedClient = createClient({
+  baseUrl: "",
+  fetch: transport,
+  device: { ...device, containers: [] },
   onUnauthorized: () => unauthorized(),
 });
 

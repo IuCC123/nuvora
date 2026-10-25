@@ -201,7 +201,7 @@ An in-progress poster carries a 3px amber bar along its bottom edge over a dark 
 
 ### Player
 
-The player fills the window with `video` black. A top bar holds the back arrow, title and year. A bottom bar holds the timeline (elapsed, scrubber, remaining) and three clusters: volume on the left, back 10 s, play and forward 10 s in the center, and picture-in-picture and full screen on the right. Each bar sits on its own black gradient scrim, and the bars fade together: 160 ms in, 400 ms out with a 6px drift. Buttons are white glyphs with a soft white disc on hover and a tooltip naming the action and its key. The scrubber is 4px, 6px on hover, with amber for played, translucent white for buffered, and an amber thumb on hover. Volume fills in white, because amber is reserved for progress and focus.
+The player fills the window with `video` black. A top bar holds the back arrow, title and year, and a chip saying how the file reaches the screen: Direct play, Direct stream, Converting audio or Converting video, with the server's reason on hover. A bottom bar holds the timeline (elapsed, scrubber, remaining) and three clusters: volume on the left, back 10 s, play and forward 10 s in the center, and picture-in-picture and full screen on the right. Each bar sits on its own black gradient scrim, and the bars fade together: 160 ms in, 400 ms out with a 6px drift. Buttons are white glyphs with a soft white disc on hover and a tooltip naming the action and its key. The scrubber is 4px, 6px on hover, with amber for played, translucent white for buffered, and an amber thumb on hover. Volume fills in white, because amber is reserved for progress and focus.
 
 ### Title card (signature component)
 
