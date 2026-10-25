@@ -1,51 +1,88 @@
-<img src="assets/icon.svg" width="64" height="64" alt="">
+<p align="center">
+  <a href="https://getnuvora.online">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/brand/nuvora-dark.svg">
+      <img src="assets/brand/nuvora-light.svg" alt="Nuvora" width="260">
+    </picture>
+  </a>
+</p>
 
-# Nuvora
+<p align="center">
+  A media server for the movies, shows and anime you already have.<br>
+  Plex's polish, Jellyfin's freedom, and no account with anyone but you.
+</p>
 
-A self-hosted media server for your movies, shows and anime, with a clean, fast web app in the spirit of Plex. Run it on a PC, Mac, NAS or Raspberry Pi; everyone in your household signs in with their own account.
+<p align="center">
+  <a href="https://getnuvora.online"><b>Website</b></a> &nbsp;·&nbsp;
+  <a href="#set-up-your-server"><b>Install</b></a> &nbsp;·&nbsp;
+  <a href="#watch-on-your-tv"><b>TV app</b></a> &nbsp;·&nbsp;
+  <a href="https://github.com/IuCC123/nuvora/releases/latest"><b>Latest release</b></a>
+</p>
 
-- **Plays almost anything.** Files a browser can't play are converted while you watch, and only the part that needs it: often just the audio. You can still jump anywhere, and subtitles stay in sync.
-- **Looks after itself.** Point it at a folder and it finds movies, shows and episodes, with posters, descriptions, cast and voice actors from Wikipedia, AniList and TVmaze. No API keys needed.
-- **Subtitles done right.** Embedded tracks and `.srt`/`.ass`/`.vtt` files next to the video, styled anime subtitles with their own fonts, and your choice remembered per show.
-- **Watch Together.** Invite someone and play anything at the same moment on both screens; pausing, seeking and the next episode stay in sync.
-- **Yours.** Progress and Continue Watching per person, a Home screen each person arranges themselves, search across everything, and no account with anyone but your own server.
+<p align="center">
+  <img src="assets/readme/home.jpg" alt="Nuvora's Home screen, with Continue Watching and Recently Added rows of movie posters" width="880">
+</p>
 
-There's an app for **Fire TV and Android TV** too ([Watch on your TV](#watch-on-your-tv)); a Vega OS app is on the way.
+Nuvora runs on a computer in your home, whether that's a PC, a Mac, a NAS or a Raspberry Pi, and turns a folder of video files into something that feels like a streaming service. Everyone in the house signs in with their own account and gets their own Continue Watching and their own Home screen. It's free and open source, and there's no Nuvora account, no subscription and nothing phoning home.
+
+## What it does
+
+### Finds everything on its own
+
+Point it at a folder and it works out which files are movies, shows and episodes, then fills in posters, descriptions, cast and voice actors from Wikipedia, AniList and TVmaze. None of that needs an API key. A film with no artwork anywhere gets a designed title card instead of a random video frame.
+
+<img src="assets/readme/library.jpg" alt="The Movies library with sort and filter controls, posters, and a title card for a film without artwork" width="880">
+
+### Plays almost anything
+
+If your browser or TV can play a file as it is, that's what it gets, HEVC, HDR and surround sound included. If it can't, Nuvora converts only the part that needs it while you watch, which is often just the audio, and it uses the graphics chip when there is one. You can still jump to any point.
+
+<img src="assets/readme/movie.jpg" alt="Sintel's page: poster, description from Wikipedia, file details, and a Resume button" width="880">
+
+### Subtitles that behave
+
+Embedded tracks show up, and so do `.srt`, `.ass` and `.vtt` files sitting next to the video. Styled anime subtitles keep their own fonts and placement, and Nuvora remembers which track you picked for each show.
+
+<img src="assets/readme/player.jpg" alt="The player paused on Sintel with an English subtitle on screen and the subtitle menu open" width="880">
+
+### Watch together
+
+Invite someone and play the same thing on two screens at the same moment, in the same house or across town. Pause, skip ahead or move on to the next episode, and the other screen follows.
+
+There's a TV app for Fire TV, Android TV and Google TV too, and a Vega OS app is on the way.
 
 ## Set up your server
 
-Nuvora runs in Docker, so it works the same everywhere. It takes about five minutes.
+Nuvora runs in Docker, so it works the same everywhere. Setting it up takes about five minutes.
 
 ### 1. Install Docker
 
 - **Windows or macOS:** install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and start it.
-- **Linux:** `curl -fsSL https://get.docker.com | sh`, then `sudo usermod -aG docker $USER` and log out and back in.
-- **NAS (Synology, Unraid, TrueNAS, ...):** use its container app with the Compose file below.
+- **Linux:** run `curl -fsSL https://get.docker.com | sh`, then `sudo usermod -aG docker $USER`, and log out and back in.
+- **A NAS** (Synology, Unraid, TrueNAS and the like): use its container app with the Compose file below.
 
 ### 2. Start Nuvora
 
-**Linux and macOS:** run this in a terminal.
+On **macOS or Linux**, run this in a terminal:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/IuCC123/nuvora/main/scripts/install.sh | bash
 ```
 
-It asks for the folder that holds your movies and shows, and a port (8640 is fine), then downloads and starts Nuvora in `~/nuvora`. You can answer up front instead:
+It asks for the folder with your movies and shows and for a port (8640 is fine), then downloads Nuvora and starts it in `~/nuvora`. To answer up front instead:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/IuCC123/nuvora/main/scripts/install.sh | bash -s -- --media ~/Media --port 8640
 ```
 
-**Windows, a NAS, or by hand:** use Docker Compose. Make a folder (say `nuvora`), save [`compose.yaml`](compose.yaml) in it, and next to it create a file named `.env`:
+On **Windows, a NAS, or by hand**, use Docker Compose. Make a folder called `nuvora`, save [`compose.yaml`](compose.yaml) in it, and create a file called `.env` next to it:
 
 ```sh
 # The folder with your movies and shows. Nuvora only reads it.
 NUVORA_MEDIA=D:/Media
 ```
 
-On Linux, add `NUVORA_UID=` and `NUVORA_GID=` lines with the output of `id -u` and `id -g`, so Nuvora can write its `data` folder (the installer does this for you).
-
-Then, in that folder:
+On Linux, also add `NUVORA_UID=` and `NUVORA_GID=` lines with the output of `id -u` and `id -g`, so Nuvora can write to its `data` folder. The installer does this for you. Then, in that folder:
 
 ```sh
 docker compose up -d
@@ -53,32 +90,32 @@ docker compose up -d
 
 ### 3. Create your account
 
-Open **http://your-server:8640** in a browser (the installer prints the exact address; on the same computer it is http://localhost:8640). The first visit asks you to create the admin account, then to add a library: name it, choose **Movies** or **Shows**, and pick its folder under `/media`, which is the media folder you gave the installer.
+Open **http://your-server:8640** in a browser. The installer prints the exact address, and on the same computer it's http://localhost:8640. The first visit asks you to create the admin account and then a library: give it a name, choose **Movies** or **Shows**, and pick its folder under `/media`, which is the media folder you gave the installer.
 
-### 4. Add the others
+### 4. Add everyone else
 
-In **Settings › Users**, add an account for each person. They sign in from any browser on your network at the same address, or from the TV app.
+In **Settings › Users**, add an account for each person. They can sign in from any browser on your network at the same address, or from the TV app.
 
 ## Watch on your TV
 
-The Nuvora TV app runs on Amazon Fire TV and on Android TV and Google TV. It has everything the web app has for watching: Home, your libraries, search, subtitles (styled anime ones too), audio tracks, Continue Watching and Watch Together. It tells the server what the TV can decode, so most files play untouched, HEVC, HDR and surround sound included.
+The TV app runs on Amazon Fire TV, Android TV and Google TV. It has everything the web app has for watching: Home, your libraries, search, subtitles (styled anime ones too), audio tracks, Continue Watching and Watch Together. It tells the server what the TV can decode, so most files play untouched, HEVC, HDR and surround sound included.
 
 **On a Fire TV:**
 
 1. Install **Downloader** (by AFTVnews) from the Amazon Appstore.
-2. Allow it to install apps: **Settings › My Fire TV › Developer options › Install unknown apps**, then turn on Downloader. No Developer options? Go to **Settings › My Fire TV › About** and press OK on the device name seven times, then look again.
+2. Let it install apps: go to **Settings › My Fire TV › Developer options › Install unknown apps** and turn on Downloader. No Developer options? Open **Settings › My Fire TV › About**, press OK on the device name seven times, and look again.
 3. Open Downloader and enter your server's address followed by **/tv**, for example `http://192.168.1.20:8640/tv`. It downloads the newest TV app; choose **Install**.
-4. Open **Nuvora**. Your server shows up under **On your network**: choose it and sign in. If it doesn't show up, type its address instead (`192.168.1.20` is enough when it uses port 8640).
+4. Open **Nuvora**. Your server shows up under **On your network**: pick it and sign in. If it isn't there, type its address instead (`192.168.1.20` is enough when it uses port 8640).
 
-The TV finds the server on its own, and finds it again if its address changes, when Nuvora runs on the same network. With Docker that needs host networking, which works on Linux: see the note in [`compose.yaml`](compose.yaml). Otherwise, type the address once.
+When Nuvora runs on the same network, the TV finds the server by itself, and finds it again if its address changes. With Docker that needs host networking, which works on Linux; see the note in [`compose.yaml`](compose.yaml). Otherwise you type the address once.
 
-**On Android TV or Google TV:** the same, with Downloader from the Play Store; allow it to install apps when the TV asks.
+**On Android TV or Google TV**, it's the same, with Downloader from the Play Store. Allow it to install apps when the TV asks.
 
-To update the app, repeat step 3; you stay signed in. The app is also on the [Releases](https://github.com/IuCC123/nuvora/releases/latest) page as `nuvora-tv.apk`.
+To update the app, repeat step 3 and you stay signed in. The app is also on the [Releases](https://github.com/IuCC123/nuvora/releases/latest) page as `nuvora-tv.apk`.
 
 ## Organizing your files
 
-Nuvora reads folder and file names, so a little order goes a long way:
+Nuvora goes by folder and file names, so a little order goes a long way:
 
 ```text
 Media/
@@ -92,19 +129,19 @@ Media/
             └── Tower of God - S02E01.mkv
 ```
 
-Movies want a year in the name. Episodes want a number: `S02E01`, `2x01` and anime-style `Show - 01 [1080p].mkv` all work. Subtitle files next to a video are picked up with their language (`.en.srt`, `.English.forced.srt`, or a `Subs/` folder).
+Movies want a year in the name. Episodes want a number: `S02E01`, `2x01` and anime-style `Show - 01 [1080p].mkv` all work. Subtitle files next to a video are picked up along with their language (`.en.srt`, `.English.forced.srt`, or a `Subs/` folder).
 
 ## Updating
 
-Run the installer again, or in the folder with `compose.yaml`:
+Run the installer again, or do this in the folder with `compose.yaml`:
 
 ```sh
 docker compose pull && docker compose up -d
 ```
 
-Your accounts, progress and settings carry over. To stay on one version, set `NUVORA_IMAGE=ghcr.io/iucc123/nuvora:0.3.1` in `.env` (or pass `--version 0.3.1` to the installer).
+Accounts, progress and settings carry over. To stay on one version, set `NUVORA_IMAGE=ghcr.io/iucc123/nuvora:0.3.1` in `.env`, or pass `--version 0.3.1` to the installer.
 
-**Backing up:** everything Nuvora knows lives in the `data` folder next to `compose.yaml` (`~/nuvora/data` for the installer). Copy it while Nuvora is stopped.
+To back up, copy the `data` folder next to `compose.yaml` (`~/nuvora/data` if you used the installer) while Nuvora is stopped. Everything Nuvora knows lives there.
 
 ## Settings
 
@@ -117,27 +154,27 @@ Set these in `.env` next to `compose.yaml`, then run `docker compose up -d`:
 | `NUVORA_LISTEN` | `0.0.0.0` | `127.0.0.1` to accept connections from this machine only (behind a reverse proxy) |
 | `NUVORA_IMAGE` | `ghcr.io/iucc123/nuvora:latest` | Image and version to run |
 | `NUVORA_UID`, `NUVORA_GID` | `10001` | User and group Nuvora runs as; must be able to read your media and write `data` (the installer sets yours) |
-| `NUVORA_TRUSTED_PROXY` | | Your reverse proxy's address or network, see below |
+| `NUVORA_TRUSTED_PROXY` | | Your reverse proxy's address or network, see [Remote access](#remote-access) |
 | `NUVORA_HARDWARE_ENCODING` | `auto` | Convert video on the graphics chip when one works: `auto`, `off`, or `videotoolbox`, `nvenc`, `vaapi` |
-| `TZ` | `UTC` | Time zone, e.g. `Europe/Amsterdam` |
+| `TZ` | `UTC` | Time zone, for example `Europe/Amsterdam` |
 
-The image is published for x86-64 and ARM64 (Raspberry Pi 4/5, Apple Silicon, most recent NAS boxes).
+The image is published for x86-64 and ARM64, which covers the Raspberry Pi 4 and 5, Apple Silicon and most recent NAS boxes.
 
 ### Converting on the graphics chip
 
-Most of the time a device plays your files as they are. When it can't (a codec the TV lacks, a bitrate too high for the network), Nuvora converts the video as it plays. By default it uses the graphics chip when one works, which takes far less processor time: Apple's VideoToolbox on a Mac, NVIDIA's NVENC, or VA-API for Intel and AMD graphics on Linux. It tries each at startup with a short test clip and falls back to the processor (x264) when none works. **Settings › General** shows which one is in use.
+Most of the time a device plays your files as they are. When it can't, because of a codec the TV lacks or a bitrate too high for the network, Nuvora converts the video as it plays. By default it does that on the graphics chip when one works, which takes far less processor time: Apple's VideoToolbox on a Mac, NVIDIA's NVENC, or VA-API for Intel and AMD graphics on Linux. It tries each one at startup with a short test clip and falls back to the processor (x264) when none works. **Settings › General** shows which one is in use.
 
-Converted video keeps the file's own resolution, up to 4K, unless the device can't play that much. Converting 4K on the processor takes a fast one, so on a Raspberry Pi or a small NAS those files may stutter.
+Converted video keeps the file's own resolution, up to 4K, unless the device can't play that much. Converting 4K on the processor needs a fast one, so on a Raspberry Pi or a small NAS those files may stutter.
 
-In Docker, the container needs the graphics chip passed in: see the commented lines in [`compose.yaml`](compose.yaml). Without them, Nuvora converts on the processor as before.
+In Docker, the container needs the graphics chip passed in; see the commented lines in [`compose.yaml`](compose.yaml). Without them, Nuvora converts on the processor.
 
 ## Remote access
 
-Everything needs a sign-in, so friends can reach your server from outside your home. Use a private network such as [Tailscale](https://tailscale.com) (easiest: install it on the server and on their device), or a reverse proxy with HTTPS (Caddy, nginx, Traefik). Do not forward port 8640 straight to the internet: without HTTPS, passwords and session cookies cross the network in plain text.
+Everything needs a sign-in, so you can let friends reach your server from outside your home. The easiest way is a private network such as [Tailscale](https://tailscale.com): install it on the server and on their device. The other way is a reverse proxy with HTTPS, such as Caddy, nginx or Traefik. Don't forward port 8640 straight to the internet; without HTTPS, passwords and session cookies cross the network in plain text.
 
 When a reverse proxy on the same machine is the only way in, publish Nuvora on loopback so nothing else can reach it directly: set `NUVORA_LISTEN=127.0.0.1` (or pass `--listen 127.0.0.1` to the installer) and run `docker compose up -d` again.
 
-The proxy must pass the original host and scheme, the client's address, and WebSocket upgrades (Watch Together uses one):
+The proxy has to pass on the original host and scheme, the client's address, and WebSocket upgrades, which Watch Together uses:
 
 ```nginx
 location / {
@@ -151,7 +188,7 @@ location / {
 }
 ```
 
-Then tell Nuvora to trust the proxy with `NUVORA_TRUSTED_PROXY` (an address or CIDR block, comma-separated). Sign-in limits then apply to each client address instead of to the proxy, and requests are checked against the host in `X-Forwarded-Host` when the proxy sends one. In Docker the proxy's requests arrive from the Compose network's gateway, so trust that network, usually `NUVORA_TRUSTED_PROXY=172.16.0.0/12`. Only do this with `NUVORA_LISTEN=127.0.0.1`: otherwise anyone who can reach the port can claim any address.
+Then tell Nuvora to trust the proxy with `NUVORA_TRUSTED_PROXY`, set to an address or CIDR block (comma-separated for more than one). Sign-in limits then apply to each client's address instead of to the proxy's, and requests are checked against the host in `X-Forwarded-Host` when the proxy sends one. In Docker, the proxy's requests arrive from the Compose network's gateway, so trust that network, usually `NUVORA_TRUSTED_PROXY=172.16.0.0/12`. Only do this together with `NUVORA_LISTEN=127.0.0.1`, or anyone who can reach the port could claim any address.
 
 ## Development
 
@@ -164,20 +201,20 @@ cargo run -p nuvora-server -- --data-dir ./data # http://localhost:8640
 bun run dev                                     # web app with hot reload, proxying /api to :8640
 ```
 
-The TV app is in `apps/firetv` (Kotlin, Jetpack Compose for TV); with JDK 17+ and the Android SDK, `./gradlew installDebug` there builds it and installs it on a connected TV or emulator.
+The code is split like this: `crates/` is the server (`media` knows files, `library` owns the database, `server` is the HTTP API), `packages/core` is the TypeScript data layer, `apps/web` is the web app, and `apps/firetv` is the TV app.
 
-To keep a build running on a Mac without Docker, `scripts/macos-service.sh install --bin target/release/nuvora --data-dir ~/Nuvora` makes it a background service that starts when you log in and restarts if it stops; `status` and `uninstall` do what they say.
+The TV app is written in Kotlin with Jetpack Compose for TV. With JDK 17+ and the Android SDK, run `./gradlew installDebug` in `apps/firetv` to build it and install it on a connected TV or emulator.
 
-Tests: `cargo test --workspace` and `bun test`; `bun run typecheck` for TypeScript; `./gradlew testDebugUnitTest` in `apps/firetv`, and `./gradlew connectedDebugAndroidTest` there with an emulator running. After changing the API, `bun run gen:api` regenerates the TypeScript client's types. To try the Docker image from your checkout, run `scripts/install.sh --build`.
+To keep a build running on a Mac without Docker, `scripts/macos-service.sh install --bin target/release/nuvora --data-dir ~/Nuvora` makes it a background service that starts when you log in and restarts if it stops. `status` and `uninstall` do what they say.
 
-The layout: `crates/` is the server (`media` knows files, `library` owns the database, `server` is the HTTP API), `packages/core` is the TypeScript data layer, `apps/web` is the web app, and `apps/firetv` is the TV app.
+Tests: `cargo test --workspace` and `bun test`, `bun run typecheck` for TypeScript, `./gradlew testDebugUnitTest` in `apps/firetv`, and `./gradlew connectedDebugAndroidTest` there with an emulator running. After changing the API, `bun run gen:api` regenerates the TypeScript client's types. To try the Docker image from your checkout, run `scripts/install.sh --build`.
 
 ## Credits
 
 Nuvora stands on [FFmpeg](https://ffmpeg.org), [JASSUB](https://github.com/ThaUnknown/jassub) and [hls.js](https://github.com/video-dev/hls.js), among others; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Descriptions and artwork come from [Wikipedia](https://www.wikipedia.org) and [Wikidata](https://www.wikidata.org), [AniList](https://anilist.co), [TVmaze](https://www.tvmaze.com) and, with your own key, [TMDB](https://www.themoviedb.org).
 
-Made with [T3 Code](https://t3.codes).
+The screenshots show Blender's open movies Sintel, Big Buck Bunny, Tears of Steel and Cosmos Laundromat (© Blender Foundation) and Elephants Dream (© Orange Open Movie Project), all under [Creative Commons Attribution](https://creativecommons.org/licenses/by/3.0/). The wordmark is set in [Archivo](https://github.com/Omnibus-Type/Archivo) (SIL Open Font License).
 
 ## License
 
-Nuvora is free software under the [GNU Affero General Public License v3.0](LICENSE). You can use, change and share it. If you share a changed version, or run one that other people use over a network, you must offer them its source under the same license.
+Nuvora is free software under the [GNU Affero General Public License v3.0](LICENSE). You can use it, change it and share it. If you share a changed version, or run one that other people use over a network, you have to offer them its source under the same license.
