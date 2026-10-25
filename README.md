@@ -139,7 +139,7 @@ Run the installer again, or do this in the folder with `compose.yaml`:
 docker compose pull && docker compose up -d
 ```
 
-Accounts, progress and settings carry over. To stay on one version, set `NUVORA_IMAGE=ghcr.io/iucc123/nuvora:0.3.1` in `.env`, or pass `--version 0.3.1` to the installer.
+Accounts, progress and settings carry over. To stay on one version, set `NUVORA_IMAGE=ghcr.io/iucc123/nuvora:0.3.2` in `.env`, or pass `--version 0.3.2` to the installer.
 
 To back up, copy the `data` folder next to `compose.yaml` (`~/nuvora/data` if you used the installer) while Nuvora is stopped. Everything Nuvora knows lives there.
 
