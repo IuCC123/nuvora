@@ -28,10 +28,10 @@ use librqbit::{
     ManagedTorrent, Session, SessionOptions, TorrentStats, TorrentStatsState,
 };
 use nuvora_library::{Library, LibraryId, LibraryInfo, LibraryKind};
-use nuvora_media::{MovieName, PathClass, classify_path};
+use nuvora_media::{PathClass, ReleaseName, classify_path};
 use serde::{Deserialize, Serialize};
 
-pub use torznab::{Indexer, Release, Tags, TorznabError};
+pub use torznab::{Indexer, Release, TorznabError};
 
 const SETTING_KEY: &str = "downloads";
 /// The staging folder inside a library folder; hidden, so never scanned.
@@ -82,8 +82,10 @@ pub struct Downloads {
 struct Saved {
     last_id: DownloadId,
     indexers: Vec<Indexer>,
-    /// Where downloads go; unset or gone, the first movie library.
+    /// Where movies go; unset or gone, the first Movies library.
     library_id: Option<i64>,
+    /// Where episodes and seasons go; unset or gone, the first TV Shows library.
+    shows_library_id: Option<i64>,
     downloads: Vec<Record>,
 }
 
@@ -174,6 +176,7 @@ pub struct Progress {
 pub struct Settings {
     pub indexers: Vec<Indexer>,
     pub library_id: Option<i64>,
+    pub shows_library_id: Option<i64>,
 }
 
 pub struct SearchResults {
@@ -187,8 +190,10 @@ pub struct SearchResults {
 pub enum AddError {
     #[error("Downloading isn't available: {0}")]
     NoEngine(String),
-    #[error("Add a Movies library first: downloads go into one")]
+    #[error("Add a Movies library first: movies go into one")]
     NoMovieLibrary,
+    #[error("Add a TV Shows library first: episodes and seasons go into one")]
+    NoShowLibrary,
     #[error("Use a magnet link or a link to a .torrent file")]
     BadLink,
     #[error("Nuvora can't write to {}: {error}", .path.display())]
@@ -272,6 +277,7 @@ impl Downloads {
         Settings {
             indexers: saved.indexers.clone(),
             library_id: saved.library_id,
+            shows_library_id: saved.shows_library_id,
         }
     }
 
@@ -310,9 +316,16 @@ impl Downloads {
         Ok(true)
     }
 
-    pub async fn set_library(&self, id: Option<i64>) -> Result<(), nuvora_library::QueryError> {
+    /// Where movies, and episodes and seasons, go; `None` for the first
+    /// library of the kind.
+    pub async fn set_libraries(
+        &self,
+        movies: Option<i64>,
+        shows: Option<i64>,
+    ) -> Result<(), nuvora_library::QueryError> {
         let mut saved = self.saved.lock().await;
-        saved.library_id = id;
+        saved.library_id = movies;
+        saved.shows_library_id = shows;
         self.save(&saved).await
     }
 
@@ -377,12 +390,18 @@ impl Downloads {
             .or_else(|| magnet_name(link))
             .unwrap_or_else(|| "Untitled download".to_owned());
         let mut saved = self.saved.lock().await;
-        let library = self.target_library(saved.library_id).await?;
-        let root = library
-            .roots
-            .first()
-            .cloned()
-            .ok_or(AddError::NoMovieLibrary)?;
+        let show = ReleaseName::parse(&title).content.is_show();
+        let chosen = if show {
+            saved.shows_library_id
+        } else {
+            saved.library_id
+        };
+        let library = self.target_library(show, chosen).await?;
+        let root = library.roots.first().cloned().ok_or(if show {
+            AddError::NoShowLibrary
+        } else {
+            AddError::NoMovieLibrary
+        })?;
         // Said now rather than when the download fails: a read-only media
         // folder (Docker's `:ro`) can't take downloads at all.
         if let Err(e) = tokio::fs::create_dir_all(root.join(STAGING)).await {
@@ -620,20 +639,34 @@ impl Downloads {
         }
     }
 
-    /// The saved choice if it is still a movie library, else the first one.
-    async fn target_library(&self, chosen: Option<i64>) -> Result<LibraryInfo, AddError> {
+    /// The saved choice if it is still a library of the kind, else the first
+    /// one of the kind: TV Shows for a `show`, Movies otherwise.
+    async fn target_library(
+        &self,
+        show: bool,
+        chosen: Option<i64>,
+    ) -> Result<LibraryInfo, AddError> {
         let libraries = self.library.libraries().await.map_err(AddError::Save)?;
-        let movies = |l: &&LibraryInfo| l.kind == LibraryKind::Movies && !l.roots.is_empty();
+        let kind = if show {
+            LibraryKind::Shows
+        } else {
+            LibraryKind::Movies
+        };
+        let fits = |l: &&LibraryInfo| l.kind == kind && !l.roots.is_empty();
         chosen
             .and_then(|id| {
                 libraries
                     .iter()
-                    .filter(movies)
+                    .filter(fits)
                     .find(|l| l.id == LibraryId::from_raw(id))
             })
-            .or_else(|| libraries.iter().find(movies))
+            .or_else(|| libraries.iter().find(fits))
             .cloned()
-            .ok_or(AddError::NoMovieLibrary)
+            .ok_or(if show {
+                AddError::NoShowLibrary
+            } else {
+                AddError::NoMovieLibrary
+            })
     }
 
     async fn record(&self, id: DownloadId) -> Option<Record> {
@@ -883,17 +916,18 @@ fn staging(record: &Record) -> PathBuf {
     record.root.join(STAGING).join(record.id.to_string())
 }
 
-/// Moves the videos and subtitles from `staging` into
-/// `root/<Title (Year)>/`, keeping the torrent's sub-folders below its top
-/// folder, then deletes `staging` and whatever else it held. Returns the
-/// movie's folder.
+/// Moves the videos and subtitles from `staging` into the movie's or show's
+/// folder, `root/<Title (Year)>/`, keeping the torrent's sub-folders below
+/// its top folder (a show's `Season 01/`, say), then deletes `staging` and
+/// whatever else it held. Episodes join the show's folder if it is there.
+/// Returns the folder.
 fn move_into_library(staging: &Path, root: &Path, title: &str) -> std::io::Result<PathBuf> {
-    let name = MovieName::parse(Path::new(&format!("{title}.mkv")));
+    let name = ReleaseName::parse(title);
     let folder = match name.year {
         Some(year) => format!("{} ({year})", name.title),
         None => name.title,
     };
-    let folder = safe_name(&folder).unwrap_or_else(|| "Downloaded movie".to_owned());
+    let folder = safe_name(&folder).unwrap_or_else(|| "Downloaded".to_owned());
     let destination = root.join(folder);
     // A multi-file torrent has one top folder; its name is the release's.
     let mut top = staging.to_path_buf();

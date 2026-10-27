@@ -1450,9 +1450,15 @@ export interface components {
             indexers: components["schemas"]["IndexerInfo"][];
             /**
              * Format: int64
-             * @description The library downloads go into. `null`: the first Movies library.
+             * @description The library movies go into. `null`: the first Movies library.
              */
             library_id?: number | null;
+            /**
+             * Format: int64
+             * @description The library episodes and seasons go into. `null`: the first TV Shows
+             *     library.
+             */
+            shows_library_id?: number | null;
             /** @description Why this server can't download, when it can't. */
             unavailable?: string | null;
         };
@@ -2095,19 +2101,55 @@ export interface components {
         };
         /** @enum {string} */
         ReleaseCodec: "h264" | "hevc" | "av1";
+        ReleaseContent: {
+            /** @enum {string} */
+            kind: "movie";
+        } | {
+            /** Format: int32 */
+            first: number;
+            /** @enum {string} */
+            kind: "episodes";
+            /** Format: int32 */
+            last: number;
+            /** Format: int32 */
+            season?: number | null;
+        } | {
+            /** Format: int32 */
+            first: number;
+            /** @enum {string} */
+            kind: "seasons";
+            /** Format: int32 */
+            last: number;
+        } | {
+            /** @enum {string} */
+            kind: "complete";
+        };
         /** @enum {string} */
         ReleaseHdr: "hdr" | "dolby_vision";
         ReleaseResult: {
+            /**
+             * @description ISO 639-1 codes of the audio the name names, in order. Empty when it
+             *     names none, which usually means the original language only.
+             */
+            audio_languages: string[];
             codec?: null | components["schemas"]["ReleaseCodec"];
+            /** @description A movie, some episodes, whole seasons, or every season. */
+            content: components["schemas"]["ReleaseContent"];
             /** @description The release's page on the tracker. */
             details_url?: string | null;
+            /** @description More than one audio track. */
+            dual_audio: boolean;
+            /** @description A dubbed soundtrack in place of the original. */
+            dubbed: boolean;
+            /** @description Subtitles burned into the picture: they can't be turned off. */
+            hardcoded_subs: boolean;
             hdr?: null | components["schemas"]["ReleaseHdr"];
             indexer: string;
             /** Format: int32 */
             leechers?: number | null;
             /** @description Pass to `POST /api/admin/downloads`. */
             link: string;
-            /** @description The movie the name points at, and its year. */
+            /** @description The movie or show the name points at, and its year. */
             movie: string;
             /**
              * Format: int64
@@ -2124,6 +2166,8 @@ export interface components {
             /** Format: int64 */
             size_bytes?: number | null;
             source?: null | components["schemas"]["ReleaseSource"];
+            /** @description ISO 639-1 codes of the subtitles the name names; `"mul"` for many. */
+            subtitle_languages: string[];
             /** @description The release's name, as the indexer has it. */
             title: string;
             /** Format: int32 */
@@ -2566,9 +2610,15 @@ export interface components {
             encoder: components["schemas"]["EncoderStatus"];
             settings: components["schemas"]["Tuning"];
         };
+        /**
+         * @description Both choices, every time: a missing one goes back to the first library
+         *     of its kind.
+         */
         UpdateDownloadSettings: {
             /** Format: int64 */
             library_id?: number | null;
+            /** Format: int64 */
+            shows_library_id?: number | null;
         };
         /**
          * @description Every field is optional. `paths` replaces the whole list; removing a folder

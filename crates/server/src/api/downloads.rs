@@ -17,12 +17,12 @@
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use nuvora_media::MovieName;
+use nuvora_media::{Content, ReleaseName};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use super::{ApiError, AppState, ErrorBody, JsonBody};
-use crate::downloads::{self, AddError, ControlError, Snapshot, Tags, TorznabError, torznab};
+use crate::downloads::{self, AddError, ControlError, Snapshot, TorznabError};
 
 #[derive(Serialize, ToSchema)]
 pub struct Download {
@@ -139,9 +139,9 @@ impl From<Snapshot> for Download {
     }
 }
 
-/// The title and year a release name gives, the way the scanner reads a file name.
-pub(super) fn movie_name(release: &str) -> MovieName {
-    MovieName::parse(std::path::Path::new(&format!("{release}.mkv")))
+/// The movie or show a release name points at, and what else it says.
+pub(super) fn movie_name(release: &str) -> ReleaseName {
+    ReleaseName::parse(release)
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -180,9 +180,10 @@ pub(super) async fn add_download(
         .await
         .map_err(|e| match e {
             AddError::BadLink => ApiError::validation("link", e.to_string()),
-            AddError::NoEngine(_) | AddError::NoMovieLibrary | AddError::NotWritable { .. } => {
-                ApiError::refused(e.to_string())
-            }
+            AddError::NoEngine(_)
+            | AddError::NoMovieLibrary
+            | AddError::NoShowLibrary
+            | AddError::NotWritable { .. } => ApiError::refused(e.to_string()),
             AddError::Save(e) => ApiError::internal(e),
         })?;
     let added = state
@@ -264,9 +265,22 @@ pub struct ReleaseSearch {
 pub struct ReleaseResult {
     /// The release's name, as the indexer has it.
     pub title: String,
-    /// The movie the name points at, and its year.
+    /// The movie or show the name points at, and its year.
     pub movie: String,
     pub year: Option<u16>,
+    /// A movie, some episodes, whole seasons, or every season.
+    pub content: ReleaseContent,
+    /// ISO 639-1 codes of the audio the name names, in order. Empty when it
+    /// names none, which usually means the original language only.
+    pub audio_languages: Vec<String>,
+    /// ISO 639-1 codes of the subtitles the name names; `"mul"` for many.
+    pub subtitle_languages: Vec<String>,
+    /// More than one audio track.
+    pub dual_audio: bool,
+    /// A dubbed soundtrack in place of the original.
+    pub dubbed: bool,
+    /// Subtitles burned into the picture: they can't be turned off.
+    pub hardcoded_subs: bool,
     pub indexer: String,
     /// Pass to `POST /api/admin/downloads`.
     pub link: String,
@@ -282,6 +296,45 @@ pub struct ReleaseResult {
     pub hdr: Option<ReleaseHdr>,
     pub codec: Option<ReleaseCodec>,
     pub source: Option<ReleaseSource>,
+}
+
+#[derive(Serialize, ToSchema, Clone, Copy)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ReleaseContent {
+    Movie,
+    /// Episodes `first` to `last`. `season` is `null` for episodes numbered
+    /// across the whole show, as anime often is.
+    Episodes {
+        season: Option<u32>,
+        first: u32,
+        last: u32,
+    },
+    /// Whole seasons `first` to `last`.
+    Seasons {
+        first: u32,
+        last: u32,
+    },
+    /// Every season.
+    Complete,
+}
+
+impl From<Content> for ReleaseContent {
+    fn from(c: Content) -> Self {
+        match c {
+            Content::Movie => ReleaseContent::Movie,
+            Content::Episodes {
+                season,
+                first,
+                last,
+            } => ReleaseContent::Episodes {
+                season,
+                first,
+                last,
+            },
+            Content::Seasons { first, last } => ReleaseContent::Seasons { first, last },
+            Content::Complete => ReleaseContent::Complete,
+        }
+    }
 }
 
 #[derive(Serialize, ToSchema)]
@@ -319,9 +372,16 @@ pub struct IndexerFailure {
 
 impl From<downloads::Release> for ReleaseResult {
     fn from(r: downloads::Release) -> Self {
-        let tags = Tags::parse(&r.title);
-        let name = movie_name(&r.title);
+        let name = ReleaseName::parse(&r.title);
+        let tags = name.tags;
+        let codes = |list: &[&str]| list.iter().map(|&c| c.to_owned()).collect();
         ReleaseResult {
+            content: name.content.into(),
+            audio_languages: codes(&name.audio),
+            subtitle_languages: codes(&name.subtitles),
+            dual_audio: name.dual_audio,
+            dubbed: name.dubbed,
+            hardcoded_subs: name.hardcoded_subs,
             movie: name.title,
             year: name.year,
             title: r.title,
@@ -334,21 +394,21 @@ impl From<downloads::Release> for ReleaseResult {
             details_url: r.details_url,
             resolution: tags.resolution,
             hdr: tags.hdr.map(|h| match h {
-                torznab::Hdr::Hdr => ReleaseHdr::Hdr,
-                torznab::Hdr::DolbyVision => ReleaseHdr::DolbyVision,
+                nuvora_media::Hdr::Hdr => ReleaseHdr::Hdr,
+                nuvora_media::Hdr::DolbyVision => ReleaseHdr::DolbyVision,
             }),
             codec: tags.codec.map(|c| match c {
-                torznab::Codec::H264 => ReleaseCodec::H264,
-                torznab::Codec::Hevc => ReleaseCodec::Hevc,
-                torznab::Codec::Av1 => ReleaseCodec::Av1,
+                nuvora_media::Codec::H264 => ReleaseCodec::H264,
+                nuvora_media::Codec::Hevc => ReleaseCodec::Hevc,
+                nuvora_media::Codec::Av1 => ReleaseCodec::Av1,
             }),
             source: tags.source.map(|s| match s {
-                torznab::Source::Remux => ReleaseSource::Remux,
-                torznab::Source::BluRay => ReleaseSource::Bluray,
-                torznab::Source::Web => ReleaseSource::Web,
-                torznab::Source::Hdtv => ReleaseSource::Hdtv,
-                torznab::Source::Dvd => ReleaseSource::Dvd,
-                torznab::Source::Cam => ReleaseSource::Cam,
+                nuvora_media::Source::Remux => ReleaseSource::Remux,
+                nuvora_media::Source::BluRay => ReleaseSource::Bluray,
+                nuvora_media::Source::Web => ReleaseSource::Web,
+                nuvora_media::Source::Hdtv => ReleaseSource::Hdtv,
+                nuvora_media::Source::Dvd => ReleaseSource::Dvd,
+                nuvora_media::Source::Cam => ReleaseSource::Cam,
             }),
         }
     }
@@ -389,8 +449,11 @@ pub(super) async fn search_releases(
 #[derive(Serialize, ToSchema)]
 pub struct DownloadSettings {
     pub indexers: Vec<IndexerInfo>,
-    /// The library downloads go into. `null`: the first Movies library.
+    /// The library movies go into. `null`: the first Movies library.
     pub library_id: Option<i64>,
+    /// The library episodes and seasons go into. `null`: the first TV Shows
+    /// library.
+    pub shows_library_id: Option<i64>,
     /// Why this server can't download, when it can't.
     pub unavailable: Option<String>,
 }
@@ -403,9 +466,12 @@ pub struct IndexerInfo {
     pub url: String,
 }
 
+/// Both choices, every time: a missing one goes back to the first library
+/// of its kind.
 #[derive(Deserialize, ToSchema)]
 pub struct UpdateDownloadSettings {
     pub library_id: Option<i64>,
+    pub shows_library_id: Option<i64>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -431,6 +497,7 @@ pub(super) async fn get_download_settings(State(state): State<AppState>) -> Json
             })
             .collect(),
         library_id: settings.library_id,
+        shows_library_id: settings.shows_library_id,
         unavailable: state.downloads.engine_error().map(str::to_owned),
     })
 }
@@ -445,19 +512,35 @@ pub(super) async fn put_download_settings(
     State(state): State<AppState>,
     JsonBody(body): JsonBody<UpdateDownloadSettings>,
 ) -> Result<Json<DownloadSettings>, ApiError> {
-    if let Some(id) = body.library_id {
-        let library = state
-            .library
-            .library(nuvora_library::LibraryId::from_raw(id))
-            .await
-            .map_err(ApiError::internal)?;
-        if !library.is_some_and(|l| l.kind == nuvora_library::LibraryKind::Movies) {
-            return Err(ApiError::validation("library_id", "Pick a Movies library"));
+    use nuvora_library::LibraryKind;
+    for (field, id, kind, message) in [
+        (
+            "library_id",
+            body.library_id,
+            LibraryKind::Movies,
+            "Pick a Movies library",
+        ),
+        (
+            "shows_library_id",
+            body.shows_library_id,
+            LibraryKind::Shows,
+            "Pick a TV Shows library",
+        ),
+    ] {
+        if let Some(id) = id {
+            let library = state
+                .library
+                .library(nuvora_library::LibraryId::from_raw(id))
+                .await
+                .map_err(ApiError::internal)?;
+            if !library.is_some_and(|l| l.kind == kind) {
+                return Err(ApiError::validation(field, message));
+            }
         }
     }
     state
         .downloads
-        .set_library(body.library_id)
+        .set_libraries(body.library_id, body.shows_library_id)
         .await
         .map_err(ApiError::internal)?;
     Ok(get_download_settings(State(state)).await)
@@ -592,6 +675,67 @@ mod tests {
         assert_eq!(found["titles"][0]["title"], "Duck and Cover");
     }
 
+    /// A season goes to the TV Shows library, in the show's folder with the
+    /// torrent's own season folder kept, and its episodes scan.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_downloaded_season_lands_in_the_shows_library() {
+        let app = TestApp::with_downloads().await;
+        let admin = app.setup_admin().await;
+        std::fs::create_dir_all(app.path("shows")).unwrap();
+        let created = app
+            .call(
+                "POST",
+                "/api/admin/libraries",
+                Some(&admin),
+                Some(json!({ "name": "TV", "kind": "shows", "paths": [app.path("shows")] })),
+            )
+            .await;
+        assert_eq!(
+            created.status,
+            StatusCode::CREATED,
+            "{:?}",
+            String::from_utf8_lossy(&created.body)
+        );
+        let pack = "Show.Name.S01.1080p.WEB-TEST";
+        app.clips(&[
+            &format!("seed/{pack}/Show.Name.S01E01.mkv"),
+            &format!("seed/{pack}/Show.Name.S01E02.mkv"),
+        ]);
+        let seeder = app.seed(&format!("seed/{pack}")).await;
+
+        let added = app
+            .call(
+                "POST",
+                "/api/admin/downloads",
+                Some(&admin),
+                Some(json!({ "link": seeder.link, "title": pack })),
+            )
+            .await;
+        assert_eq!(added.status, StatusCode::CREATED);
+        let started = Instant::now();
+        let finished: Value = loop {
+            let download = app.get("/api/admin/downloads", &admin).await.json()[0].clone();
+            if matches!(download["state"].as_str(), Some("done" | "failed")) {
+                break download;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(60),
+                "stuck: {download}"
+            );
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        };
+        assert_eq!(finished["state"], "done", "{finished}");
+        // The library keeps its folder's real path (`/private/var` on a Mac).
+        let shows = std::fs::canonicalize(app.path("shows")).unwrap();
+        assert_eq!(finished["path"], shows.join("Show Name").to_str().unwrap());
+        assert!(shows.join("Show Name/Show.Name.S01E02.mkv").exists());
+        assert!(!app.path("movies/Show Name").exists());
+
+        app.scan().await;
+        let found = app.get("/api/search?q=show", &admin).await.json();
+        assert_eq!(found["titles"][0]["title"], "Show Name", "{found}");
+    }
+
     #[tokio::test]
     async fn downloads_are_for_admins_and_explain_a_missing_engine() {
         let app = TestApp::new().await;
@@ -601,7 +745,12 @@ mod tests {
         assert_eq!(settings.status, StatusCode::OK);
         assert_eq!(
             settings.json(),
-            json!({ "indexers": [], "library_id": null, "unavailable": "it is turned off" })
+            json!({
+                "indexers": [],
+                "library_id": null,
+                "shows_library_id": null,
+                "unavailable": "it is turned off"
+            })
         );
 
         let added = app

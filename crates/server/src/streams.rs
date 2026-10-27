@@ -25,7 +25,7 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use librqbit::{AddTorrentOptions, AddTorrentResponse, ManagedTorrent, Session};
 use nuvora_library::StreamSource;
-use nuvora_media::{MediaInfo, MediaTools, PathClass, classify_path};
+use nuvora_media::{EpisodeName, MediaInfo, MediaTools, PathClass, classify_path};
 use password_hash::rand_core::{OsRng, RngCore};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
@@ -376,13 +376,27 @@ impl Stream {
     }
 }
 
-/// The biggest video that isn't a sample or an extra: index, name, size.
+/// What to play: the first episode of a pack of episodes, else the biggest
+/// video that isn't a sample or an extra. Index, name, size.
 fn main_video(files: &librqbit::FileInfos) -> Option<(usize, String, u64)> {
-    files
+    let videos: Vec<(usize, &librqbit::file_info::FileInfo)> = files
         .iter()
         .enumerate()
         .filter(|(_, f)| classify_path(&f.relative_filename) == PathClass::Video)
-        .max_by_key(|(_, f)| f.len)
+        .collect();
+    let episodes: Vec<(u32, u32, usize)> = videos
+        .iter()
+        .filter_map(|(i, f)| {
+            EpisodeName::parse(&f.relative_filename).map(|e| (e.season, e.episode, *i))
+        })
+        .collect();
+    let chosen = if episodes.len() > 1 {
+        episodes.into_iter().min().map(|(_, _, i)| i)
+    } else {
+        videos.iter().max_by_key(|(_, f)| f.len).map(|(i, _)| *i)
+    };
+    chosen
+        .and_then(|i| files.get(i).map(|f| (i, f)))
         .map(|(i, f)| {
             let name = f
                 .relative_filename
@@ -479,7 +493,30 @@ fn byte_range(header: &str, len: u64) -> Option<Option<(u64, u64)>> {
 
 #[cfg(test)]
 mod tests {
-    use super::byte_range;
+    use super::{byte_range, main_video};
+
+    #[test]
+    fn a_pack_plays_its_first_episode_and_a_movie_its_biggest_video() {
+        let file = |name: &str, len: u64| librqbit::file_info::FileInfo {
+            relative_filename: name.into(),
+            offset_in_torrent: 0,
+            piece_range: 0..1,
+            attrs: Default::default(),
+            len,
+        };
+        let pack = vec![
+            file("Show.S01/Show.S01E02.mkv", 900),
+            file("Show.S01/Show.S01E01.mkv", 800),
+            file("Show.S01/Show.S01E10.mkv", 950),
+        ];
+        assert_eq!(main_video(&pack).map(|(i, ..)| i), Some(1));
+        let movie = vec![
+            file("Movie.2020/Sample/sample.mkv", 50),
+            file("Movie.2020/Movie.2020.mkv", 4000),
+            file("Movie.2020/Movie.2020.nfo", 1),
+        ];
+        assert_eq!(main_video(&movie).map(|(i, ..)| i), Some(1));
+    }
 
     #[test]
     fn byte_ranges() {

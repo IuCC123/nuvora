@@ -42,6 +42,8 @@ export type {
   AddDownloadRequest,
   ReleaseSearch,
   ReleaseResult,
+  ReleaseContent,
+  UpdateDownloadSettings,
   ReleaseSource,
   DownloadSettings,
   AddIndexerRequest,
@@ -175,3 +177,5 @@ export type { Anchor, GridGroup, GridLayout, GridMetrics, GridPage, GridSection 
 export { episodeHeading, hasOwnTitle, initialSeason, plural, showCounts, showPlay, UP_NEXT_SECONDS, upNextCountdown } from "./shows";
 export type { ShowPlay } from "./shows";
 export { partyCorrection, partyPosition, partyStartsIn, ServerClock, type PartyCorrection } from "./party";
+export { contentLabel, languageLabels, releaseLanguage } from "./releases";
+export type { ReleaseLanguage } from "./releases";

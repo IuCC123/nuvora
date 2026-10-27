@@ -65,7 +65,7 @@ const SYSTEM_FOLDERS: &[&str] = &[
 
 /// Quality, source, codec and tag tokens (casefolded). A token in this table
 /// ends the title when it is not the first token.
-const RELEASE_TOKENS: &[&str] = &[
+pub(crate) const RELEASE_TOKENS: &[&str] = &[
     "4k",
     "uhd",
     "8k",
@@ -647,7 +647,7 @@ fn year_of(token: &str) -> Option<u16> {
     (1900..=current_year() + 1).contains(&year).then_some(year)
 }
 
-fn current_year() -> u16 {
+pub(crate) fn current_year() -> u16 {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())

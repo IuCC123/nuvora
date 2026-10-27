@@ -5679,7 +5679,15 @@
               "null"
             ],
             "format": "int64",
-            "description": "The library downloads go into. `null`: the first Movies library."
+            "description": "The library movies go into. `null`: the first Movies library."
+          },
+          "shows_library_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The library episodes and seasons go into. `null`: the first TV Shows\nlibrary."
           },
           "unavailable": {
             "type": [
@@ -7676,6 +7684,101 @@
           "av1"
         ]
       },
+      "ReleaseContent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "movie"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Episodes `first` to `last`. `season` is `null` for episodes numbered\nacross the whole show, as anime often is.",
+            "required": [
+              "first",
+              "last",
+              "kind"
+            ],
+            "properties": {
+              "first": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "episodes"
+                ]
+              },
+              "last": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "season": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Whole seasons `first` to `last`.",
+            "required": [
+              "first",
+              "last",
+              "kind"
+            ],
+            "properties": {
+              "first": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "seasons"
+                ]
+              },
+              "last": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Every season.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "complete"
+                ]
+              }
+            }
+          }
+        ]
+      },
       "ReleaseHdr": {
         "type": "string",
         "enum": [
@@ -7688,10 +7791,23 @@
         "required": [
           "title",
           "movie",
+          "content",
+          "audio_languages",
+          "subtitle_languages",
+          "dual_audio",
+          "dubbed",
+          "hardcoded_subs",
           "indexer",
           "link"
         ],
         "properties": {
+          "audio_languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "ISO 639-1 codes of the audio the name names, in order. Empty when it\nnames none, which usually means the original language only."
+          },
           "codec": {
             "oneOf": [
               {
@@ -7702,12 +7818,28 @@
               }
             ]
           },
+          "content": {
+            "$ref": "#/components/schemas/ReleaseContent",
+            "description": "A movie, some episodes, whole seasons, or every season."
+          },
           "details_url": {
             "type": [
               "string",
               "null"
             ],
             "description": "The release's page on the tracker."
+          },
+          "dual_audio": {
+            "type": "boolean",
+            "description": "More than one audio track."
+          },
+          "dubbed": {
+            "type": "boolean",
+            "description": "A dubbed soundtrack in place of the original."
+          },
+          "hardcoded_subs": {
+            "type": "boolean",
+            "description": "Subtitles burned into the picture: they can't be turned off."
           },
           "hdr": {
             "oneOf": [
@@ -7736,7 +7868,7 @@
           },
           "movie": {
             "type": "string",
-            "description": "The movie the name points at, and its year."
+            "description": "The movie or show the name points at, and its year."
           },
           "published": {
             "type": [
@@ -7780,6 +7912,13 @@
                 "$ref": "#/components/schemas/ReleaseSource"
               }
             ]
+          },
+          "subtitle_languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "ISO 639-1 codes of the subtitles the name names; `\"mul\"` for many."
           },
           "title": {
             "type": "string",
@@ -8873,8 +9012,16 @@
       },
       "UpdateDownloadSettings": {
         "type": "object",
+        "description": "Both choices, every time: a missing one goes back to the first library\nof its kind.",
         "properties": {
           "library_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "shows_library_id": {
             "type": [
               "integer",
               "null"

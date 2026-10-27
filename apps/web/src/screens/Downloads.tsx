@@ -2,11 +2,14 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
+  contentLabel,
   describeError,
   formatBytes,
   formatDuration,
   formatLastSeen,
+  languageLabels,
   queryKeys,
+  releaseLanguage,
   type Download,
   type DownloadState,
   type ReleaseResult,
@@ -34,6 +37,16 @@ const QUALITIES: readonly { value: Quality; label: string }[] = [
   { value: 720, label: "720p" },
 ];
 
+type Kind = "all" | "movies" | "shows";
+const KINDS: readonly { value: Kind; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "movies", label: "Movies" },
+  { value: "shows", label: "Shows" },
+];
+
+/** Remembered on this device: whether releases only in other languages are hidden. */
+const ENGLISH_ONLY_KEY = "nuvora.downloads.englishOnly";
+
 /**
  * Admins find a movie on their indexers and download it into a library
  * without leaving Nuvora: search results on the left, the downloads on the
@@ -55,7 +68,7 @@ export function Downloads() {
       <header className="downloads-head">
         <div>
           <h1 tabIndex={-1}>Downloads</h1>
-          <p>Find a movie on your indexers. Play it right away while it downloads, or download it into your library.</p>
+          <p>Find a movie or show on your indexers. Play it right away while it downloads, or download it into your library.</p>
         </div>
         <Link to="/settings/downloads" className="btn btn-secondary btn-small">
           Indexers
@@ -193,6 +206,12 @@ function SearchForm({ initial }: { initial: string }) {
 
 function Results({ query, hasIndexers, downloads }: { query: string; hasIndexers: boolean; downloads: Download[] }) {
   const [quality, setQuality] = useState<Quality>("any");
+  const [kind, setKind] = useState<Kind>("all");
+  const [englishOnly, setEnglishOnly] = useState(() => localStorage.getItem(ENGLISH_ONLY_KEY) !== "false");
+  const chooseEnglishOnly = (on: boolean) => {
+    setEnglishOnly(on);
+    localStorage.setItem(ENGLISH_ONLY_KEY, String(on));
+  };
   const results = useQuery({ ...queries.releases(query), enabled: query !== "" && hasIndexers, placeholderData: keepPreviousData });
 
   if (!hasIndexers) {
@@ -211,7 +230,7 @@ function Results({ query, hasIndexers, downloads }: { query: string; hasIndexers
       <div className="results-hint">
         <SearchIcon size={28} />
         <h2>What do you want to watch?</h2>
-        <p>Search by the movie's name. Adding the year narrows it down, like “Heat 1995”.</p>
+        <p>Search by name. Add a year for a movie, like “Heat 1995”, or a season for a show, like “Severance S02”.</p>
       </div>
     );
   }
@@ -219,7 +238,11 @@ function Results({ query, hasIndexers, downloads }: { query: string; hasIndexers
   if (results.isError && !results.data) return <LoadError error={results.error} retry={() => void results.refetch()} />;
 
   const { releases, failures } = results.data;
-  const shown = releases.filter((r) => quality === "any" || r.resolution === quality);
+  const fits = (r: ReleaseResult) =>
+    (quality === "any" || r.resolution === quality) && (kind === "all" || (kind === "shows") === (r.content.kind !== "movie"));
+  const matching = releases.filter(fits);
+  const shown = englishOnly ? matching.filter((r) => releaseLanguage(r) !== "other") : matching;
+  const hidden = matching.length - shown.length;
   const added = new Set(downloads.map((d) => d.title));
   return (
     <div aria-busy={results.isFetching}>
@@ -228,15 +251,24 @@ function Results({ query, hasIndexers, downloads }: { query: string; hasIndexers
           {releases.length === 0 ? "Nothing found" : `${shown.length} ${shown.length === 1 ? "release" : "releases"}`} for <q>{query}</q>
         </h2>
         {releases.length > 0 && (
-          <div className="quality-filter" role="radiogroup" aria-label="Quality">
-            {QUALITIES.map(({ value, label }) => (
-              <button key={value} type="button" role="radio" aria-checked={quality === value} onClick={() => setQuality(value)}>
-                {label}
-              </button>
-            ))}
+          <div className="results-filters">
+            <Segmented label="Type" options={KINDS} value={kind} onChange={setKind} />
+            <Segmented label="Quality" options={QUALITIES} value={quality} onChange={setQuality} />
+            <label className="english-only">
+              <input type="checkbox" role="switch" className="switch" checked={englishOnly} onChange={(e) => chooseEnglishOnly(e.currentTarget.checked)} />
+              English only
+            </label>
           </div>
         )}
       </div>
+      {hidden > 0 && (
+        <p className="results-hidden">
+          {hidden} {hidden === 1 ? "release is" : "releases are"} only in other languages.{" "}
+          <button type="button" className="link-button" onClick={() => chooseEnglishOnly(false)}>
+            Show {hidden === 1 ? "it" : "them"}
+          </button>
+        </p>
+      )}
       {failures.map((f) => (
         <p key={f.indexer} className="results-failure">
           <AlertIcon size={16} />
@@ -246,7 +278,7 @@ function Results({ query, hasIndexers, downloads }: { query: string; hasIndexers
       {releases.length === 0 ? (
         <p className="results-none">Try fewer words, or check the spelling. Indexers match the release name, not the title Nuvora shows.</p>
       ) : shown.length === 0 ? (
-        <p className="results-none">None in that quality. Pick another above.</p>
+        <p className="results-none">None match these filters. Change them above.</p>
       ) : (
         <ul role="list" className="release-list">
           {shown.map((release) => (
@@ -254,6 +286,28 @@ function Results({ query, hasIndexers, downloads }: { query: string; hasIndexers
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+function Segmented<T extends string | number>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="quality-filter" role="radiogroup" aria-label={label}>
+      {options.map((option) => (
+        <button key={option.value} type="button" role="radio" aria-checked={value === option.value} onClick={() => onChange(option.value)}>
+          {option.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -280,6 +334,8 @@ function ReleaseRow({ release, added }: { release: ReleaseResult; added: boolean
     release.codec === "hevc" ? "HEVC" : release.codec === "h264" ? "H.264" : release.codec === "av1" ? "AV1" : null,
   ].filter((t): t is string => !!t);
   const seeders = release.seeders;
+  const language = releaseLanguage(release);
+  const languages = languageLabels(release);
   const age = release.published ? formatLastSeen(release.published * 1000, Date.now()) : null;
   return (
     <li className="release">
@@ -287,10 +343,18 @@ function ReleaseRow({ release, added }: { release: ReleaseResult; added: boolean
         <p className="release-movie">
           {release.movie}
           {release.year && <span className="release-year">{release.year}</span>}
+          <span className={release.content.kind === "movie" ? "release-content" : "release-content is-show"}>{contentLabel(release.content)}</span>
         </p>
         <p className="release-name" title={release.title}>
           {release.title}
         </p>
+        {languages.length > 0 && (
+          <ul role="list" className={language === "other" ? "release-languages is-other" : "release-languages"} aria-label="Language">
+            {languages.map((l) => (
+              <li key={l}>{l}</li>
+            ))}
+          </ul>
+        )}
         <div className="release-meta">
           {(tags.length > 0 || release.source) && (
             <ul role="list" className="release-tags" aria-label="Quality">

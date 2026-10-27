@@ -93,6 +93,8 @@ export type DownloadState = Schemas["DownloadState"];
 export type AddDownloadRequest = Schemas["AddDownloadRequest"];
 export type ReleaseSearch = Schemas["ReleaseSearch"];
 export type ReleaseResult = Schemas["ReleaseResult"];
+export type ReleaseContent = Schemas["ReleaseContent"];
+export type UpdateDownloadSettings = Schemas["UpdateDownloadSettings"];
 export type ReleaseSource = Schemas["ReleaseSource"];
 export type DownloadSettings = Schemas["DownloadSettings"];
 export type AddIndexerRequest = Schemas["AddIndexerRequest"];
@@ -244,8 +246,8 @@ export interface AdminClient {
   /** Movie releases from every indexer, most seeders first. */
   searchReleases(q: string, signal?: AbortSignalLike): Promise<ReleaseSearch>;
   downloadSettings(signal?: AbortSignalLike): Promise<DownloadSettings>;
-  /** `null` goes back to the first Movies library. */
-  setDownloadLibrary(libraryId: number | null): Promise<DownloadSettings>;
+  /** Where movies, and episodes and seasons, go; `null` for the first library of the kind. Send both. */
+  setDownloadLibraries(body: UpdateDownloadSettings): Promise<DownloadSettings>;
   /** The server asks the indexer first; 400 `validation` names `url` or `api_key` when it doesn't answer. */
   addIndexer(body: AddIndexerRequest): Promise<DownloadSettings>;
   removeIndexer(id: number): Promise<DownloadSettings>;
@@ -384,8 +386,7 @@ export function createClient(options: ClientOptions): NuvoraClient {
       removeDownload: (id) => remove("/api/admin/downloads/{id}", { id }),
       searchReleases: (q, signal) => get<ReleaseSearch>("/api/admin/downloads/search", {}, signal, { q }),
       downloadSettings: (signal) => get<DownloadSettings>("/api/admin/downloads/settings", {}, signal),
-      setDownloadLibrary: (libraryId) =>
-        call<DownloadSettings>("PUT", "/api/admin/downloads/settings", {}, undefined, undefined, { library_id: libraryId }),
+      setDownloadLibraries: (body) => call<DownloadSettings>("PUT", "/api/admin/downloads/settings", {}, undefined, undefined, body),
       addIndexer: (body) => post<DownloadSettings>("/api/admin/downloads/indexers", {}, body),
       removeIndexer: (id) => call<DownloadSettings>("DELETE", "/api/admin/downloads/indexers/{id}", { id }),
       openStream: (body) => post<TorrentStream>("/api/admin/streams", {}, body),

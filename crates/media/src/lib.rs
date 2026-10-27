@@ -14,6 +14,7 @@ mod name;
 mod playback;
 mod previews;
 mod probe;
+mod release;
 mod sidecar;
 mod subtitles;
 #[cfg(test)]
@@ -41,6 +42,7 @@ pub use probe::{
     AudioCodec, AudioStream, ColorInfo, Container, HdrFormat, MediaInfo, PROBE_VERSION, ProbeError,
     SubtitleCodec, SubtitleStream, VideoCodec, VideoStream, probe,
 };
+pub use release::{Codec, Content, Hdr, ReleaseName, Source, Tags};
 pub use sidecar::{SIDECAR_EXTENSIONS, SidecarName, sidecar_codec, sidecar_name};
 pub use subtitles::{
     ExtractError, FontAttachment, SubtitleText, dump_attachment, extract_subtitle,

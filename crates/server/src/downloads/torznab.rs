@@ -6,8 +6,9 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-/// Torznab's Movies category; its sub-categories (HD, UHD, ...) are included.
-const MOVIES: &str = "2000";
+/// Torznab's Movies and TV categories; their sub-categories (HD, UHD,
+/// Anime, ...) are included.
+const MOVIES_AND_TV: &str = "2000,5000";
 const TIMEOUT: Duration = Duration::from_secs(20);
 
 /// A Torznab feed the admin added: Jackett's "Torznab Feed" URL, or a
@@ -59,7 +60,7 @@ pub fn client() -> reqwest::Client {
         .expect("TLS backend initializes")
 }
 
-/// Movie releases matching `query`, in the indexer's order.
+/// Movie and TV releases matching `query`, in the indexer's order.
 pub async fn search(
     http: &reqwest::Client,
     indexer: &Indexer,
@@ -71,7 +72,7 @@ pub async fn search(
         &[
             ("t", "search"),
             ("q", query),
-            ("cat", MOVIES),
+            ("cat", MOVIES_AND_TV),
             ("extended", "1"),
         ],
     )
@@ -209,104 +210,6 @@ pub fn is_downloadable(link: &str) -> bool {
     link.starts_with("magnet:?") || link.starts_with("http://") || link.starts_with("https://")
 }
 
-/// What a release name says about its picture, for the result list.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct Tags {
-    /// 2160, 1080, 720 or 480.
-    pub resolution: Option<u16>,
-    pub hdr: Option<Hdr>,
-    pub codec: Option<Codec>,
-    pub source: Option<Source>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Hdr {
-    Hdr,
-    DolbyVision,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Codec {
-    H264,
-    Hevc,
-    Av1,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Source {
-    Remux,
-    BluRay,
-    Web,
-    Hdtv,
-    Dvd,
-    /// Filmed in a cinema: poor picture and sound.
-    Cam,
-}
-
-impl Tags {
-    pub fn parse(title: &str) -> Tags {
-        let lower = title
-            .to_lowercase()
-            .replace("h.264", "h264")
-            .replace("h.265", "h265");
-        let tokens: Vec<&str> = lower
-            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '+'))
-            .filter(|t| !t.is_empty())
-            .collect();
-        let has = |words: &[&str]| tokens.iter().any(|t| words.contains(t));
-        let resolution = if has(&["2160p", "4k", "uhd"]) {
-            Some(2160)
-        } else if has(&["1080p", "1080i"]) {
-            Some(1080)
-        } else if has(&["720p"]) {
-            Some(720)
-        } else if has(&["480p", "576p"]) {
-            Some(480)
-        } else {
-            None
-        };
-        let hdr = if has(&["dv", "dovi"]) || lower.contains("dolby vision") {
-            Some(Hdr::DolbyVision)
-        } else if has(&["hdr", "hdr10", "hdr10+"]) {
-            Some(Hdr::Hdr)
-        } else {
-            None
-        };
-        let codec = if has(&["x265", "h265", "hevc"]) {
-            Some(Codec::Hevc)
-        } else if has(&["x264", "h264", "avc"]) {
-            Some(Codec::H264)
-        } else if has(&["av1"]) {
-            Some(Codec::Av1)
-        } else {
-            None
-        };
-        let source = if has(&["remux", "bdremux"]) {
-            Some(Source::Remux)
-        } else if has(&[
-            "cam", "camrip", "hdcam", "ts", "hdts", "telesync", "tc", "telecine",
-        ]) {
-            Some(Source::Cam)
-        } else if has(&["bluray", "bdrip", "brrip"]) || lower.contains("blu-ray") {
-            Some(Source::BluRay)
-        } else if has(&["web", "webrip", "webdl"]) {
-            Some(Source::Web)
-        } else if has(&["hdtv"]) {
-            Some(Source::Hdtv)
-        } else if has(&["dvdrip", "dvd", "dvd5", "dvd9"]) {
-            Some(Source::Dvd)
-        } else {
-            None
-        };
-        Tags {
-            resolution,
-            hdr,
-            codec,
-            source,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,32 +283,5 @@ mod tests {
             parse_feed("<html>login</html>", "x"),
             Err(TorznabError::NotTorznab)
         );
-    }
-
-    #[test]
-    fn release_names_tell_the_picture() {
-        assert_eq!(
-            Tags::parse("Dune.Part.Two.2024.2160p.UHD.BluRay.REMUX.DV.HDR.HEVC.TrueHD-GRP"),
-            Tags {
-                resolution: Some(2160),
-                hdr: Some(Hdr::DolbyVision),
-                codec: Some(Codec::Hevc),
-                source: Some(Source::Remux),
-            }
-        );
-        assert_eq!(
-            Tags::parse("Some Movie (2023) [1080p] [WEB-DL] [H.264]"),
-            Tags {
-                resolution: Some(1080),
-                hdr: None,
-                codec: Some(Codec::H264),
-                source: Some(Source::Web),
-            }
-        );
-        assert_eq!(
-            Tags::parse("New.Movie.2026.HDCAM.x264").source,
-            Some(Source::Cam)
-        );
-        assert_eq!(Tags::parse("Plain Title"), Tags::default());
     }
 }

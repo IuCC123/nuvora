@@ -15,7 +15,7 @@ export function SettingsDownloads() {
   return (
     <SettingsPage
       title="Downloads"
-      lede="Connect the indexers the Downloads page searches, and choose the library new movies go into."
+      lede="Connect the indexers the Downloads page searches, and choose where new movies and shows go."
       action={
         <Link to="/downloads" className="btn btn-secondary">
           Open Downloads
@@ -138,37 +138,78 @@ function Destination({ settings }: { settings: DownloadSettings }) {
   const qc = useQueryClient();
   const libraries = useQuery(queries.libraries());
   const save = useMutation({
-    mutationFn: client.admin.setDownloadLibrary,
+    mutationFn: client.admin.setDownloadLibraries,
     onSuccess: (next) => qc.setQueryData(queryKeys.downloadSettings, next),
   });
   const movies = (libraries.data ?? []).filter((l) => l.kind === "movies");
+  const shows = (libraries.data ?? []).filter((l) => l.kind === "shows");
+  const choice = { library_id: settings.library_id ?? null, shows_library_id: settings.shows_library_id ?? null };
+  const pick = (value: string) => (value === "" ? null : Number(value));
   return (
     <section className="settings-section" aria-labelledby="destination">
       <h2 id="destination">Save to</h2>
-      <div className="settings-form">
-        {libraries.data && movies.length === 0 ? (
-          <p className="settings-note">
-            Downloads go into a Movies library. <Link to="/settings/libraries">Add one</Link> first.
-          </p>
-        ) : (
-          <SelectField
-            label="Library"
-            hint="Each movie gets its own folder in the library's first folder, named like “Heat (1995)”."
-            value={settings.library_id === null ? "" : String(settings.library_id)}
-            disabled={save.isPending}
-            onChange={(e) => save.mutate(e.currentTarget.value === "" ? null : Number(e.currentTarget.value))}
-          >
-            <option value="">{movies[0] ? `The first Movies library (${movies[0].name})` : "The first Movies library"}</option>
-            {movies.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </SelectField>
-        )}
+      <div className="form settings-form">
+        <LibraryChoice
+          label="Movies"
+          kind="Movies"
+          hint="Each movie gets its own folder in the library's first folder, named like “Heat (1995)”."
+          libraries={movies}
+          loaded={!!libraries.data}
+          value={choice.library_id}
+          disabled={save.isPending}
+          onChange={(value) => save.mutate({ ...choice, library_id: pick(value) })}
+        />
+        <LibraryChoice
+          label="Episodes and seasons"
+          kind="TV Shows"
+          hint="Each show gets its own folder, named like “Severance”; seasons keep the folders they came in."
+          libraries={shows}
+          loaded={!!libraries.data}
+          value={choice.shows_library_id}
+          disabled={save.isPending}
+          onChange={(value) => save.mutate({ ...choice, shows_library_id: pick(value) })}
+        />
         <FormError message={save.isError ? describeError(save.error) : null} />
         <Saved show={save.isSuccess} />
       </div>
     </section>
+  );
+}
+
+function LibraryChoice({
+  label,
+  kind,
+  hint,
+  libraries,
+  loaded,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  kind: string;
+  hint: string;
+  libraries: { id: number; name: string }[];
+  loaded: boolean;
+  value: number | null;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  if (loaded && libraries.length === 0) {
+    return (
+      <p className="settings-note">
+        {label} go into a {kind} library. <Link to="/settings/libraries">Add one</Link> first.
+      </p>
+    );
+  }
+  return (
+    <SelectField label={label} hint={hint} value={value === null ? "" : String(value)} disabled={disabled} onChange={(e) => onChange(e.currentTarget.value)}>
+      <option value="">{libraries[0] ? `The first ${kind} library (${libraries[0].name})` : `The first ${kind} library`}</option>
+      {libraries.map((l) => (
+        <option key={l.id} value={l.id}>
+          {l.name}
+        </option>
+      ))}
+    </SelectField>
   );
 }
