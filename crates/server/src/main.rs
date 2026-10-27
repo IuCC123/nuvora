@@ -59,6 +59,23 @@ async fn main() -> Result<(), BoxError> {
     }
 }
 
+/// Every torrent peer is an open file, and so is every file a torrent writes:
+/// a season pack with 400 peers runs past the usual soft limit of 1024.
+#[cfg(unix)]
+fn raise_open_file_limit() {
+    use nix::sys::resource::{Resource, getrlimit, setrlimit};
+    const WANTED: u64 = 65_536;
+    match getrlimit(Resource::RLIMIT_NOFILE) {
+        Ok((soft, hard)) if soft < WANTED.min(hard) => {
+            if let Err(e) = setrlimit(Resource::RLIMIT_NOFILE, WANTED.min(hard), hard) {
+                tracing::warn!("can't raise the open file limit from {soft}: {e}");
+            }
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!("can't read the open file limit: {e}"),
+    }
+}
+
 /// Startup order is chosen for first paint: open the catalog (fast), bind and
 /// serve immediately from whatever is already cataloged, and only then kick off
 /// the startup scan in the background.
@@ -70,6 +87,8 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
                 .unwrap_or_else(|_| EnvFilter::new("info,librqbit=warn")),
         )
         .init();
+    #[cfg(unix)]
+    raise_open_file_limit();
     let config = config::load(&args)?;
     if let Some(newer) = update::staged(&config.data_dir) {
         tracing::info!(exe = %newer.display(), "starting the updated server");

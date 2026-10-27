@@ -17,15 +17,16 @@
 pub mod torznab;
 
 use std::collections::{HashMap, HashSet};
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use librqbit::dht::DhtPersistenceConfig;
 use librqbit::{
-    AddTorrent, AddTorrentOptions, AddTorrentResponse, DhtSessionConfig, ListenerOptions,
-    ManagedTorrent, Session, SessionOptions, TorrentStats, TorrentStatsState,
+    AddTorrent, AddTorrentOptions, AddTorrentResponse, ConnectionOptions, DhtSessionConfig,
+    ListenerOptions, ManagedTorrent, PeerConnectionOptions, Session, SessionOptions, TorrentStats,
+    TorrentStatsState,
 };
 use nuvora_library::{Library, LibraryId, LibraryInfo, LibraryKind};
 use nuvora_media::{EpisodeName, PathClass, ReleaseName, classify_path};
@@ -38,6 +39,13 @@ const SETTING_KEY: &str = "downloads";
 const STAGING: &str = ".nuvora-downloads";
 /// BitTorrent's usual port. When it is taken, any free port is used.
 const LISTEN_PORT: u16 = 6881;
+/// Peers a torrent may have connected or still answering at once. librqbit's
+/// 128 filled with peers that never answer, so a torrent with hundreds of
+/// seeders downloaded from about twenty.
+const PEER_LIMIT: usize = 400;
+/// How long a peer has to answer before its place goes to another (librqbit
+/// waits 10 seconds).
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 /// Files worth fetching: videos and subtitles. Everything else in a torrent
 /// (`.nfo`, `.txt`, `.exe`, artwork) stays behind.
 const WANTED_FILES: &str =
@@ -755,7 +763,7 @@ async fn start_engine(dir: &Path, engine: Engine) -> Result<Arc<Session>, String
                 .map_err(|e| format!("{e:#}"));
         }
     }
-    let options = |port: u16| SessionOptions {
+    let options = |listen_addr: SocketAddr| SessionOptions {
         dht: Some(DhtSessionConfig {
             persistence: Some(DhtPersistenceConfig {
                 config_filename: Some(dir.join("dht.json")),
@@ -764,23 +772,39 @@ async fn start_engine(dir: &Path, engine: Engine) -> Result<Arc<Session>, String
             ..Default::default()
         }),
         listen: Some(ListenerOptions {
-            listen_addr: (Ipv4Addr::UNSPECIFIED, port).into(),
+            listen_addr,
             enable_upnp_port_forwarding: true,
             ..Default::default()
         }),
+        connect: Some(ConnectionOptions {
+            peer_opts: Some(PeerConnectionOptions {
+                connect_timeout: Some(CONNECT_TIMEOUT),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),
+        peer_limit: Some(PEER_LIMIT),
         ..Default::default()
     };
-    match Session::new_with_opts(dir.to_owned(), options(LISTEN_PORT)).await {
-        Ok(session) => Ok(session),
-        Err(e) => {
-            tracing::info!(
-                "BitTorrent port {LISTEN_PORT} unavailable ({e:#}); using any free port"
-            );
-            Session::new_with_opts(dir.to_owned(), options(0))
-                .await
-                .map_err(|e| format!("{e:#}"))
+    // `[::]` takes IPv6 and IPv4 peers on one socket; a machine without IPv6
+    // gets IPv4 alone.
+    let attempts: [SocketAddr; 4] = [
+        (Ipv6Addr::UNSPECIFIED, LISTEN_PORT).into(),
+        (Ipv4Addr::UNSPECIFIED, LISTEN_PORT).into(),
+        (Ipv6Addr::UNSPECIFIED, 0).into(),
+        (Ipv4Addr::UNSPECIFIED, 0).into(),
+    ];
+    let mut failed = String::new();
+    for addr in attempts {
+        match Session::new_with_opts(dir.to_owned(), options(addr)).await {
+            Ok(session) => return Ok(session),
+            Err(e) => {
+                tracing::info!("BitTorrent can't listen on {addr} ({e:#}); trying the next");
+                failed = format!("{e:#}");
+            }
         }
     }
+    Err(failed)
 }
 
 #[cfg(test)]
