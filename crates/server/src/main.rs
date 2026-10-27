@@ -8,6 +8,7 @@ mod discovery;
 mod downloads;
 mod net;
 mod party;
+mod streams;
 mod transcode;
 mod tuning;
 mod update;
@@ -116,6 +117,14 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
     } else {
         None
     };
+    let downloads = downloads::Downloads::start(
+        library.clone(),
+        &config.data_dir,
+        downloads::Engine::Internet,
+    )
+    .await;
+    let streams =
+        streams::Streams::start(downloads.engine(), tools.clone(), &config.data_dir).await?;
     let state = api::AppState {
         library: library.clone(),
         auth: Arc::new(auth::Auth::new(net::TrustedProxies::new(
@@ -123,12 +132,8 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
         ))),
         transcoder: transcoder.clone(),
         parties: Arc::new(party::Parties::default()),
-        downloads: downloads::Downloads::start(
-            library.clone(),
-            &config.data_dir,
-            downloads::Engine::Internet,
-        )
-        .await,
+        downloads,
+        streams,
         updater: updater.clone(),
         server: Arc::new(api::ServerSetup {
             id,

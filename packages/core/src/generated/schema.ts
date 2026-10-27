@@ -283,6 +283,106 @@ export interface paths {
         patch: operations["update_server"];
         trace?: never;
     };
+    "/api/admin/streams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["open_stream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/streams/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_stream"];
+        put?: never;
+        post?: never;
+        delete: operations["stop_stream"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/streams/{id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The video as it is, as the engine fetches it: the pieces a Range asks
+         *     for come first.
+         */
+        get: operations["get_stream_file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/streams/{id}/hls/{plan}/init.mp4": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_stream_init"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/streams/{id}/hls/{plan}/main.m3u8": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_stream_playlist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/streams/{id}/hls/{plan}/{segment}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_stream_segment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/tuning": {
         parameters: {
             query?: never;
@@ -1786,6 +1886,12 @@ export interface components {
             /** Format: int32 */
             year?: number | null;
         };
+        OpenStreamRequest: {
+            /** @description A `magnet:` link, or a search result's `link`. */
+            link: string;
+            /** @description The release's name, shown while it starts. */
+            title?: string | null;
+        };
         /** @enum {string} */
         PartyAction: "start" | "play" | "pause" | "seek";
         PartyInvite: {
@@ -2272,6 +2378,38 @@ export interface components {
             /** @description As the tool reports it, e.g. `"7.1.1"`. */
             version: string;
         };
+        TorrentStream: {
+            /**
+             * Format: int64
+             * @description Of the video, fetched so far.
+             */
+            done_bytes?: number | null;
+            /**
+             * Format: int64
+             * @description Bytes per second.
+             */
+            down_bps: number;
+            /** @description Why it stopped, when `failed`. */
+            error?: string | null;
+            /** @description The video being played, once the torrent's details are in. */
+            file_name?: string | null;
+            id: string;
+            media?: null | components["schemas"]["MediaDetails"];
+            /** @description The movie the name points at, and its year. */
+            movie: string;
+            /** Format: int32 */
+            peers: number;
+            playback?: null | components["schemas"]["Playback"];
+            /** Format: int64 */
+            size_bytes?: number | null;
+            state: components["schemas"]["TorrentStreamState"];
+            /** @description The release's name. */
+            title: string;
+            /** Format: int32 */
+            year?: number | null;
+        };
+        /** @enum {string} */
+        TorrentStreamState: "starting" | "probing" | "ready" | "failed";
         Tuning: {
             /**
              * Format: int32
@@ -3654,6 +3792,396 @@ export interface operations {
             };
             /** @description Not an admin */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    open_stream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenStreamRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TorrentStream"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_stream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TorrentStream"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stop_stream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_stream_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/*": number[];
+                };
+            };
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/*": number[];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_stream_init: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The player's id for this playback: 1 to 64 letters, digits, `-` or `_`.
+                 *     Defaults to `default`.
+                 */
+                session?: string;
+                /**
+                 * @description Playlist only: where playback starts, in seconds, so the first
+                 *     segments made are the ones the player asks for first.
+                 */
+                start?: number;
+                /**
+                 * @description Init segment only: the segment a first run starts at (written into
+                 *     the playlist).
+                 */
+                from?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+                plan: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": number[];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_stream_playlist: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The player's id for this playback: 1 to 64 letters, digits, `-` or `_`.
+                 *     Defaults to `default`.
+                 */
+                session?: string;
+                /**
+                 * @description Playlist only: where playback starts, in seconds, so the first
+                 *     segments made are the ones the player asks for first.
+                 */
+                start?: number;
+                /**
+                 * @description Init segment only: the segment a first run starts at (written into
+                 *     the playlist).
+                 */
+                from?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+                plan: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.apple.mpegurl": string;
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_stream_segment: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The player's id for this playback: 1 to 64 letters, digits, `-` or `_`.
+                 *     Defaults to `default`.
+                 */
+                session?: string;
+                /**
+                 * @description Playlist only: where playback starts, in seconds, so the first
+                 *     segments made are the ones the player asks for first.
+                 */
+                start?: number;
+                /**
+                 * @description Init segment only: the segment a first run starts at (written into
+                 *     the playlist).
+                 */
+                from?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+                plan: string;
+                /** @description `{n}.m4s` */
+                segment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": number[];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

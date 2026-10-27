@@ -257,6 +257,11 @@ impl Downloads {
         downloads
     }
 
+    /// The engine, which torrent streams share.
+    pub fn engine(&self) -> Result<Arc<Session>, String> {
+        self.engine.clone()
+    }
+
     /// Why downloading is unavailable, if it is.
     pub fn engine_error(&self) -> Option<&str> {
         self.engine.as_ref().err().map(String::as_str)
@@ -354,16 +359,17 @@ impl Downloads {
         if let Err(e) = &self.engine {
             return Err(AddError::NoEngine(e.clone()));
         }
+        if !valid_link(link) {
+            return Err(AddError::BadLink);
+        }
         let source = if link.starts_with("magnet:?") {
             Source::Magnet {
                 uri: link.to_owned(),
             }
-        } else if torznab::is_downloadable(link) && reqwest::Url::parse(link).is_ok() {
+        } else {
             Source::Link {
                 url: link.to_owned(),
             }
-        } else {
-            return Err(AddError::BadLink);
         };
         let title = title
             .map(|t| t.trim().to_owned())
@@ -800,7 +806,25 @@ enum Fetched {
     Torrent(Vec<u8>),
 }
 
-fn fetcher() -> reqwest::Client {
+/// A magnet link, or an `http(s)` link to a `.torrent`.
+pub fn valid_link(link: &str) -> bool {
+    link.starts_with("magnet:?")
+        || (torznab::is_downloadable(link) && reqwest::Url::parse(link).is_ok())
+}
+
+/// What to hand the engine for a [`valid_link`]: a magnet link as it is; an
+/// indexer's link fetched.
+pub async fn resolve(fetcher: &reqwest::Client, link: &str) -> Result<AddTorrent<'static>, String> {
+    if link.starts_with("magnet:?") {
+        return Ok(AddTorrent::from_url(link.to_owned()));
+    }
+    Ok(match fetch(fetcher, link).await? {
+        Fetched::Magnet(uri) => AddTorrent::from_url(uri),
+        Fetched::Torrent(bytes) => AddTorrent::from_bytes(bytes),
+    })
+}
+
+pub fn fetcher() -> reqwest::Client {
     reqwest::Client::builder()
         .user_agent(concat!("Nuvora/", env!("CARGO_PKG_VERSION")))
         .timeout(Duration::from_secs(30))
@@ -962,7 +986,7 @@ fn safe_name(name: &str) -> Option<String> {
 }
 
 /// A magnet link's `dn` (display name).
-fn magnet_name(link: &str) -> Option<String> {
+pub fn magnet_name(link: &str) -> Option<String> {
     reqwest::Url::parse(link)
         .ok()?
         .query_pairs()

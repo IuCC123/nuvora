@@ -161,15 +161,27 @@ impl DeviceProfile {
     /// otherwise. `None` when there is no video or the device takes neither
     /// the video nor H.264 (or needs AAC and takes none).
     pub fn plan(&self, media: &MediaInfo, audio: Option<u32>) -> Option<StreamPlan> {
+        self.plan_with(media, audio, true)
+    }
+
+    /// Like [`DeviceProfile::plan`], but the picture is always converted: a
+    /// copied picture is cut at its keyframes, and finding them reads the
+    /// whole file, which a file still downloading doesn't have yet.
+    pub fn plan_converting(&self, media: &MediaInfo, audio: Option<u32>) -> Option<StreamPlan> {
+        self.plan_with(media, audio, false)
+    }
+
+    fn plan_with(&self, media: &MediaInfo, audio: Option<u32>, copy: bool) -> Option<StreamPlan> {
         let video = media.video.first()?;
-        let video = if HLS_VIDEO.contains(&video.codec) && self.video_problems(video).is_empty() {
-            VideoPlan::Copy
-        } else {
-            let h264 = self.video.iter().find(|s| s.codec == VideoCodec::H264)?;
-            VideoPlan::H264 {
-                max_height: converted_height(video, h264),
-            }
-        };
+        let video =
+            if copy && HLS_VIDEO.contains(&video.codec) && self.video_problems(video).is_empty() {
+                VideoPlan::Copy
+            } else {
+                let h264 = self.video.iter().find(|s| s.codec == VideoCodec::H264)?;
+                VideoPlan::H264 {
+                    max_height: converted_height(video, h264),
+                }
+            };
         let audio = match audio {
             None => None,
             Some(index) => {
@@ -713,5 +725,20 @@ mod tests {
         ] {
             assert_eq!(StreamPlan::parse(bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn converting_plans_never_copy_the_picture() {
+        let movie = media(
+            Container::Matroska,
+            video(VideoCodec::H264, 1920, 1080, 8, HdrFormat::Sdr),
+            vec![audio(1, AudioCodec::Ac3, 6, true)],
+        );
+        let device = DeviceProfile::baseline();
+        assert_eq!(device.plan(&movie, Some(1)).unwrap().code(), "copy.a1-aac2");
+        assert_eq!(
+            device.plan_converting(&movie, Some(1)).unwrap().code(),
+            "h264-1080.a1-aac2"
+        );
     }
 }

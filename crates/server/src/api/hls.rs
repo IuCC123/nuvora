@@ -14,7 +14,7 @@ use std::sync::Arc;
 use axum::extract::{Path, Query, State};
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
 use axum::response::{IntoResponse, Response};
-use nuvora_library::FileId;
+use nuvora_library::{FileId, StreamSource};
 use nuvora_media::StreamPlan;
 use serde::Deserialize;
 use utoipa::IntoParams;
@@ -53,14 +53,8 @@ pub(super) async fn get_playlist(
     Path((id, plan)): Path<(i64, String)>,
     Query(query): Query<HlsQuery>,
 ) -> Result<Response, ApiError> {
-    let (session, name) = open(&state, &me, id, &plan, query.session).await?;
-    let start = query.start.filter(|s| s.is_finite() && *s > 0.0);
-    let body = session.playlist(&format!("session={name}"), start);
-    let headers = [
-        (CONTENT_TYPE, "application/vnd.apple.mpegurl"),
-        (CACHE_CONTROL, "private, no-cache"),
-    ];
-    Ok((headers, body).into_response())
+    let source = file_source(&state, id).await?;
+    playlist(&state, &me, id, &plan, query, source).await
 }
 
 /// The fMP4 init segment.
@@ -76,12 +70,8 @@ pub(super) async fn get_init(
     Path((id, plan)): Path<(i64, String)>,
     Query(query): Query<HlsQuery>,
 ) -> Result<Response, ApiError> {
-    let (session, _) = open(&state, &me, id, &plan, query.session).await?;
-    let path = session
-        .init(query.from.unwrap_or(0))
-        .await
-        .map_err(api_error)?;
-    serve(&path).await
+    let source = file_source(&state, id).await?;
+    init(&state, &me, id, &plan, query, source).await
 }
 
 /// Media segment `{n}.m4s`, made on demand: a request past what the current
@@ -95,26 +85,85 @@ pub(super) async fn get_init(
 pub(super) async fn get_segment(
     State(state): State<AppState>,
     me: SignedIn,
-    Path((id, plan, segment)): Path<(i64, String, String)>,
+    Path((id, plan, segment_name)): Path<(i64, String, String)>,
     Query(query): Query<HlsQuery>,
+) -> Result<Response, ApiError> {
+    let source = file_source(&state, id).await?;
+    segment(&state, &me, id, &plan, &segment_name, query, source).await
+}
+
+async fn file_source(state: &AppState, id: i64) -> Result<StreamSource, ApiError> {
+    state
+        .library
+        .stream_source(FileId::from_raw(id))
+        .await
+        .map_err(ApiError::internal)?
+        .ok_or(ApiError::not_found())
+}
+
+/// `key` is the converter's name for `source`: a library file's id, or a
+/// torrent stream's negative key.
+pub(super) async fn playlist(
+    state: &AppState,
+    me: &SignedIn,
+    key: i64,
+    plan: &str,
+    query: HlsQuery,
+    source: StreamSource,
+) -> Result<Response, ApiError> {
+    let (session, name) = open(state, me, key, plan, query.session, source).await?;
+    let start = query.start.filter(|s| s.is_finite() && *s > 0.0);
+    let body = session.playlist(&format!("session={name}"), start);
+    let headers = [
+        (CONTENT_TYPE, "application/vnd.apple.mpegurl"),
+        (CACHE_CONTROL, "private, no-cache"),
+    ];
+    Ok((headers, body).into_response())
+}
+
+pub(super) async fn init(
+    state: &AppState,
+    me: &SignedIn,
+    key: i64,
+    plan: &str,
+    query: HlsQuery,
+    source: StreamSource,
+) -> Result<Response, ApiError> {
+    let (session, _) = open(state, me, key, plan, query.session, source).await?;
+    let path = session
+        .init(query.from.unwrap_or(0))
+        .await
+        .map_err(api_error)?;
+    serve(&path).await
+}
+
+pub(super) async fn segment(
+    state: &AppState,
+    me: &SignedIn,
+    key: i64,
+    plan: &str,
+    segment: &str,
+    query: HlsQuery,
+    source: StreamSource,
 ) -> Result<Response, ApiError> {
     let index: usize = segment
         .strip_suffix(".m4s")
         .and_then(|n| n.parse().ok())
         .ok_or(ApiError::not_found())?;
-    let (session, _) = open(&state, &me, id, &plan, query.session).await?;
+    let (session, _) = open(state, me, key, plan, query.session, source).await?;
     let path = session.segment(index).await.map_err(api_error)?;
     serve(&path).await
 }
 
-/// The session for this user, file, plan and player id. 404 for a plan that
-/// doesn't parse or doesn't fit the file (an audio stream it lacks).
+/// The session for this user, source, plan and player id. 404 for a plan that
+/// doesn't parse or doesn't fit the source (an audio stream it lacks).
 async fn open(
     state: &AppState,
     me: &SignedIn,
-    id: i64,
+    key: i64,
     plan: &str,
     session: Option<String>,
+    source: StreamSource,
 ) -> Result<(Arc<Session>, String), ApiError> {
     let name = session.unwrap_or_else(|| "default".to_owned());
     let name_ok = (1..=64).contains(&name.len())
@@ -128,12 +177,6 @@ async fn open(
         ));
     }
     let plan = StreamPlan::parse(plan).ok_or(ApiError::not_found())?;
-    let source = state
-        .library
-        .stream_source(FileId::from_raw(id))
-        .await
-        .map_err(ApiError::internal)?
-        .ok_or(ApiError::not_found())?;
     let fits = !source.media.video.is_empty()
         && plan
             .audio
@@ -144,7 +187,7 @@ async fn open(
     let key = SessionKey {
         user: me.user.id.raw(),
         session: name.clone(),
-        file: id,
+        file: key,
         plan,
     };
     let session = state

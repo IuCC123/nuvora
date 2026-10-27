@@ -225,11 +225,19 @@ async fn active_stream(state: &AppState, s: StreamActivity) -> Result<ActiveStre
         .await
         .map_err(ApiError::internal)?
         .map_or_else(|| "Someone".to_owned(), |u| u.display_name);
-    let title = library
-        .file_title(FileId::from_raw(s.file))
-        .await
-        .map_err(ApiError::internal)?
-        .unwrap_or_else(|| "A video no longer in the library".to_owned());
+    // Torrent streams have negative keys.
+    let title = if s.file < 0 {
+        state
+            .streams
+            .by_key(s.file)
+            .map_or_else(|| "A stream that has ended".to_owned(), |t| t.title())
+    } else {
+        library
+            .file_title(FileId::from_raw(s.file))
+            .await
+            .map_err(ApiError::internal)?
+            .unwrap_or_else(|| "A video no longer in the library".to_owned())
+    };
     let audio_index = s.plan.audio.map(|a| a.stream);
     let details = MediaDetails::from(s.media);
     let video_output = match s.plan.video {

@@ -25,8 +25,9 @@
 //! | GET    | /api/openapi.json           | The spec                                 |
 //!
 //! Accounts, admin, watch, show and library page, subtitle, transcoding
-//! settings and activity, and download routes live in [`accounts`], [`admin`],
-//! [`watch`], [`browse`], [`subtitles`], [`transcoding`] and [`downloads`]. Access is set
+//! settings and activity, download and torrent stream routes live in
+//! [`accounts`], [`admin`], [`watch`], [`browse`], [`subtitles`],
+//! [`transcoding`], [`downloads`] and [`streams`]. Access is set
 //! by the group a route is registered in ([`Access`]), which decides both the
 //! middleware and the spec's `security`, so the two cannot disagree.
 //!
@@ -45,6 +46,7 @@ mod metadata;
 mod party;
 mod previews;
 mod search;
+mod streams;
 mod subtitles;
 #[cfg(test)]
 mod test_app;
@@ -115,6 +117,7 @@ pub struct AppState {
     pub transcoder: Arc<crate::transcode::Transcoder>,
     pub parties: Arc<crate::party::Parties>,
     pub downloads: Arc<crate::downloads::Downloads>,
+    pub streams: Arc<crate::streams::Streams>,
     pub updater: Arc<crate::update::Updater>,
     pub server: Arc<ServerSetup>,
 }
@@ -233,7 +236,13 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
             downloads::put_download_settings
         ))
         .routes(routes!(downloads::add_indexer))
-        .routes(routes!(downloads::remove_indexer));
+        .routes(routes!(downloads::remove_indexer))
+        .routes(routes!(streams::open_stream))
+        .routes(routes!(streams::get_stream, streams::stop_stream))
+        .routes(routes!(streams::get_stream_file))
+        .routes(routes!(streams::get_stream_playlist))
+        .routes(routes!(streams::get_stream_init))
+        .routes(routes!(streams::get_stream_segment));
     document_access(member.get_openapi_mut(), Access::Member);
     document_access(admin.get_openapi_mut(), Access::Admin);
     if let Some(state) = state {

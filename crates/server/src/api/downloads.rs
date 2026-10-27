@@ -140,7 +140,7 @@ impl From<Snapshot> for Download {
 }
 
 /// The title and year a release name gives, the way the scanner reads a file name.
-fn movie_name(release: &str) -> MovieName {
+pub(super) fn movie_name(release: &str) -> MovieName {
     MovieName::parse(std::path::Path::new(&format!("{release}.mkv")))
 }
 
@@ -537,11 +537,9 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use axum::http::StatusCode;
-    use librqbit::{CreateTorrentOptions, Session};
     use serde_json::{Value, json};
 
     use crate::api::test_app::TestApp;
-    use crate::downloads::loopback_options;
 
     const RELEASE: &str = "Duck.and.Cover.1951.480p.WEB.x264-PD";
 
@@ -554,47 +552,14 @@ mod tests {
         app.clips(&[&format!("seed/{RELEASE}/{RELEASE}.mp4")]);
         std::fs::write(app.path(&format!("seed/{RELEASE}/{RELEASE}.nfo")), "notes").unwrap();
 
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let http = listener.local_addr().unwrap();
-        let seeder = Session::new_with_opts(app.path("seeder"), loopback_options())
-            .await
-            .unwrap();
-        let (created, _) = seeder
-            .create_and_serve_torrent(
-                &app.path(&format!("seed/{RELEASE}")),
-                CreateTorrentOptions {
-                    name: None,
-                    trackers: vec![format!("http://{http}/announce")],
-                    piece_length: None,
-                },
-            )
-            .await
-            .unwrap();
-        let torrent = created.as_bytes().unwrap();
-        let std::net::SocketAddr::V4(peer) = seeder.listen_addr().unwrap() else {
-            panic!("the seeder listens on IPv4");
-        };
-        let mut announce = b"d8:intervali60e5:peers6:".to_vec();
-        announce.extend(peer.ip().octets());
-        announce.extend(peer.port().to_be_bytes());
-        announce.push(b'e');
-        let routes = axum::Router::new()
-            .route(
-                "/release.torrent",
-                axum::routing::get(move || async move { torrent }),
-            )
-            .route(
-                "/announce",
-                axum::routing::get(move || async move { announce }),
-            );
-        tokio::spawn(async move { axum::serve(listener, routes).await });
+        let seeder = app.seed(&format!("seed/{RELEASE}")).await;
 
         let added = app
             .call(
                 "POST",
                 "/api/admin/downloads",
                 Some(&admin),
-                Some(json!({ "link": format!("http://{http}/release.torrent"), "title": RELEASE })),
+                Some(json!({ "link": seeder.link, "title": RELEASE })),
             )
             .await;
         assert_eq!(added.status, StatusCode::CREATED);

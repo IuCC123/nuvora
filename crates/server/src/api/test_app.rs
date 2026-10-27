@@ -95,6 +95,13 @@ impl TestApp {
         let downloads =
             crate::downloads::Downloads::start(library.clone(), &dir.path().join("data"), engine)
                 .await;
+        let streams = crate::streams::Streams::start(
+            downloads.engine(),
+            tools.clone(),
+            &dir.path().join("data"),
+        )
+        .await
+        .unwrap();
         let state = AppState {
             library,
             auth: Arc::new(crate::auth::Auth::new(crate::net::TrustedProxies::new(
@@ -109,6 +116,7 @@ impl TestApp {
             .await,
             parties: Default::default(),
             downloads,
+            streams,
             updater: crate::update::Updater::new(
                 None,
                 dir.path().join("nuvora"),
@@ -273,5 +281,60 @@ impl TestApp {
             Some(json!({"username": username, "password": password})),
         )
         .await
+    }
+}
+
+/// A second BitTorrent engine sharing a file or folder, behind a one-route
+/// tracker. Keep it alive for as long as the test downloads.
+pub struct Seeder {
+    _session: Arc<librqbit::Session>,
+    /// A link to the `.torrent`, as an indexer gives one.
+    pub link: String,
+}
+
+impl TestApp {
+    /// Seeds `rel` (under the test's folder) on this machine.
+    pub async fn seed(&self, rel: &str) -> Seeder {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let http = listener.local_addr().unwrap();
+        let session = librqbit::Session::new_with_opts(
+            self.path(&format!("seeder-{}", http.port())),
+            crate::downloads::loopback_options(),
+        )
+        .await
+        .unwrap();
+        let (created, _) = session
+            .create_and_serve_torrent(
+                &self.path(rel),
+                librqbit::CreateTorrentOptions {
+                    name: None,
+                    trackers: vec![format!("http://{http}/announce")],
+                    piece_length: None,
+                },
+            )
+            .await
+            .unwrap();
+        let torrent = created.as_bytes().unwrap();
+        let std::net::SocketAddr::V4(peer) = session.listen_addr().unwrap() else {
+            panic!("the seeder listens on IPv4");
+        };
+        let mut announce = b"d8:intervali60e5:peers6:".to_vec();
+        announce.extend(peer.ip().octets());
+        announce.extend(peer.port().to_be_bytes());
+        announce.push(b'e');
+        let routes = axum::Router::new()
+            .route(
+                "/release.torrent",
+                axum::routing::get(move || async move { torrent }),
+            )
+            .route(
+                "/announce",
+                axum::routing::get(move || async move { announce }),
+            );
+        tokio::spawn(async move { axum::serve(listener, routes).await });
+        Seeder {
+            _session: session,
+            link: format!("http://{http}/release.torrent"),
+        }
     }
 }
