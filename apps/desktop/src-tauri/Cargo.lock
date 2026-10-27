@@ -2314,7 +2314,7 @@ dependencies = [
 
 [[package]]
 name = "nuvora-desktop"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "mdns-sd",
  "reqwest 0.12.28",
