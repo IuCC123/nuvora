@@ -27,6 +27,7 @@ import type {
   Download,
   DownloadSettings,
   ReleaseSearch,
+  TorrentStream,
 } from "./client";
 import type { AbortSignalLike } from "./transport";
 
@@ -77,6 +78,7 @@ export const queryKeys = {
   downloads: ["admin", "downloads"] as const,
   downloadSettings: ["admin", "download-settings"] as const,
   releases: (q: string) => ["admin", "releases", q] as const,
+  stream: (id: string) => ["admin", "stream", id] as const,
   adminUpdate: ["admin", "update"] as const,
   health: ["health"] as const,
   homeLayout: ["home-layout"] as const,
@@ -142,6 +144,8 @@ export interface Queries {
   downloadSettings(): QueryDef<DownloadSettings>;
   /** Indexer results stay fresh for a few minutes: searching them again is slow. */
   releases(q: string): QueryDef<ReleaseSearch>;
+  /** Live: poll it while the stream plays. */
+  stream(id: string): QueryDef<TorrentStream>;
   homeLayout(): QueryDef<HomeLayout>;
   /** `q` as typed; callers skip blank queries. */
   search(q: string): QueryDef<SearchResponse>;
@@ -198,6 +202,7 @@ export function createQueries(client: NuvoraClient): Queries {
     downloads: () => ({ queryKey: queryKeys.downloads, queryFn: ({ signal }) => client.admin.downloads(signal), staleTime: 0 }),
     downloadSettings: () => ({ queryKey: queryKeys.downloadSettings, queryFn: ({ signal }) => client.admin.downloadSettings(signal), staleTime: ADMIN_FRESH }),
     releases: (q) => ({ queryKey: queryKeys.releases(q), queryFn: ({ signal }) => client.admin.searchReleases(q, signal), staleTime: 5 * 60_000 }),
+    stream: (id) => ({ queryKey: queryKeys.stream(id), queryFn: ({ signal }) => client.admin.stream(id, signal), staleTime: 0 }),
   };
 }
 

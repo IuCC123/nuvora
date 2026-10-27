@@ -50,8 +50,9 @@ const text = (url: string) => async ({ signal }: { signal: AbortSignal }) => {
  * The player's subtitle state: which track is on (chosen by `chooseSubtitle`
  * until the viewer picks), and the text it needs. A styled track that can't be
  * drawn falls back to its WebVTT conversion for the rest of the session.
+ * `fileId` is `null` for a torrent stream, which has no tracks to fetch.
  */
-export function useSubtitles(fileId: number, tracks: readonly SubtitleTrack[], audio: string | null, scope: SubtitleScope): Subtitles {
+export function useSubtitles(fileId: number | null, tracks: readonly SubtitleTrack[], audio: string | null, scope: SubtitleScope): Subtitles {
   const user = useUser();
   const [remembered] = useState(() => (user ? loadSubtitleChoice(user.id, scope) : null));
   const mode = user?.subtitle_mode ?? "auto";
@@ -69,21 +70,21 @@ export function useSubtitles(fileId: number, tracks: readonly SubtitleTrack[], a
 
   const vtt = useQuery({
     queryKey: ["subtitle", fileId, selected?.index, "vtt"],
-    queryFn: text(client.subtitleUrl(fileId, selected?.index ?? 0, "vtt")),
-    enabled: !!selected && !wantStyled,
+    queryFn: text(client.subtitleUrl(fileId ?? 0, selected?.index ?? 0, "vtt")),
+    enabled: fileId !== null && !!selected && !wantStyled,
     staleTime: Infinity,
     select: parseVtt,
   });
   const ass = useQuery({
     queryKey: ["subtitle", fileId, selected?.index, "ass"],
-    queryFn: text(client.subtitleUrl(fileId, selected?.index ?? 0, "ass")),
-    enabled: wantStyled,
+    queryFn: text(client.subtitleUrl(fileId ?? 0, selected?.index ?? 0, "ass")),
+    enabled: fileId !== null && wantStyled,
     staleTime: Infinity,
   });
   const fonts = useQuery({
     queryKey: ["fonts", fileId],
-    queryFn: ({ signal }) => client.fonts(fileId, signal),
-    enabled: wantStyled,
+    queryFn: ({ signal }) => client.fonts(fileId ?? 0, signal),
+    enabled: fileId !== null && wantStyled,
     staleTime: Infinity,
     // Absolute: the renderer fetches them from its worker, where a path would resolve against the worker's own URL.
     select: (list: FontAttachment[]) => list.map((f) => new URL(client.resolve(f.url), location.href).href),

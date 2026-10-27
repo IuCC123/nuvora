@@ -30,14 +30,17 @@ export interface PartyPlayer {
  * this file for everyone; after that every play, pause and seek goes through
  * the party and comes back for everyone (this player included) at the same
  * moment. Small drift is closed by playing a little faster or slower, large
- * drift by jumping.
+ * drift by jumping. Without a library `file` (a torrent stream) the player
+ * keeps to itself: the party can only watch what is in the library.
  */
-export function usePartyPlayer(video: HTMLVideoElement | null, itemId: number, fileId: number, startAt: number | undefined): PartyPlayer {
+export function usePartyPlayer(video: HTMLVideoElement | null, file: { itemId: number; fileId: number } | null, startAt: number | undefined): PartyPlayer {
   const me = useUser()?.id;
   const { party, connected } = useParty();
   const playback = party?.playback ?? null;
+  const itemId = file?.itemId;
+  const fileId = file?.fileId;
   // Without the live connection the player is on its own: it can't hear the party, nor tell it anything.
-  const active = connected && !!playback && playback.item_id === itemId && playback.file_id === fileId;
+  const active = connected && !!playback && itemId !== undefined && playback.item_id === itemId && playback.file_id === fileId;
   const [countdown, setCountdown] = useState<number | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [blocked, setBlocked] = useState(false);
@@ -47,7 +50,7 @@ export function usePartyPlayer(video: HTMLVideoElement | null, itemId: number, f
   // Opened while in a party on something else: this is what the party watches now.
   const started = useRef(false);
   useEffect(() => {
-    if (started.current || !party || !connected || active) return;
+    if (itemId === undefined || fileId === undefined || started.current || !party || !connected || active) return;
     started.current = true;
     partyLink.send({ type: "start", item_id: itemId, file_id: fileId, position_ms: Math.round((startAt ?? 0) * 1000) });
   }, [party, connected, active, itemId, fileId, startAt]);

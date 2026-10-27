@@ -14,6 +14,10 @@ export function MissingEpisode() {
   return <ErrorState title="This episode isn't in your library" detail="It may have been removed by the last scan." home />;
 }
 
+export function MissingStream() {
+  return <ErrorState title="This stream doesn't exist" detail="Streams end when nobody watches them. Start it again from Downloads." home />;
+}
+
 export function MissingLibrary() {
   return <ErrorState title="This library doesn't exist" detail="An admin may have removed it." home />;
 }

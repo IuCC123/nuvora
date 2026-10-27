@@ -32,7 +32,8 @@ export function saveSubtitleStyle(style: SubtitleStyle) {
 }
 
 /** `"show:12"` or `"movie:4"`: the scope a choice carries across. */
-export type SubtitleScope = `show:${number}` | `movie:${number}`;
+/** What a subtitle choice is remembered for; a torrent stream remembers nothing. */
+export type SubtitleScope = `show:${number}` | `movie:${number}` | "stream";
 
 const choiceKey = (userId: number, scope: SubtitleScope) => `nuvora.subtitles.choice.${userId}.${scope}`;
 

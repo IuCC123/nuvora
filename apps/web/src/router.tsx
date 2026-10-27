@@ -18,10 +18,11 @@ import { LibraryScreen } from "./screens/Library";
 import { MovieScreen } from "./screens/Movie";
 import { Search } from "./screens/Search";
 import { Downloads } from "./screens/Downloads";
+import { Watch } from "./screens/Watch";
 import { PartyLayer } from "./components/party/PartyLayer";
 import { EpisodePlayer, Player } from "./screens/Player";
 import { ShowScreen } from "./screens/Show";
-import { ErrorState, MissingEpisode, MissingLibrary, MissingMovie, MissingShow } from "./screens/ErrorState";
+import { ErrorState, MissingEpisode, MissingLibrary, MissingMovie, MissingShow, MissingStream } from "./screens/ErrorState";
 import { playable, playState } from "./lib/playState";
 import { SignIn } from "./screens/SignIn";
 import { WelcomeAccount, WelcomeLibrary } from "./screens/Welcome";
@@ -48,6 +49,7 @@ import { SettingsUsers } from "./screens/settings/Users";
  *   /library/$id?sort=&order=&filter=&res=&hdr=&group=  Library grid (view also kept per device)
  *   /episode/$id/play?file=&t=  Player for an episode; without `file` it resumes where the viewer stopped
  *   /downloads?q=               Find a movie on the indexers and download it (admins)
+ *   /watch/$id                  Player for a release playing while it downloads (admins)
  *   /settings/<section>         general, libraries, transcoding, downloads, activity, users (admins), account
  */
 /** Every screen, with Watch Together's invitations and follow-along under them. */
@@ -313,6 +315,23 @@ const playEpisode = createRoute({
   errorComponent: Unreachable,
 });
 
+/** A torrent stream's id is 32 hex characters; anything else names no stream. */
+const watch = createRoute({
+  getParentRoute: () => root,
+  path: "/watch/$id",
+  params: {
+    parse: (p: { id: string }) => {
+      if (!/^[0-9a-f]{32}$/.test(p.id)) throw notFound();
+      return { id: p.id };
+    },
+    stringify: (p: { id: string }) => ({ id: p.id }),
+  },
+  beforeLoad: async (ctx) => requireAdmin({ context: await requireUser(ctx) }),
+  loader: ({ params }) => void queryClient.prefetchQuery(queries.stream(params.id)),
+  component: Watch,
+  notFoundComponent: MissingStream,
+});
+
 export const router = createRouter({
   routeTree: root.addChildren([
     welcome,
@@ -330,6 +349,7 @@ export const router = createRouter({
     ])]),
     play,
     playEpisode,
+    watch,
   ]),
   defaultPreload: "intent",
   defaultPreloadStaleTime: 0, // TanStack Query owns freshness

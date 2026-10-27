@@ -13,12 +13,19 @@ const timers = {
  * request carries the position even if the page never comes back. Leaving the
  * player sends the last position, then refreshes home and the detail page.
  * `onReported` hears every position sent while the player is still open.
+ * Without a library `file` (a torrent stream) nothing is reported.
  */
-export function useProgressReporting(video: HTMLVideoElement | null, itemId: number, fileId: number, onReported: (positionMs: number) => void) {
+export function useProgressReporting(
+  video: HTMLVideoElement | null,
+  file: { itemId: number; fileId: number } | null,
+  onReported: (positionMs: number) => void,
+) {
   const reported = useRef(onReported);
   reported.current = onReported;
+  const itemId = file?.itemId;
+  const fileId = file?.fileId;
   useEffect(() => {
-    if (!video) return;
+    if (!video || itemId === undefined || fileId === undefined) return;
     let leaving = false;
     const told = (body: ProgressRequest) => !leaving && reported.current(body.position_ms);
     const reporter = createProgressReporter({

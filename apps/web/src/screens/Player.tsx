@@ -105,12 +105,7 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
   const notice = failed ? playerFailed : movie && !version ? fileGone : decided?.kind === "blocked" ? decided.notice : undefined;
   const fromServer = served?.file === file;
   const playback = notice ? undefined : fromServer ? served.playback : version?.playback;
-  const source: Source | undefined =
-    playback?.kind === "direct_play"
-      ? { kind: opensNatively(playback.mime_type) ? "direct" : "rewrap", url: client.resolve(playback.url) }
-      : playback?.kind === "hls"
-        ? { kind: "hls", url: client.resolve(playback.url) }
-        : undefined;
+  const source = sourceFor(playback);
   const mode = playback ? playbackMode(playback, source?.kind === "rewrap") : undefined;
 
   // A file that won't play directly here after all gets the server's stream, from where it stopped.
@@ -136,8 +131,7 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
   return (
     <PlayerView
       key={`${id}:${file}:${fromServer ? "server" : "file"}`}
-      itemId={id}
-      fileId={file}
+      catalog={{ itemId: id, fileId: file }}
       title={episode?.show_title ?? movie?.title}
       year={movie?.kind === "movie" ? movie.year : undefined}
       episode={episode}
@@ -159,11 +153,18 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
 const NO_TRACKS: SubtitleTrack[] = [];
 
 /** The file as it is (opened by the browser, or rewrapped here), or streamed through the server as HLS. */
-type Source = { kind: "direct" | "rewrap" | "hls"; url: string };
+export type Source = { kind: "direct" | "rewrap" | "hls"; url: string };
+
+/** Where a playback decision says to get the picture from. */
+export function sourceFor(playback: Version["playback"] | undefined): Source | undefined {
+  if (playback?.kind === "direct_play") return { kind: opensNatively(playback.mime_type) ? "direct" : "rewrap", url: client.resolve(playback.url) };
+  if (playback?.kind === "hls") return { kind: "hls", url: client.resolve(playback.url) };
+  return undefined;
+}
 
 interface PlayerViewProps {
-  itemId: number;
-  fileId: number;
+  /** The library file playing, for progress, Watch Together, subtitles and seek previews; `null` for a torrent stream. */
+  catalog: { itemId: number; fileId: number } | null;
   title: string | undefined;
   year: number | null | undefined;
   episode: EpisodeDetail | undefined;
@@ -177,6 +178,10 @@ interface PlayerViewProps {
   /** What a subtitle choice is remembered for: the show for an episode, else the movie. */
   subtitleScope: SubtitleScope;
   notice: NoticeText | undefined;
+  /** Before there is anything to play: what the player waits for (a torrent stream starting). */
+  waiting?: string | null;
+  /** Under the spinner while waiting or buffering: how the stream's download goes. */
+  streamNote?: string | null;
   onBack: () => void;
   onFailed: () => void;
   onPosition: (positionMs: number) => void;
@@ -184,7 +189,7 @@ interface PlayerViewProps {
 
 type PulseKind = "play" | "pause" | "back" | "forward" | "volume" | "subtitles-on" | "subtitles-off";
 
-function PlayerView({ itemId, fileId, title, year, episode, onNext, source, mode, startAt: initialStart, subtitleTracks, audioLanguage, subtitleScope, notice, onBack, onFailed, onPosition }: PlayerViewProps) {
+export function PlayerView({ catalog, title, year, episode, onNext, source, mode, startAt: initialStart, subtitleTracks, audioLanguage, subtitleScope, notice, waiting, streamNote, onBack, onFailed, onPosition }: PlayerViewProps) {
   const [startAt] = useState(initialStart);
   const src = source?.url;
   const root = useRef<HTMLDivElement>(null);
@@ -198,7 +203,7 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, source, mode
   const { awake, wake, sleep } = useAwake(AUTO_HIDE_MS);
   const buffering = useHeldFor(media.starved && !!src, SPINNER_DELAY_MS);
   const lastPointer = useRef("mouse");
-  useProgressReporting(src ? video : null, itemId, fileId, onPosition);
+  useProgressReporting(src ? video : null, catalog, onPosition);
   // On failure, keep the place first, so the server's stream picks up from here.
   const fail = () => {
     if (video && video.currentTime > 0) onPosition(Math.floor(video.currentTime * 1000));
@@ -206,11 +211,15 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, source, mode
   };
   useHls(video, source?.kind === "hls" ? source.url : undefined, startAt, fail);
   useRewrap(video, source?.kind === "rewrap" ? source.url : undefined, startAt, fail);
-  const party = usePartyPlayer(src ? video : null, itemId, fileId, startAt);
+  const party = usePartyPlayer(src ? video : null, catalog, startAt);
   useReleaseStream(video);
-  const subtitles = useSubtitles(fileId, subtitleTracks, audioLanguage, subtitleScope);
+  const subtitles = useSubtitles(catalog?.fileId ?? null, subtitleTracks, audioLanguage, subtitleScope);
   // Previews a new video doesn't have yet are made within a minute or so.
-  const { data: previews } = useQuery({ ...queries.previews(fileId), refetchInterval: (q) => (q.state.data === null ? 15_000 : false) });
+  const { data: previews } = useQuery({
+    ...queries.previews(catalog?.fileId ?? 0),
+    enabled: catalog !== null,
+    refetchInterval: (q) => (q.state.data === null ? 15_000 : false),
+  });
   const [subtitleStyle, setSubtitleStyle] = useState(loadSubtitleStyle);
   const changeSubtitleStyle = (style: SubtitleStyle) => {
     setSubtitleStyle(style);
@@ -491,6 +500,17 @@ function PlayerView({ itemId, fileId, title, year, episode, onNext, source, mode
       </div>
 
       {episode?.next && src && !notice && <UpNext video={video} next={episode.next} controlsShown={visible} onPlay={onNext} />}
+
+      {waiting && !src && !notice && (
+        <div className="player-waiting" role="status" aria-live="polite">
+          <span className="player-spinner">
+            <SpinIcon size={44} strokeWidth={2} />
+          </span>
+          <p className="player-waiting-label">{waiting}</p>
+          {streamNote && <p className="player-stream-note">{streamNote}</p>}
+        </div>
+      )}
+      {streamNote && src && buffering && !notice && <p className="player-stream-note player-buffer-note">{streamNote}</p>}
 
       {notice && (
         <div className="player-notice">

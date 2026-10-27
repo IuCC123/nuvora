@@ -96,6 +96,9 @@ export type ReleaseResult = Schemas["ReleaseResult"];
 export type ReleaseSource = Schemas["ReleaseSource"];
 export type DownloadSettings = Schemas["DownloadSettings"];
 export type AddIndexerRequest = Schemas["AddIndexerRequest"];
+export type TorrentStream = Schemas["TorrentStream"];
+export type TorrentStreamState = Schemas["TorrentStreamState"];
+export type OpenStreamRequest = Schemas["OpenStreamRequest"];
 
 export interface ClientOptions {
   /** Origin of the Nuvora server, e.g. `""` (same origin, web) or `"http://192.168.1.10:8640"` (TV). */
@@ -246,6 +249,12 @@ export interface AdminClient {
   /** The server asks the indexer first; 400 `validation` names `url` or `api_key` when it doesn't answer. */
   addIndexer(body: AddIndexerRequest): Promise<DownloadSettings>;
   removeIndexer(id: number): Promise<DownloadSettings>;
+  /** Starts playing a release while it downloads, or returns the stream already playing it. */
+  openStream(body: OpenStreamRequest): Promise<TorrentStream>;
+  /** Progress, and once `ready` how this device plays it. Poll it: a stream nobody asks about for two minutes stops. */
+  stream(id: string, signal?: AbortSignalLike): Promise<TorrentStream>;
+  /** Stops it and deletes what it fetched. */
+  stopStream(id: string): Promise<void>;
 }
 
 type Params = Record<string, string | number>;
@@ -379,6 +388,9 @@ export function createClient(options: ClientOptions): NuvoraClient {
         call<DownloadSettings>("PUT", "/api/admin/downloads/settings", {}, undefined, undefined, { library_id: libraryId }),
       addIndexer: (body) => post<DownloadSettings>("/api/admin/downloads/indexers", {}, body),
       removeIndexer: (id) => call<DownloadSettings>("DELETE", "/api/admin/downloads/indexers/{id}", { id }),
+      openStream: (body) => post<TorrentStream>("/api/admin/streams", {}, body),
+      stream: (id, signal) => get<TorrentStream>("/api/admin/streams/{id}", { id }, signal),
+      stopStream: (id) => remove("/api/admin/streams/{id}", { id }),
     },
     imageUrl: (image, size) => options.baseUrl + fill("/api/images/{id}/{size}", { id: image.id, size }),
     subtitleUrl: (fileId, streamIndex, format) =>

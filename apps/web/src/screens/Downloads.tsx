@@ -13,7 +13,7 @@ import {
   type ReleaseSource,
 } from "@nuvora/core";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { AlertIcon, CheckIcon, DownloadIcon, SearchIcon } from "../components/Icon";
+import { AlertIcon, CheckIcon, DownloadIcon, PlayIcon, SearchIcon } from "../components/Icon";
 import { client, queries } from "../nuvora";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { LoadError } from "./settings/SettingsPage";
@@ -55,7 +55,7 @@ export function Downloads() {
       <header className="downloads-head">
         <div>
           <h1 tabIndex={-1}>Downloads</h1>
-          <p>Find a movie on your indexers and download it. It moves into your library by itself when it's done.</p>
+          <p>Find a movie on your indexers. Play it right away while it downloads, or download it into your library.</p>
         </div>
         <Link to="/settings/downloads" className="btn btn-secondary btn-small">
           Indexers
@@ -113,12 +113,22 @@ function useScanWhenDone(downloads: Download[] | undefined) {
 
 const isLink = (text: string) => text.startsWith("magnet:?") || /^https?:\/\/\S+$/.test(text);
 
-/** Searches the indexers, or downloads a pasted magnet or `.torrent` link straight away. */
+/** Starts playing a release while it downloads, then opens its player. */
+function useOpenStream() {
+  const navigate = useNavigate();
+  return useMutation({
+    mutationFn: client.admin.openStream,
+    onSuccess: (stream) => void navigate({ to: "/watch/$id", params: { id: stream.id } }),
+  });
+}
+
+/** Searches the indexers, or plays or downloads a pasted magnet or `.torrent` link straight away. */
 function SearchForm({ initial }: { initial: string }) {
   const navigate = useNavigate({ from: "/downloads" });
   const qc = useQueryClient();
   const [text, setText] = useState(initial);
   useEffect(() => setText(initial), [initial]);
+  const play = useOpenStream();
   const add = useMutation({
     mutationFn: client.admin.addDownload,
     onSuccess: () => {
@@ -150,10 +160,17 @@ function SearchForm({ initial }: { initial: string }) {
           spellCheck={false}
           onChange={(e) => {
             add.reset();
+            play.reset();
             setText(e.currentTarget.value);
           }}
         />
       </div>
+      {link && (
+        <button type="button" className="btn btn-secondary" onClick={() => play.mutate({ link: value })} disabled={play.isPending} aria-busy={play.isPending}>
+          <PlayIcon size={16} />
+          Play
+        </button>
+      )}
       <button type="submit" className="btn btn-primary" disabled={!value || add.isPending} aria-busy={add.isPending}>
         {link ? (
           <>
@@ -164,10 +181,10 @@ function SearchForm({ initial }: { initial: string }) {
           "Search"
         )}
       </button>
-      {add.isError && (
+      {(add.isError || play.isError) && (
         <p className="downloads-search-error" role="alert">
           <AlertIcon size={14} />
-          {describeError(add.error)}
+          {describeError(add.error ?? play.error)}
         </p>
       )}
     </form>
@@ -252,6 +269,7 @@ const SOURCE_LABEL: Record<ReleaseSource, string> = {
 
 function ReleaseRow({ release, added }: { release: ReleaseResult; added: boolean }) {
   const qc = useQueryClient();
+  const play = useOpenStream();
   const add = useMutation({
     mutationFn: () => client.admin.addDownload({ link: release.link, title: release.title }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.downloads }),
@@ -303,27 +321,40 @@ function ReleaseRow({ release, added }: { release: ReleaseResult; added: boolean
         </div>
       </div>
       <div className="release-action">
-        {added || add.isSuccess ? (
-          <span className="release-added">
-            <CheckIcon size={16} />
-            Added
-          </span>
-        ) : (
+        <div className="release-buttons">
           <button
             type="button"
-            className="btn btn-primary btn-small"
-            onClick={() => add.mutate()}
-            disabled={add.isPending}
-            aria-busy={add.isPending}
-            aria-label={`Download ${release.title}`}
+            className="btn btn-secondary btn-small"
+            onClick={() => play.mutate({ link: release.link, title: release.title })}
+            disabled={play.isPending}
+            aria-busy={play.isPending}
+            aria-label={`Play ${release.title} while it downloads`}
           >
-            <DownloadIcon size={16} />
-            Download
+            <PlayIcon size={14} />
+            Play
           </button>
-        )}
-        {add.isError && (
+          {added || add.isSuccess ? (
+            <span className="release-added">
+              <CheckIcon size={16} />
+              Added
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-primary btn-small"
+              onClick={() => add.mutate()}
+              disabled={add.isPending}
+              aria-busy={add.isPending}
+              aria-label={`Download ${release.title}`}
+            >
+              <DownloadIcon size={16} />
+              Download
+            </button>
+          )}
+        </div>
+        {(add.isError || play.isError) && (
           <p className="release-error" role="alert">
-            {describeError(add.error)}
+            {describeError(add.error ?? play.error)}
           </p>
         )}
       </div>

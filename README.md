@@ -154,6 +154,8 @@ Admins can find a movie and download it without leaving Nuvora. Open **Downloads
 
 Nuvora searches [Torznab](https://torznab.github.io/spec-1.3-draft/) indexers, the feeds [Jackett](https://github.com/Jackett/Jackett) and [Prowlarr](https://prowlarr.com) provide. Run one of them, then add its feed and API key under **Settings › Downloads**. Download only what you have the right to.
 
+**Play while it downloads.** Every result also has **Play**, and so does a pasted magnet link. Nuvora starts the torrent and plays the movie as it arrives, fetching the part you're watching first, so it starts in seconds and you can jump ahead. Nothing is kept: going back stops it and deletes what it fetched, and so does nobody watching for two minutes. Subtitles inside the video don't show when playing this way yet.
+
 While a movie downloads, its files sit in a hidden `.nuvora-downloads` folder inside the library folder, so half-finished files never appear in the library. Only video and subtitle files are fetched. Nuvora stops sharing a torrent once it's finished. It accepts incoming peers on port 6881 (any free port when that's taken); in Docker, add `- "6881:6881"` under `ports` in `compose.yaml` to let them in.
 
 In Docker, downloads need a media folder Nuvora can write to: remove `:ro` from the media line in `compose.yaml`. Without that, Nuvora keeps your media read-only and says so when you start a download.

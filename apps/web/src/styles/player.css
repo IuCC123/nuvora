@@ -557,6 +557,43 @@
   background: var(--nv-color-text-primary);
 }
 
+/* A torrent stream getting ready, or stalled for pieces: what it waits for and how its download goes. */
+
+.player-waiting {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  padding: var(--nv-layout-gutter);
+  text-align: center;
+  pointer-events: none;
+}
+
+.player-waiting-label {
+  margin-top: 6px;
+  font-size: var(--nv-type-title-size);
+  line-height: var(--nv-type-title-line);
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.player-stream-note {
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  font-variant-numeric: tabular-nums;
+}
+
+.player-buffer-note {
+  position: absolute;
+  top: calc(50% + 52px);
+  left: 0;
+  right: 0;
+  text-align: center;
+  pointer-events: none;
+}
+
 /* Can't play: the detail page's notice, centered on black. */
 
 .player-notice {
