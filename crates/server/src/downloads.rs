@@ -16,7 +16,7 @@
 
 pub mod torznab;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -28,7 +28,7 @@ use librqbit::{
     ManagedTorrent, Session, SessionOptions, TorrentStats, TorrentStatsState,
 };
 use nuvora_library::{Library, LibraryId, LibraryInfo, LibraryKind};
-use nuvora_media::{PathClass, ReleaseName, classify_path};
+use nuvora_media::{EpisodeName, PathClass, ReleaseName, classify_path};
 use serde::{Deserialize, Serialize};
 
 pub use torznab::{Indexer, Release, TorznabError};
@@ -596,8 +596,10 @@ impl Downloads {
             tracing::debug!(id, "stop after download: {e:#}");
         }
         finished?;
-        let title = record.title.clone();
-        let root = record.root.clone();
+        let (root, title) = match self.show_instead(&record, &staging).await {
+            Some(show) => show,
+            None => (record.root.clone(), record.title.clone()),
+        };
         tokio::task::spawn_blocking(move || move_into_library(&staging, &root, &title))
             .await
             .map_err(|e| format!("Moving it into the library stopped: {e}"))?
@@ -637,6 +639,27 @@ impl Downloads {
                 .await
             }
         }
+    }
+
+    /// TV Shows' folder and the show's name, for a download whose name read
+    /// as a movie but whose videos are one show's episodes (a box set named
+    /// without episode numbers). `None` keeps it where it was added.
+    async fn show_instead(&self, record: &Record, staging: &Path) -> Option<(PathBuf, String)> {
+        if ReleaseName::parse(&record.title).content.is_show() {
+            return None;
+        }
+        let staging = staging.to_owned();
+        let show = tokio::task::spawn_blocking(move || show_in(&staging))
+            .await
+            .ok()??;
+        let chosen = self.saved.lock().await.shows_library_id;
+        let library = self.target_library(true, chosen).await.ok()?;
+        let root = library.roots.first()?.clone();
+        let mut saved = self.saved.lock().await;
+        if let Some(r) = saved.downloads.iter_mut().find(|r| r.id == record.id) {
+            r.library_id = library.id.raw();
+        }
+        Some((root, show))
     }
 
     /// The saved choice if it is still a library of the kind, else the first
@@ -957,6 +980,33 @@ fn move_into_library(staging: &Path, root: &Path, title: &str) -> std::io::Resul
         let _ = std::fs::remove_dir(parent);
     }
     Ok(destination)
+}
+
+/// The show a finished torrent holds: every main video names an episode of
+/// it, and there are at least two. Read from file names alone, since the
+/// torrent's top folder is the release's name.
+fn show_in(staging: &Path) -> Option<String> {
+    let mut first: Option<EpisodeName> = None;
+    let mut episodes = HashSet::new();
+    for file in files_under(staging).ok()? {
+        if classify_path(file.strip_prefix(staging).ok()?) != PathClass::Video {
+            continue;
+        }
+        let episode = EpisodeName::parse(Path::new(file.file_name()?))?;
+        if first
+            .as_ref()
+            .is_some_and(|f| f.show_key() != episode.show_key())
+        {
+            return None;
+        }
+        episodes.insert(episode.episode_key());
+        first.get_or_insert(episode);
+    }
+    let show = first?.show;
+    (episodes.len() >= 2).then(|| match show.year {
+        Some(year) => format!("{} ({year})", show.title),
+        None => show.title,
+    })
 }
 
 fn files_under(dir: &Path) -> std::io::Result<Vec<PathBuf>> {

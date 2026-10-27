@@ -198,6 +198,14 @@ static EPISODE_WORD: LazyLock<Regex> = LazyLock::new(|| {
 static DASH_EPISODE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:^| )- (\d{1,4})(?:v\d)?(?: ?[-~] ?(\d{1,4})(?:v\d)?)?(?: |$)").expect("regex")
 });
+/// Anime batches without a dash: `Show 1-13 END`, `Show (01-28)`, `Show 01~26`.
+static BARE_RANGE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?:^| |\()(\d{1,3}) ?[-~] ?(\d{1,3})(?:\)| |$)").expect("regex"));
+/// Words that make `Harry Potter 1-8` a box of movies, not episodes.
+static MOVIE_SET: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b(?:collection|movies|films|trilogy|quadrilogy|saga|anthology)\b")
+        .expect("regex")
+});
 static COMPLETE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:complete (?:series|collection|seasons|box ?set)|all seasons)\b")
         .expect("regex")
@@ -452,6 +460,24 @@ fn content(text: &str) -> Option<(usize, Content)> {
                 .unwrap_or(first);
             return Some((
                 e.get(0)?.start(),
+                Content::Episodes {
+                    season: None,
+                    first,
+                    last,
+                },
+            ));
+        }
+    }
+    // A short unpadded range (`Rocky 1-6`) is more likely a set of movies.
+    if let Some(e) = BARE_RANGE.captures(text)
+        && !MOVIE_SET.is_match(text)
+    {
+        let start = e.get(0)?.start();
+        let (first, last): (u32, u32) = (e[1].parse().ok()?, e[2].parse().ok()?);
+        let padded = e[1].len() > 1 && e[1].starts_with('0');
+        if start > 0 && first < last && (last >= 10 || padded) {
+            return Some((
+                start,
                 Content::Episodes {
                     season: None,
                     first,
@@ -784,7 +810,56 @@ mod tests {
             &[],
             &[],
         ),
+        (
+            "Serial Experiments Lain 1-13 END MP4",
+            "Serial Experiments Lain",
+            None,
+            Content::Episodes {
+                season: None,
+                first: 1,
+                last: 13,
+            },
+            &[],
+            &[],
+        ),
+        (
+            "[SubsPlease] Sousou no Frieren (01-28) (1080p) [Batch]",
+            "Sousou no Frieren",
+            None,
+            Content::Episodes {
+                season: None,
+                first: 1,
+                last: 28,
+            },
+            &[],
+            &[],
+        ),
+        (
+            "Cowboy Bebop 01~26 BD 1080p",
+            "Cowboy Bebop",
+            None,
+            Content::Episodes {
+                season: None,
+                first: 1,
+                last: 26,
+            },
+            &[],
+            &[],
+        ),
     ];
+
+    #[test]
+    fn movie_sets_stay_movies() {
+        for name in [
+            "Rocky 1-6 1080p BluRay",
+            "Harry Potter 1-8 Collection 1080p",
+            "Fast and Furious 1-10 Movies 1080p",
+            "2 Fast 2 Furious 2003 1080p",
+            "Oppenheimer.2023.1080p.BluRay.DD5.1.x264-GalaxyRG",
+        ] {
+            assert_eq!(ReleaseName::parse(name).content, Content::Movie, "{name}");
+        }
+    }
 
     #[test]
     fn release_names_say_what_they_hold() {

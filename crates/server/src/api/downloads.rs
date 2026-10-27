@@ -736,6 +736,74 @@ mod tests {
         assert_eq!(found["titles"][0]["title"], "Show Name", "{found}");
     }
 
+    /// A box named like a movie goes to TV Shows anyway when its videos are
+    /// one show's episodes, in the show's folder, without the creditless opening.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn episodes_named_like_a_movie_land_in_the_shows_library() {
+        let app = TestApp::with_downloads().await;
+        let admin = app.setup_admin().await;
+        std::fs::create_dir_all(app.path("shows")).unwrap();
+        let created = app
+            .call(
+                "POST",
+                "/api/admin/libraries",
+                Some(&admin),
+                Some(json!({ "name": "TV", "kind": "shows", "paths": [app.path("shows")] })),
+            )
+            .await;
+        assert_eq!(created.status, StatusCode::CREATED);
+        let pack = "Lain BD Box 1080p";
+        let episode =
+            |n: &str| format!("[Kanavid] Serial Experiments Lain {n} [BD][1080p][AAC].mp4");
+        app.clips(&[
+            &format!("seed/{pack}/{}", episode("- 01")),
+            &format!("seed/{pack}/{}", episode("- 02")),
+            &format!("seed/{pack}/{}", episode("NCOP")),
+        ]);
+        let seeder = app.seed(&format!("seed/{pack}")).await;
+
+        let added = app
+            .call(
+                "POST",
+                "/api/admin/downloads",
+                Some(&admin),
+                Some(json!({ "link": seeder.link, "title": pack })),
+            )
+            .await;
+        assert_eq!(added.status, StatusCode::CREATED);
+        let started = Instant::now();
+        let finished: Value = loop {
+            let download = app.get("/api/admin/downloads", &admin).await.json()[0].clone();
+            if matches!(download["state"].as_str(), Some("done" | "failed")) {
+                break download;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(60),
+                "stuck: {download}"
+            );
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        };
+        assert_eq!(finished["state"], "done", "{finished}");
+        let shows = std::fs::canonicalize(app.path("shows")).unwrap();
+        let folder = shows.join("Serial Experiments Lain");
+        assert_eq!(finished["path"], folder.to_str().unwrap());
+        assert_eq!(finished["library_id"], created.json()["id"]);
+        let mut landed: Vec<String> = std::fs::read_dir(&folder)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        landed.sort();
+        assert_eq!(landed, [episode("- 01"), episode("- 02")]);
+        assert!(!app.path("movies/Lain BD Box").exists());
+
+        app.scan().await;
+        let found = app.get("/api/search?q=lain", &admin).await.json();
+        assert_eq!(
+            found["titles"][0]["title"], "Serial Experiments Lain",
+            "{found}"
+        );
+    }
+
     #[tokio::test]
     async fn downloads_are_for_admins_and_explain_a_missing_engine() {
         let app = TestApp::new().await;

@@ -20,7 +20,8 @@ pub enum PathClass {
     Video,
     /// A sample, trailer, featurette, or anything inside an extras folder
     /// (`Extras/`, `Featurettes/`, `Behind The Scenes/`, `Deleted Scenes/`,
-    /// `Trailers/`, `Samples/`) or with a `-sample`/`-trailer`/`.sample` suffix.
+    /// `Trailers/`, `Samples/`) or with a `-sample`/`-trailer`/`.sample` suffix,
+    /// or an anime opening or ending without credits (`NCOP`, `NCED2`).
     /// Ignored in Step 1; Step 2 may attach extras to items.
     Extra,
     /// A local artwork candidate. `stem` is the lowercase file stem
@@ -614,11 +615,18 @@ fn tokens(stem: &str) -> Vec<&str> {
     .collect()
 }
 
+/// Anime openings and endings without credits: `NCOP`, `NCED2`, `NCOP1v2`.
+static CREDITLESS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^(?:nc(?:op|ed)\d*(?:v\d+)?|creditless)$").expect("valid"));
+
 /// A sample or trailer marker counts only after the title has ended: as the
 /// last token, after a year or release token, as a `-suffix`, or alone. A
 /// `Sample` inside the title (`Sintel.Sample.2010...`) is part of the title.
 fn is_extra_stem(stem: &str) -> bool {
     let tokens = tokens(stem);
+    if tokens.iter().any(|t| CREDITLESS.is_match(t)) {
+        return true;
+    }
     let mut title_ended = false;
     for (i, token) in tokens.iter().enumerate() {
         let parts: Vec<&str> = token.split('-').collect();
@@ -1137,6 +1145,20 @@ mod tests {
         ("Movie (2010)/Movie (2010).srt", "subtitle"),
         ("Movie (2010)/Subs/2_English.SRT", "subtitle"),
         ("Movie (2010)/Movie (2010).nfo", "other"),
+        (
+            "Serial Experiments Lain/[Kanavid] Serial Experiments Lain NCOP [BD][1080p][AAC].mp4",
+            "extra",
+        ),
+        ("Show/[Group] Show - NCED2v2 [1080p].mkv", "extra"),
+        (
+            "Show/[Group] Show - Creditless Opening [1080p].mkv",
+            "extra",
+        ),
+        (
+            "Serial Experiments Lain/[Kanavid] Serial Experiments Lain - 01 [BD][1080p][AAC].mp4",
+            "video",
+        ),
+        ("Show/NCOP1.mkv", "extra"),
     ];
 
     #[test]
