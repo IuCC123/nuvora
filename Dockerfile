@@ -5,6 +5,8 @@ WORKDIR /src
 COPY package.json bun.lock ./
 COPY packages ./packages
 COPY apps/web ./apps/web
+# A workspace too, for the desktop app's build tools; nothing of it ends up in the image.
+COPY apps/desktop/package.json ./apps/desktop/
 RUN bun install --frozen-lockfile
 RUN bun run build
 
