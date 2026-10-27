@@ -247,17 +247,17 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-      # Not the image digests the Docker jobs also upload.
+      # Into out/, not assets/: that's the repo's own logo and screenshots. And not the image digests the Docker jobs also upload.
       - uses: actions/download-artifact@v4
         with:
-          path: assets
+          path: out
           pattern: "{tv-apk,server-*,desktop-*}"
           merge-multiple: true
       # What servers check a download against before installing it (see crates/server/src/update.rs).
-      - working-directory: assets
+      - working-directory: out
         run: sha256sum nuvora-server-* > SHA256SUMS
       # What the Mac and Windows apps read to update themselves (Tauri's updater format).
-      - working-directory: assets
+      - working-directory: out
         env:
           TAG: ${{ github.ref_name }}
         run: |
@@ -291,4 +291,4 @@ jobs:
 
           **Servers** update from Settings › General; the \`nuvora-server-*\` files below are what they download.
           NOTES
-          gh release create "$TAG" assets/* --title "Nuvora $version" --notes-file notes.md --generate-notes
+          gh release create "$TAG" out/* --title "Nuvora $version" --notes-file notes.md --generate-notes
