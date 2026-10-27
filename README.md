@@ -55,27 +55,23 @@ There are TV apps too: one for Fire TV, Android TV and Google TV, and one for Fi
 
 Nuvora runs in Docker, so it works the same everywhere. Setting it up takes about five minutes.
 
-### 1. Install Docker
-
-- **Windows or macOS:** install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and start it.
-- **Linux:** run `curl -fsSL https://get.docker.com | sh`, then `sudo usermod -aG docker $USER`, and log out and back in.
-- **A NAS** (Synology, Unraid, TrueNAS and the like): use its container app with the Compose file below.
-
-### 2. Start Nuvora
+### 1. Run the installer
 
 On **macOS or Linux**, run this in a terminal:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/IuCC123/nuvora/main/scripts/install.sh | bash
+curl -fsSL https://getnuvora.online/install.sh | bash
 ```
 
-It asks for the folder with your movies and shows and for a port (8640 is fine), then downloads Nuvora and starts it in `~/nuvora`. To answer up front instead:
+On **Windows**, run this in PowerShell:
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/IuCC123/nuvora/main/scripts/install.sh | bash -s -- --media ~/Media --port 8640
+```powershell
+irm https://getnuvora.online/install.ps1 | iex
 ```
 
-On **Windows, a NAS, or by hand**, use Docker Compose. Make a folder called `nuvora`, save [`compose.yaml`](compose.yaml) in it, and create a file called `.env` next to it:
+It checks for Docker first. On Linux it offers to install it, on a Mac it opens Docker Desktop's download and carries on once Docker runs, and on Windows it installs Docker Desktop with winget. Then it asks one thing, the folder with your movies and shows, and suggests folders that hold videos. It starts Nuvora in `~/nuvora` on port 8640, or the next free port. To answer up front, pass options: `curl -fsSL https://getnuvora.online/install.sh | bash -s -- --media ~/Media` (`--help` lists them all).
+
+On **a NAS** (Synology, Unraid, TrueNAS and the like) **or by hand**, use Docker Compose. Make a folder called `nuvora`, save [`compose.yaml`](compose.yaml) in it, and create a file called `.env` next to it:
 
 ```sh
 # The folder with your movies and shows. Nuvora only reads it.
@@ -88,11 +84,11 @@ On Linux, also add `NUVORA_UID=` and `NUVORA_GID=` lines with the output of `id 
 docker compose up -d
 ```
 
-### 3. Create your account
+### 2. Create your account
 
 Open **http://your-server:8640** in a browser. The installer prints the exact address, and on the same computer it's http://localhost:8640. The first visit asks you to create the admin account and then a library: give it a name, choose **Movies** or **Shows**, and pick its folder under `/media`, which is the media folder you gave the installer.
 
-### 4. Add everyone else
+### 3. Add everyone else
 
 In **Settings › Users**, add an account for each person. They can sign in from any browser on your network at the same address, or from the TV app.
 
@@ -140,13 +136,15 @@ Movies want a year in the name. Episodes want a number: `S02E01`, `2x01` and ani
 
 ## Updating
 
-Run the installer again, or do this in the folder with `compose.yaml`:
+Run the installer again. It keeps your answers and says which version you moved to. Or do this in the folder with `compose.yaml`:
 
 ```sh
 docker compose pull && docker compose up -d
 ```
 
 Accounts, progress and settings carry over. To stay on one version, set `NUVORA_IMAGE=ghcr.io/iucc123/nuvora:0.3.2` in `.env`, or pass `--version 0.3.2` to the installer.
+
+To remove Nuvora, run `curl -fsSL https://getnuvora.online/install.sh | bash -s -- --uninstall`. It stops and removes Nuvora and asks before deleting its data.
 
 To back up, copy the `data` folder next to `compose.yaml` (`~/nuvora/data` if you used the installer) while Nuvora is stopped. Everything Nuvora knows lives there.
 
