@@ -1,119 +1,39 @@
-/* Show page: the ambient wash behind the head, then a sticky season bar over the episode list. */
-.show {
-  position: relative;
-  isolation: isolate;
-  min-height: calc(100dvh - var(--nv-layout-top-bar));
-  padding-bottom: var(--nv-space-8);
-}
-
-/* The wash covers the head only and fades into the canvas, so a long episode list scrolls over plain canvas. */
-.show-ambient {
-  position: absolute;
-  z-index: -1;
-  inset: 0 0 auto;
-  height: 640px;
-  overflow: hidden;
-}
-
-.show-ambient > * {
-  z-index: auto;
-}
-
-.show-ambient .detail-scrim {
-  background:
-    linear-gradient(
-      90deg,
-      var(--nv-color-canvas) 0%,
-      color-mix(in srgb, var(--nv-color-canvas) 86%, transparent) 34%,
-      color-mix(in srgb, var(--nv-color-canvas) 35%, transparent) 72%,
-      color-mix(in srgb, var(--nv-color-canvas) 15%, transparent) 100%
-    ),
-    linear-gradient(0deg, var(--nv-color-canvas) 6%, transparent 70%);
-}
-
-.show-head {
-  padding-bottom: var(--nv-space-6);
-}
-
-.show-progress-note::before {
-  content: "·";
-  margin-right: 8px;
-  color: color-mix(in srgb, var(--nv-color-text-muted) 60%, var(--nv-color-canvas));
-}
-
-.show-meta-pending {
-  display: inline-block;
-  width: 180px;
-  height: 16px;
-  border-radius: var(--nv-radius-sm);
-  background: color-mix(in srgb, var(--nv-color-surface-raised) 70%, transparent);
-}
-
-.btn-placeholder {
-  width: 220px;
-  background: var(--nv-color-surface-raised);
-  box-shadow: none;
-}
-
-/* Seasons */
+/* Show page: season pills over a shelf of episode cards. The hero and Information come from movie.css. */
 
 .seasons {
-  padding: 0 var(--nv-layout-gutter);
+  margin-top: 8px;
 }
 
-.seasons-sentinel {
-  height: 1px;
-}
-
-.seasons-bar {
-  position: sticky;
-  top: var(--nv-layout-top-bar);
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  min-height: 56px;
-  margin: -1px calc(-1 * var(--nv-layout-gutter)) 0;
-  padding: 0 var(--nv-layout-gutter);
-  border-bottom: 1px solid var(--nv-color-hairline);
-  transition: background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
-}
-
-.seasons-bar[data-stuck="true"] {
-  background: var(--nv-color-canvas);
+.seasons .shelf-head {
+  flex-wrap: wrap;
+  row-gap: 10px;
 }
 
 .season-tabs {
   display: flex;
-  gap: 28px;
-  align-self: stretch;
-  min-width: 0;
+  gap: 4px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 3px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-color-surface);
 }
 
 .season-tab {
-  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 100%;
+  height: 32px;
+  padding: 0 16px;
+  border-radius: var(--nv-radius-pill);
   color: var(--nv-color-text-secondary);
-  font-size: var(--nv-type-button-size);
+  font-size: var(--nv-type-body-size);
   font-weight: var(--nv-font-weight-semibold);
   white-space: nowrap;
-  transition: color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
-}
-
-.season-tab::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 2px;
-  border-radius: 2px 2px 0 0;
-  background: var(--nv-color-accent);
-  transform: scaleX(0);
-  transition: transform var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+  transition:
+    background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
 }
 
 .season-tab:hover {
@@ -121,15 +41,12 @@
 }
 
 .season-tab[aria-selected="true"] {
+  background: var(--nv-color-surface-raised);
   color: var(--nv-color-text-primary);
 }
 
-.season-tab[aria-selected="true"]::after {
-  transform: none;
-}
-
 .season-tab:focus-visible {
-  outline-offset: -2px;
+  border-radius: var(--nv-radius-pill);
 }
 
 .season-tab-check {
@@ -142,76 +59,66 @@
 }
 
 .seasons-count {
-  margin-left: auto;
   color: var(--nv-color-text-secondary);
   font-size: var(--nv-type-small-size);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.seasons-mark[data-watched="true"] svg,
-.btn-watched[data-watched="true"] svg {
-  color: var(--nv-color-accent);
+.seasons-mark {
+  margin-left: auto;
+  white-space: nowrap;
 }
 
-.season-panel {
-  padding-top: 12px;
+.seasons .shelf-arrows {
+  margin-left: 0;
+}
+
+.seasons-mark[data-watched="true"] svg {
+  color: var(--nv-color-accent);
 }
 
 /* Episodes */
 
-.episodes {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0 -12px;
-  padding: 0;
-  list-style: none;
-}
-
 .episode {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: var(--nv-radius-lg);
-  transition: background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
-}
-
-.episode:hover,
-.episode:focus-within {
-  background: var(--nv-color-surface);
+  flex: none;
+  width: clamp(240px, 22vw, 320px);
 }
 
 .episode-link {
   display: flex;
-  align-items: center;
-  gap: 20px;
-  flex: 1;
-  min-width: 0;
-  border-radius: var(--nv-radius-md);
+  flex-direction: column;
+  border-radius: var(--nv-radius-lg);
 }
 
 .episode-link:focus-visible {
-  outline-offset: 6px;
+  outline-offset: 4px;
 }
 
-/* Its own stacking context: the hover badge and progress bar stay under the sticky season bar and its menu. */
+/* Its own stacking context: the hover badge and progress bar stay under the season menu. */
 .episode-thumb {
   position: relative;
   isolation: isolate;
-  flex: none;
   display: block;
-  width: 216px;
   aspect-ratio: 16 / 9;
-  border-radius: var(--nv-radius-md);
+  border-radius: var(--nv-radius-lg);
   overflow: hidden;
   background: var(--nv-color-surface);
   box-shadow: 0 0 0 1px var(--nv-color-overlay-hairline);
+  transition:
+    transform var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    box-shadow var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.episode-link:hover .episode-thumb,
+.episode-link:focus-visible .episode-thumb {
+  transform: translateY(-3px);
+  box-shadow: var(--nv-shadow-lift);
 }
 
 .episode-thumb .poster-progress {
+  height: 4px;
   border-radius: 0;
 }
 
@@ -221,7 +128,7 @@
   inset: 0;
   display: flex;
   align-items: flex-end;
-  padding: 8px 12px;
+  padding: 10px 14px;
   background:
     radial-gradient(90% 120% at var(--tc-x) var(--tc-y), color-mix(in srgb, var(--tc-bloom) 55%, transparent), transparent 70%),
     linear-gradient(160deg, var(--tc-top), var(--tc-bottom));
@@ -232,7 +139,7 @@
   font-family: var(--nv-font-family-display);
   font-stretch: var(--nv-title-card-stretch);
   font-weight: var(--nv-font-weight-heavy);
-  font-size: 40px;
+  font-size: 48px;
   line-height: 0.9;
   font-variant-numeric: tabular-nums;
 }
@@ -248,81 +155,88 @@
 }
 
 .episode-thumb .poster-hover-play {
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
 }
 
-.episode-text {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+.episode-tag {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--nv-radius-sm);
+  background: color-mix(in srgb, var(--nv-color-canvas) 84%, transparent);
+  color: var(--nv-color-text-primary);
+  font-size: var(--nv-type-chip-size);
+  line-height: 1;
+  font-weight: var(--nv-font-weight-semibold);
+  letter-spacing: 0.02em;
 }
 
 .episode-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  font-size: var(--nv-type-body-large-size);
-  line-height: var(--nv-type-body-large-line);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin-top: 12px;
+  font-size: var(--nv-type-button-size);
+  line-height: var(--nv-type-button-line);
   font-weight: var(--nv-font-weight-semibold);
   overflow-wrap: anywhere;
 }
 
 .episode-facts {
+  margin-top: 3px;
   color: var(--nv-color-text-secondary);
   font-size: var(--nv-type-small-size);
   line-height: var(--nv-type-small-line);
   font-variant-numeric: tabular-nums;
 }
 
-.episode-tag {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 7px;
-  border-radius: var(--nv-radius-sm);
-  border: 1px solid var(--nv-color-overlay-border);
-  color: var(--nv-color-text-secondary);
-  font-size: var(--nv-type-chip-size);
-  line-height: var(--nv-type-chip-line);
-  font-weight: var(--nv-font-weight-semibold);
-  letter-spacing: 0.02em;
-}
-
+/* The watched check rides the still's corner: always there once watched, with the pointer otherwise. */
 .episode-mark {
-  flex: none;
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 8px;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
-  color: var(--nv-color-text-muted);
-  box-shadow: inset 0 0 0 1.5px var(--nv-color-hairline);
+  background: color-mix(in srgb, var(--nv-color-canvas) 70%, transparent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  color: var(--nv-color-text-secondary);
   transition:
+    background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
     color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
-    box-shadow var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
-    opacity var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+    opacity var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    transform var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.episode:hover .episode-mark {
+  transform: translateY(-3px);
 }
 
 .episode-mark:hover {
+  background: var(--nv-color-canvas);
   color: var(--nv-color-text-primary);
-  box-shadow: inset 0 0 0 1.5px var(--nv-color-text-muted);
 }
 
 .episode-mark[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--nv-color-canvas) 84%, transparent);
   color: var(--nv-color-accent);
-  box-shadow: none;
-  background: color-mix(in srgb, var(--nv-color-accent) 14%, transparent);
 }
 
 .episode-mark:focus-visible {
   border-radius: 50%;
 }
 
-/* With a mouse, an unwatched episode's mark appears with the row; touch screens always show it. */
+/* With a mouse, an unwatched episode's mark appears with the card; touch screens always show it. */
 @media (hover: hover) {
   .episode-mark[aria-pressed="false"] {
     opacity: 0;
@@ -340,15 +254,17 @@
 
 .pending-line {
   display: block;
-  width: 220px;
+  width: 70%;
   height: 14px;
+  margin-top: 14px;
   border-radius: var(--nv-radius-sm);
   background: var(--nv-color-surface);
 }
 
 .pending-line-short {
-  width: 120px;
+  width: 40%;
   height: 12px;
+  margin-top: 8px;
 }
 
 .episodes-empty {
@@ -356,11 +272,7 @@
   color: var(--nv-color-text-secondary);
 }
 
-@media (max-width: 700px) {
-  .episode-thumb {
-    width: 144px;
-  }
-
+@media (max-width: 900px) {
   .seasons-count {
     display: none;
   }

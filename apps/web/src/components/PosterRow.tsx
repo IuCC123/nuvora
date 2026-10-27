@@ -61,10 +61,10 @@ export function PosterRow({ row }: { row: HomeRow }) {
               See all
             </Link>
           )}
-          <button type="button" className="round-btn" disabled={atStart} onClick={() => page(strip.current, -1)} aria-label={`Scroll ${row.title} back`}>
+          <button type="button" className="round-btn" disabled={atStart} onClick={() => pageStrip(strip.current, -1)} aria-label={`Scroll ${row.title} back`}>
             <ChevronLeftIcon />
           </button>
-          <button type="button" className="round-btn" disabled={atEnd && !hasMore} onClick={() => page(strip.current, 1)} aria-label={`Scroll ${row.title} forward`}>
+          <button type="button" className="round-btn" disabled={atEnd && !hasMore} onClick={() => pageStrip(strip.current, 1)} aria-label={`Scroll ${row.title} forward`}>
             <ChevronRightIcon />
           </button>
         </div>
@@ -96,8 +96,8 @@ export function PosterRow({ row }: { row: HomeRow }) {
 }
 
 /** Scroll by the number of whole cards that fit, so a page never cuts a poster in half. */
-function page(strip: HTMLElement | null, direction: 1 | -1) {
-  const first = strip?.querySelector<HTMLElement>(".row-item");
+export function pageStrip(strip: HTMLElement | null, direction: 1 | -1) {
+  const first = strip?.firstElementChild as HTMLElement | null | undefined;
   if (!strip || !first) return;
   const gap = parseFloat(getComputedStyle(strip).columnGap) || 0;
   const step = first.offsetWidth + gap;
@@ -117,7 +117,7 @@ function moveFocus(e: KeyboardEvent<HTMLUListElement>) {
   next.focus();
 }
 
-function useScrollEdges(strip: RefObject<HTMLElement | null>, itemCount: number) {
+export function useScrollEdges(strip: RefObject<HTMLElement | null>, itemCount: number) {
   const [edges, setEdges] = useState({ atStart: true, atEnd: true });
   useEffect(() => {
     const el = strip.current;

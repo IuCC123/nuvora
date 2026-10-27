@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
@@ -20,7 +20,7 @@ import { CheckIcon, ChevronDownIcon, PlayIcon } from "../components/Icon";
 import { Menu, MenuRadio } from "../components/Menu";
 import { PosterMarks } from "../components/PosterCard";
 import { CardArt } from "../components/CardArt";
-import { CastSection, DetailFacts, Overview } from "../components/Details";
+import { aboutRows, CastSection, DetailHero, HeroMeta, InfoSection, Overview, ShelfArrows, Starring, walkStrip, type InfoRow } from "../components/Details";
 import { titleCardVars } from "../components/TitleCard";
 import { cachedCard } from "../lib/cachedCard";
 import { hasInteracted } from "../lib/interacted";
@@ -57,56 +57,41 @@ export function ShowScreen() {
   const head = show ?? card;
   const seasonIndex = show ? (show.seasons.some((s) => s.index === search.season) ? search.season : initialSeason(show)) : undefined;
   const season = show?.seasons.find((s) => s.index === seasonIndex);
+  // A show without a backdrop shows its poster on the wash; the card alone waits for the item.
+  const poster = show && !show.backdrop && (
+    <>
+      <CardArt image={show.poster} title={show.title} large eager />
+      <PosterMarks progress={null} watched={show.watched_count === show.episode_count && show.episode_count > 0} />
+    </>
+  );
   return (
-    <div className="show" style={titleCardVars(head?.title ?? "")}>
-      <div className="show-ambient" aria-hidden>
-        {show?.backdrop ? (
-          <div className="detail-backdrop">
-            <Artwork image={show.backdrop} size="large" alt="" fill eager />
-          </div>
-        ) : (
-          <div className="detail-wash" />
-        )}
-        <div className="detail-scrim" />
-      </div>
-      {head && (
-        <div className="detail-content show-head">
-          <div className="detail-poster">
-            <CardArt image={head.poster ?? show?.backdrop} title={head.title} year={show ? null : card?.year} large eager />
-            {show && <PosterMarks progress={null} watched={show.watched_count === show.episode_count && show.episode_count > 0} />}
-          </div>
-          <div className="detail-info">
-            <h1>{head.title}</h1>
-            <div className="detail-meta">
-              {show ? (
-                <>
-                  {show.year_range && (
-                    <>
-                      <span>{show.year_range}</span>
-                      <span className="detail-sep" aria-hidden>
-                        ·
-                      </span>
-                    </>
-                  )}
-                  <span>{showCounts(show)}</span>
-                  {show.watched_count > 0 && show.watched_count < show.episode_count && (
-                    <span className="show-progress-note">{show.watched_count.toLocaleString()} watched</span>
-                  )}
-                </>
-              ) : (
-                <span className="show-meta-pending" />
-              )}
-            </div>
-            <DetailFacts details={show?.details} />
-            <Overview text={show?.overview} tagline={show?.details.tagline} />
-            {show ? <ShowActions show={show} /> : <div className="detail-actions" />}
-          </div>
-        </div>
-      )}
+    <div className="detail" style={titleCardVars(head?.title ?? "")}>
+      <DetailHero title={head?.title} backdrop={show?.backdrop} poster={poster}>
+        {show ? <ShowMeta show={show} /> : head && <div className="hero-meta show-meta-pending" />}
+        {show ? <ShowActions show={show} /> : <div className="hero-actions" />}
+        <Overview text={show?.overview} tagline={show?.details.tagline} />
+        <Starring details={show?.details} />
+      </DetailHero>
       {show && season && <Seasons show={show} season={season} />}
       <CastSection details={show?.details} />
+      {show && <InfoSection details={show.details} columns={[{ title: "About", rows: infoRows(show) }]} />}
     </div>
   );
+}
+
+function ShowMeta({ show }: { show: ShowDetail }) {
+  const genres = show.details.genres.slice(0, 2).join(", ");
+  const watched = show.watched_count > 0 && show.watched_count < show.episode_count ? `${show.watched_count.toLocaleString()} watched` : null;
+  const parts = [genres, show.year_range, showCounts(show), watched].filter((p): p is string => !!p);
+  return <HeroMeta parts={parts} rating={show.details.rating} />;
+}
+
+function infoRows(show: ShowDetail): InfoRow[] {
+  return [
+    ...(show.year_range ? [{ label: "Aired", value: show.year_range }] : []),
+    { label: "Episodes", value: showCounts(show) },
+    ...aboutRows(show.details, show.title),
+  ];
 }
 
 /** Episode ids of this show's seasons already in cache, so a whole-show mark flips the open list at once. */
@@ -127,9 +112,9 @@ function ShowActions({ show }: { show: ShowDetail }) {
     if (hasInteracted() && document.activeElement === document.body) button.current?.focus({ preventScroll: true });
   }, []);
   return (
-    <div className="detail-actions">
+    <div className="hero-actions">
       {play ? (
-        <Link ref={button} to="/episode/$id/play" params={{ id: play.episode.id }} search={{}} className="btn btn-primary">
+        <Link ref={button} to="/episode/$id/play" params={{ id: play.episode.id }} search={{}} className="btn btn-primary btn-hero">
           <PlayIcon />
           {play.kind === "resume" ? "Resume" : play.kind === "next" ? "Next episode" : "Play"}
           <span className="btn-aside">
@@ -138,11 +123,17 @@ function ShowActions({ show }: { show: ShowDetail }) {
           </span>
         </Link>
       ) : (
-        <span className="btn btn-primary btn-placeholder" aria-hidden />
+        <span className="btn btn-primary btn-hero btn-placeholder" aria-hidden />
       )}
-      <button type="button" className="btn btn-secondary btn-watched" data-watched={allWatched} onClick={() => toggle.mutate(!allWatched)}>
-        <CheckIcon size={18} />
-        {allWatched ? "Mark show unwatched" : "Mark show watched"}
+      <button
+        type="button"
+        className="hero-round"
+        aria-pressed={allWatched}
+        aria-label="Watched"
+        title={allWatched ? "Mark show unwatched" : "Mark show watched"}
+        onClick={() => toggle.mutate(!allWatched)}
+      >
+        <CheckIcon size={20} strokeWidth={2.4} />
       </button>
     </div>
   );
@@ -151,17 +142,20 @@ function ShowActions({ show }: { show: ShowDetail }) {
 function Seasons({ show, season }: { show: ShowDetail; season: SeasonSummary }) {
   const navigate = useNavigate();
   const episodes = useQuery(queries.episodes(season.id));
+  const strip = useRef<HTMLOListElement>(null);
   const choose = (index: number) =>
     void navigate({ to: "/show/$id", params: { id: show.id }, search: { season: index }, replace: true, resetScroll: false });
   const prefetch = (s: SeasonSummary) => void queryClient.prefetchQuery(queries.episodes(s.id));
   const seasonWatched = season.episode_count > 0 && season.watched_count === season.episode_count;
   const toggle = useWatchedToggle(season.id, { showId: show.id, episodes: episodes.data?.map((e) => e.id) });
-  const { sentinel, stuck } = useStuck();
+  // A new season starts from its first episode, not where the last one was scrolled to.
+  useEffect(() => {
+    strip.current?.scrollTo({ left: 0 });
+  }, [season.id]);
 
   return (
-    <section className="seasons" aria-label="Episodes">
-      <div ref={sentinel} className="seasons-sentinel" aria-hidden />
-      <div className="seasons-bar" data-stuck={stuck}>
+    <section className="shelf seasons" aria-label="Episodes">
+      <div className="shelf-head">
         {show.seasons.length > MAX_SEASON_TABS ? (
           <Menu
             label="Seasons"
@@ -190,12 +184,13 @@ function Seasons({ show, season }: { show: ShowDetail; season: SeasonSummary }) 
           <CheckIcon size={16} />
           {seasonWatched ? `Mark ${season.index === 0 ? "specials" : "season"} unwatched` : `Mark ${season.index === 0 ? "specials" : "season"} watched`}
         </button>
+        <ShelfArrows strip={strip} label={season.title} itemCount={episodes.data?.length ?? 0} />
       </div>
-      <div id="season-panel" role="tabpanel" aria-label={season.title} className="season-panel">
+      <div id="season-panel" role="tabpanel" aria-label={season.title}>
         {episodes.isError ? (
           <ErrorState title="Couldn't load these episodes" detail="Check that your Nuvora server is running, then try again." retry={() => void episodes.refetch()} />
         ) : (
-          <EpisodeList show={show} episodes={episodes.data} placeholderCount={Math.min(season.episode_count, 8)} />
+          <EpisodeList show={show} episodes={episodes.data} special={season.index === 0} strip={strip} placeholderCount={Math.min(season.episode_count, 6)} />
         )}
       </div>
     </section>
@@ -240,17 +235,27 @@ function SeasonTabs({ show, season, onChoose, onIntent }: { show: ShowDetail; se
   );
 }
 
-function EpisodeList({ show, episodes, placeholderCount }: { show: ShowDetail; episodes: Episode[] | undefined; placeholderCount: number }) {
+function EpisodeList({
+  show,
+  episodes,
+  special,
+  strip,
+  placeholderCount,
+}: {
+  show: ShowDetail;
+  episodes: Episode[] | undefined;
+  special: boolean;
+  strip: RefObject<HTMLOListElement | null>;
+  placeholderCount: number;
+}) {
   if (!episodes) {
     return (
-      <ol className="episodes" aria-busy="true" aria-label="Loading episodes">
+      <ol ref={strip} className="shelf-strip episodes" aria-busy="true" aria-label="Loading episodes">
         {Array.from({ length: placeholderCount }, (_, i) => (
           <li key={i} className="episode episode-pending" aria-hidden>
             <span className="episode-thumb" />
-            <span className="episode-text">
-              <span className="pending-line" />
-              <span className="pending-line pending-line-short" />
-            </span>
+            <span className="pending-line" />
+            <span className="pending-line pending-line-short" />
           </li>
         ))}
       </ol>
@@ -258,23 +263,25 @@ function EpisodeList({ show, episodes, placeholderCount }: { show: ShowDetail; e
   }
   if (!episodes.length) return <p className="episodes-empty">No episodes in this season have files right now.</p>;
   return (
-    <ol className="episodes" onKeyDown={moveFocus}>
+    <ol ref={strip} className="shelf-strip episodes" onKeyDown={(e) => walkStrip(e, "a.episode-link")}>
       {episodes.map((e) => (
-        <EpisodeRow key={e.id} show={show} episode={e} upNext={show.next?.id === e.id} />
+        <EpisodeCard key={e.id} show={show} episode={e} special={special} upNext={show.next?.id === e.id} />
       ))}
     </ol>
   );
 }
 
-function EpisodeRow({ show, episode, upNext }: { show: ShowDetail; episode: Episode; upNext: boolean }) {
+/** A 16:9 still with its number, title and length under it; the watched check sits on the still's corner. */
+function EpisodeCard({ show, episode, special, upNext }: { show: ShowDetail; episode: Episode; special: boolean; upNext: boolean }) {
   const toggle = useWatchedToggle(episode.id, { showId: show.id });
   const { watch } = episode;
   const runtime = episode.runtime_ms ?? episode.versions[0]?.media?.duration_ms ?? null;
   const progress = watch.position_ms != null && runtime ? Math.min(1, watch.position_ms / runtime) : null;
   const left = progress != null && runtime ? runtime - watch.position_ms! : null;
+  const number = `${special ? "Special" : "Episode"} ${episode.index}`;
   const own = hasOwnTitle(episode);
-  const facts = [own ? `Episode ${episode.index}` : null, runtime ? formatRuntime(runtime) : null, left ? `${formatRuntime(left)} left` : null].filter(Boolean);
-  const state = progress != null ? `${Math.max(1, Math.round(progress * 100))}% watched` : watch.watched ? "Watched" : null;
+  const facts = [own ? number : null, left ? `${formatRuntime(left)} left` : runtime ? formatRuntime(runtime) : null].filter(Boolean);
+  const state = [upNext && "up next", progress != null ? `${Math.max(1, Math.round(progress * 100))}% watched` : watch.watched && "watched"].filter(Boolean).join(", ");
   return (
     <li className="episode" data-watched={watch.watched && progress == null}>
       <Link
@@ -293,6 +300,7 @@ function EpisodeRow({ show, episode, upNext }: { show: ShowDetail; episode: Epis
               <span>{episode.index}</span>
             </span>
           )}
+          {upNext && <span className="episode-tag">Up next</span>}
           <PosterMarks progress={progress} watched={false} />
           <span className="poster-hover">
             <span className="poster-hover-play">
@@ -300,14 +308,9 @@ function EpisodeRow({ show, episode, upNext }: { show: ShowDetail; episode: Epis
             </span>
           </span>
         </span>
-        <span className="episode-text">
-          <span className="episode-title">
-            {episode.title}
-            {upNext && <span className="episode-tag">Up next</span>}
-          </span>
-          <span className="episode-facts">{facts.join(" · ")}</span>
-          {state && <span className="sr-only">, {state}</span>}
-        </span>
+        <span className="episode-title">{own ? episode.title : number}</span>
+        {facts.length > 0 && <span className="episode-facts">{facts.join(" · ")}</span>}
+        {state && <span className="sr-only">, {state}</span>}
       </Link>
       <button
         type="button"
@@ -317,36 +320,8 @@ function EpisodeRow({ show, episode, upNext }: { show: ShowDetail; episode: Epis
         title={watch.watched ? "Mark as unwatched" : "Mark as watched"}
         onClick={() => toggle.mutate(!watch.watched)}
       >
-        <CheckIcon size={16} strokeWidth={2.6} />
+        <CheckIcon size={15} strokeWidth={2.8} />
       </button>
     </li>
   );
 }
-
-/** Whether the sticky bar after the sentinel has reached the top bar, so it only paints a background once it covers the list. */
-function useStuck() {
-  const [stuck, setStuck] = useState(false);
-  const [node, sentinel] = useState<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!node) return;
-    const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--nv-layout-top-bar")) || 56;
-    const observer = new IntersectionObserver(([entry]) => setStuck(!!entry && !entry.isIntersecting && entry.boundingClientRect.top < top + 1), {
-      rootMargin: `-${top + 1}px 0px 0px 0px`,
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [node]);
-  return { sentinel, stuck };
-}
-
-/** Up and Down walk the episode links, the way Left and Right walk a poster row. */
-function moveFocus(e: KeyboardEvent<HTMLOListElement>) {
-  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-  const links = [...e.currentTarget.querySelectorAll<HTMLAnchorElement>("a.episode-link")];
-  const at = links.indexOf(document.activeElement as HTMLAnchorElement);
-  const next = links[at + (e.key === "ArrowDown" ? 1 : -1)];
-  if (at < 0 || !next) return;
-  e.preventDefault();
-  next.focus();
-}
-

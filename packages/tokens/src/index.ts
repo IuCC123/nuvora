@@ -54,7 +54,7 @@ export const tokens = {
   space: { 0: 0, 1: 4, 2: 8, 3: 12, 4: 16, 5: 24, 6: 32, 7: 48, 8: 64, 9: 96 },
   radius: { none: 0, sm: 4, md: 6, lg: 10, pill: 999 },
   /** px */
-  layout: { topBar: 56, navRail: 232, navRailCompact: 72, gutter: 40, detailPoster: 232 },
+  layout: { topBar: 56, navRail: 232, navRailCompact: 72, gutter: 40 },
   poster: {
     /** Card widths per breakpoint; the `small` image (320 px) covers all at 2x. */
     width: { compact: 120, regular: 150, wide: 176 },

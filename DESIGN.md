@@ -128,10 +128,10 @@ components:
     rounded: "{rounded.sm}"
     width: "150px"
   chip:
-    textColor: "{colors.text-secondary}"
+    textColor: "rgba(255,255,255,0.82)"
     rounded: "{rounded.sm}"
-    padding: "0 7px"
-    height: "22px"
+    padding: "0 6px"
+    height: "20px"
 ---
 
 # Design
@@ -164,7 +164,7 @@ Inter carries the whole interface on a fixed px scale (12, 13, 14, 16, 20, 28, 4
 ### Hierarchy
 
 - Row titles are 20/600.
-- Detail titles are 40/700 at -0.02em.
+- Detail titles are display size, fluid from 40 to 76px, 800 at -0.035em, set on the hero's art. They are the one place type goes past 40.
 - Poster captions are 14/500 for the title and 13/400 `text-secondary` for the year, on one line each and truncated.
 
 ## Layout
@@ -173,7 +173,7 @@ The top bar is 56px. It holds the wordmark on the left and the scan status pill 
 
 ## Elevation & Depth
 
-The interface is flat by default. A hovered or focused poster lifts with a soft shadow (`0 12px 28px rgba(0,0,0,.45)`) and a 2px amber ring offset by 2px. The detail poster rests on `0 18px 40px rgba(0,0,0,.5)`, and the Play button and the poster play badge on `0 6px 16px rgba(0,0,0,.4)`. Detail pages layer the backdrop under two scrims: one from the left and one from the bottom, both into `canvas`.
+The interface is flat by default. A hovered or focused poster lifts with a soft shadow (`0 12px 28px rgba(0,0,0,.45)`) and a 2px amber ring offset by 2px. A detail page's poster, shown only when there is no backdrop, rests on `0 18px 40px rgba(0,0,0,.5)`, and the Play button and the poster play badge on `0 6px 16px rgba(0,0,0,.4)`. A detail hero layers the backdrop under three scrims into `canvas`: up from the bottom, in from the left, and a light one down from the top bar.
 
 ## Shapes
 
@@ -183,21 +183,26 @@ Posters use 4px corners, and buttons and fields use 6px. The scan pill and avata
 
 ### Buttons
 
-- **Primary.** Amber with dark text, 44px tall, a play icon plus "Play".
+- **Primary.** Amber with dark text, 44px tall, a play icon plus "Play". On a detail hero it is 52px with 10px corners, and Resume carries a small dark progress bar and the time left.
 - **Secondary.** Uses `surface-raised` with primary text.
+- **Round.** A detail hero's companions to Play (Start over, Watched) are 52px circles of 14% white over the art, icon only, with a tooltip. Watched turns amber when pressed.
 - **Disabled.** The primary button drops to `surface-raised` with `text-muted`, and an inline notice explains why.
 
 ### Chips
 
-Technical badges (1080p, HEVC, HDR10, 5.1) are 11px semibold text, 22px tall, in a 1px `overlay-border`, because they sit over the ambient wash. They are the server's version `summary` segments plus the container.
+Technical badges (1080p, HEVC, HDR10, 5.1) are 11px bold text, 20px tall, in a 1px 40% white outline, because they sit on the hero's art. They are the server's version `summary` segments plus the container.
 
 ### Navigation
 
 Nav items are 40px rows with an icon and a label. The active item uses `surface-raised` with an amber icon. There is no colored side border.
 
+### Detail pages
+
+A movie or show opens the way Apple TV's app does. A hero fills the window, less 72px so the next row peeks in. It shows the backdrop, or the title card's wash with the poster on the right when there is none. The title, a facts line (genres, year, length, rating, badges), Play with its round companions, a three-line synopsis and "Starring" sit on its lower left. The art's lower edge dissolves into a 36px blur of itself before the scrims take it to `canvas`. That is a treatment of the artwork, not a glass panel. Below the hero come shelves: a show's episodes as 16:9 cards under season pills, then the cast in round portraits. Each shelf has back and forward buttons and Left/Right keys. An "Information" block closes the page with titled columns of label-over-value facts (About, Languages, File) and where the details came from.
+
 ### Watch marks
 
-An in-progress poster carries a 3px amber bar along its bottom edge over a dark track, with a 1px dark seam so it reads over warm artwork. A watched poster carries a 22px canvas disc in the top-right corner with an amber check. Unwatched posters carry nothing. The detail poster uses the same marks at 4px and 28px.
+An in-progress poster carries a 3px amber bar along its bottom edge over a dark track, with a 1px dark seam so it reads over warm artwork. A watched poster carries a 22px canvas disc in the top-right corner with an amber check. Unwatched posters carry nothing. The detail poster uses the same marks at 4px and 28px. An episode card's watched check is a 30px button on the still's corner. It is always visible once the episode is watched, and otherwise appears when the pointer is over the card.
 
 ### Player
 
