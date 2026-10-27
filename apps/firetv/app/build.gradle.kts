@@ -13,8 +13,8 @@ android {
         // Fire OS 6 (Fire TV Stick 2nd gen and newer) and every Android TV since 7.1.
         minSdk = 25
         targetSdk = 36
-        versionCode = (project.findProperty("nuvora.versionCode") as String?)?.toInt() ?: 700
-        versionName = (project.findProperty("nuvora.versionName") as String?) ?: "0.7.0"
+        versionCode = (project.findProperty("nuvora.versionCode") as String?)?.toInt() ?: 701
+        versionName = (project.findProperty("nuvora.versionName") as String?) ?: "0.7.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
