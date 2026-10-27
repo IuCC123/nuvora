@@ -24,7 +24,7 @@ import { fileGone, playerFailed, playState } from "../lib/playState";
 import { loadSubtitleStyle, saveSubtitleStyle, type SubtitleScope, type SubtitleStyle } from "../lib/subtitleMemory";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useMediaState } from "../lib/useMediaState";
-import { useProgressReporting } from "../lib/useProgressReporting";
+import { useProgressReporting, type ProgressTarget } from "../lib/useProgressReporting";
 import { loadVolume, saveVolume } from "../lib/volumeMemory";
 import { opensNatively } from "../platform/deviceProfile";
 import "../styles/player.css";
@@ -165,6 +165,8 @@ export function sourceFor(playback: Version["playback"] | undefined): Source | u
 interface PlayerViewProps {
   /** The library file playing, for progress, Watch Together, subtitles and seek previews; `null` for a torrent stream. */
   catalog: { itemId: number; fileId: number } | null;
+  /** A torrent stream's id: where its progress goes, for Continue Watching. */
+  streamId?: string;
   title: string | undefined;
   year: number | null | undefined;
   episode: EpisodeDetail | undefined;
@@ -189,7 +191,7 @@ interface PlayerViewProps {
 
 type PulseKind = "play" | "pause" | "back" | "forward" | "volume" | "subtitles-on" | "subtitles-off";
 
-export function PlayerView({ catalog, title, year, episode, onNext, source, mode, startAt: initialStart, subtitleTracks, audioLanguage, subtitleScope, notice, waiting, streamNote, onBack, onFailed, onPosition }: PlayerViewProps) {
+export function PlayerView({ catalog, streamId, title, year, episode, onNext, source, mode, startAt: initialStart, subtitleTracks, audioLanguage, subtitleScope, notice, waiting, streamNote, onBack, onFailed, onPosition }: PlayerViewProps) {
   const [startAt] = useState(initialStart);
   const src = source?.url;
   const root = useRef<HTMLDivElement>(null);
@@ -203,7 +205,8 @@ export function PlayerView({ catalog, title, year, episode, onNext, source, mode
   const { awake, wake, sleep } = useAwake(AUTO_HIDE_MS);
   const buffering = useHeldFor(media.starved && !!src, SPINNER_DELAY_MS);
   const lastPointer = useRef("mouse");
-  useProgressReporting(src ? video : null, catalog, onPosition);
+  const progressTarget: ProgressTarget | null = catalog ? { kind: "file", ...catalog } : streamId ? { kind: "stream", id: streamId } : null;
+  useProgressReporting(src ? video : null, progressTarget, onPosition);
   // On failure, keep the place first, so the server's stream picks up from here.
   const fail = () => {
     if (video && video.currentTime > 0) onPosition(Math.floor(video.currentTime * 1000));

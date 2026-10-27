@@ -50,6 +50,8 @@ export type {
   TorrentStream,
   TorrentStreamState,
   OpenStreamRequest,
+  WatchedStream,
+  StreamProgressRequest,
   StreamState,
   PreviewQueue,
   UpdateStatus,

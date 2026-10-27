@@ -19,6 +19,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { AlertIcon, CheckIcon, DownloadIcon, PlayIcon, SearchIcon } from "../components/Icon";
 import { client, queries } from "../nuvora";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { useOpenStream } from "../lib/useOpenStream";
 import { LoadError } from "./settings/SettingsPage";
 import "../styles/forms.css";
 import "../styles/settings.css";
@@ -125,15 +126,6 @@ function useScanWhenDone(downloads: Download[] | undefined) {
 }
 
 const isLink = (text: string) => text.startsWith("magnet:?") || /^https?:\/\/\S+$/.test(text);
-
-/** Starts playing a release while it downloads, then opens its player. */
-function useOpenStream() {
-  const navigate = useNavigate();
-  return useMutation({
-    mutationFn: client.admin.openStream,
-    onSuccess: (stream) => void navigate({ to: "/watch/$id", params: { id: stream.id } }),
-  });
-}
 
 /** Searches the indexers, or plays or downloads a pasted magnet or `.torrent` link straight away. */
 function SearchForm({ initial }: { initial: string }) {

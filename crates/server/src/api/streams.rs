@@ -8,6 +8,9 @@
 //! | POST   | /api/admin/streams                            | Start one (or get the one running)   |
 //! | GET    | /api/admin/streams/{id}                       | Progress, and how to play it (poll)  |
 //! | DELETE | /api/admin/streams/{id}                       | Stop it and delete what it fetched   |
+//! | PUT    | /api/admin/streams/{id}/progress              | Where the player is (kept per person)|
+//! | GET    | /api/admin/streams/watched                    | Streams stopped partway, for Home    |
+//! | DELETE | /api/admin/streams/watched?link=              | Take one off Continue Watching       |
 //! | GET    | /api/admin/streams/{id}/file                  | The video as it is, HTTP Range       |
 //! | GET    | /api/admin/streams/{id}/hls/{plan}/main.m3u8  | Converted, as for library files      |
 //! | GET    | /api/admin/streams/{id}/hls/{plan}/init.mp4   |                                      |
@@ -19,7 +22,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use nuvora_media::{PlaybackDecision, StreamPlan};
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 use super::hls::HlsQuery;
 use super::{ApiError, AppState, Device, ErrorBody, JsonBody, MediaDetails, Playback};
@@ -57,6 +60,9 @@ pub struct TorrentStream {
     pub playback: Option<Playback>,
     /// Why it stopped, when `failed`.
     pub error: Option<String>,
+    /// Where the signed-in person stopped in this release last time, if
+    /// they did: start the player there.
+    pub resume_ms: Option<u64>,
 }
 
 #[derive(Serialize, ToSchema, Clone, Copy, PartialEq, Debug)]
@@ -71,7 +77,23 @@ pub enum TorrentStreamState {
     Failed,
 }
 
-fn status(stream: &Stream, device: &Device) -> TorrentStream {
+async fn status(
+    state: &AppState,
+    me: &SignedIn,
+    stream: &Stream,
+    device: &Device,
+) -> TorrentStream {
+    let resume_ms = state
+        .streams
+        .resume_at(me.user.id.raw(), stream.link())
+        .await;
+    TorrentStream {
+        resume_ms,
+        ..progress_status(stream, device)
+    }
+}
+
+fn progress_status(stream: &Stream, device: &Device) -> TorrentStream {
     let title = stream.title();
     let name = super::downloads::movie_name(&title);
     let progress = stream.progress();
@@ -89,6 +111,7 @@ fn status(stream: &Stream, device: &Device) -> TorrentStream {
         media: None,
         playback: None,
         error: None,
+        resume_ms: None,
     };
     match stream.phase() {
         Phase::Starting => {}
@@ -150,6 +173,7 @@ fn playback(id: &str, media: &nuvora_media::MediaInfo, device: &Device) -> Playb
 )]
 pub(super) async fn open_stream(
     State(state): State<AppState>,
+    me: SignedIn,
     device: Device,
     JsonBody(body): JsonBody<OpenStreamRequest>,
 ) -> Result<Json<TorrentStream>, ApiError> {
@@ -166,7 +190,7 @@ pub(super) async fn open_stream(
         OpenError::BadLink => ApiError::validation("link", e.to_string()),
         OpenError::NoEngine(_) => ApiError::refused(e.to_string()),
     })?;
-    Ok(Json(status(&stream, &device)))
+    Ok(Json(status(&state, &me, &stream, &device).await))
 }
 
 #[utoipa::path(
@@ -177,11 +201,125 @@ pub(super) async fn open_stream(
 )]
 pub(super) async fn get_stream(
     State(state): State<AppState>,
+    me: SignedIn,
     device: Device,
     Path(id): Path<String>,
 ) -> Result<Json<TorrentStream>, ApiError> {
     let stream = state.streams.get(&id).ok_or_else(ApiError::not_found)?;
-    Ok(Json(status(&stream, &device)))
+    Ok(Json(status(&state, &me, &stream, &device).await))
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct StreamProgressRequest {
+    pub position_ms: u64,
+    pub duration_ms: u64,
+}
+
+/// Kept per person, by the library's rules: under a minute keeps nothing,
+/// 90% is finished.
+#[utoipa::path(
+    put,
+    path = "/api/admin/streams/{id}/progress",
+    params(("id" = String, Path)),
+    request_body = StreamProgressRequest,
+    responses((status = 204), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody)),
+)]
+pub(super) async fn put_stream_progress(
+    State(state): State<AppState>,
+    me: SignedIn,
+    Path(id): Path<String>,
+    JsonBody(body): JsonBody<StreamProgressRequest>,
+) -> Result<StatusCode, ApiError> {
+    if body.duration_ms == 0 {
+        return Err(ApiError::validation(
+            "duration_ms",
+            "The duration must be known",
+        ));
+    }
+    let stream = state.streams.get(&id).ok_or_else(ApiError::not_found)?;
+    let position_ms = body.position_ms.min(body.duration_ms);
+    state
+        .streams
+        .record(me.user.id.raw(), &stream, position_ms, body.duration_ms)
+        .await
+        .map_err(ApiError::internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// A stream someone stopped partway through.
+#[derive(Serialize, ToSchema)]
+pub struct WatchedStream {
+    /// Pass to `POST /api/admin/streams` to play it again.
+    pub link: String,
+    /// The release's name.
+    pub title: String,
+    /// The movie or show, and its year.
+    pub movie: String,
+    pub year: Option<u16>,
+    pub content: super::downloads::ReleaseContent,
+    pub position_ms: u64,
+    pub duration_ms: u64,
+    /// Unix ms.
+    pub updated_at: i64,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/streams/watched",
+    responses((status = 200, body = Vec<WatchedStream>)),
+)]
+pub(super) async fn get_watched_streams(
+    State(state): State<AppState>,
+    me: SignedIn,
+) -> Json<Vec<WatchedStream>> {
+    let watched = state.streams.watched(me.user.id.raw()).await;
+    Json(
+        watched
+            .into_iter()
+            .map(|w| {
+                let name = super::downloads::movie_name(&w.title);
+                WatchedStream {
+                    movie: name.title,
+                    year: name.year,
+                    content: name.content.into(),
+                    link: w.link,
+                    title: w.title,
+                    position_ms: w.position_ms,
+                    duration_ms: w.duration_ms,
+                    updated_at: w.updated_at,
+                }
+            })
+            .collect(),
+    )
+}
+
+#[derive(Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct WatchedQuery {
+    pub link: String,
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/admin/streams/watched",
+    params(WatchedQuery),
+    responses((status = 204), (status = 404, body = ErrorBody)),
+)]
+pub(super) async fn forget_watched_stream(
+    State(state): State<AppState>,
+    me: SignedIn,
+    Query(query): Query<WatchedQuery>,
+) -> Result<StatusCode, ApiError> {
+    let forgot = state
+        .streams
+        .forget(me.user.id.raw(), &query.link)
+        .await
+        .map_err(ApiError::internal)?;
+    if forgot {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::not_found())
+    }
 }
 
 #[utoipa::path(
@@ -464,6 +602,66 @@ mod tests {
 
         let activity = app.get("/api/admin/activity", &admin).await.json();
         assert_eq!(activity["streams"][0]["title"], "Clip.2020.1080p.mkv");
+    }
+
+    /// Where someone stopped is kept per person, like the library's
+    /// Continue Watching: not under a minute, not once 90% is played.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_stream_stopped_partway_is_offered_again() {
+        let app = TestApp::with_downloads().await;
+        let admin = app.setup_admin().await;
+        encode(&app, "seed/Clip.2020/Clip.2020.mp4", &["-c:a", "aac"]);
+        let seeder = app.seed("seed/Clip.2020").await;
+        let stream = ready(&app, &admin, &seeder.link).await;
+        assert_eq!(stream["resume_ms"], Value::Null);
+        let id = stream["id"].as_str().unwrap();
+        let progress = async |position_ms: u64| {
+            let path = format!("/api/admin/streams/{id}/progress");
+            let body = json!({ "position_ms": position_ms, "duration_ms": 600_000 });
+            app.call("PUT", &path, Some(&admin), Some(body)).await
+        };
+        let watched = async || app.get("/api/admin/streams/watched", &admin).await;
+
+        assert_eq!(progress(30_000).await.status, StatusCode::NO_CONTENT);
+        assert_eq!(watched().await.json(), json!([]));
+
+        progress(120_000).await;
+        let list = watched().await.json();
+        assert_eq!(list.as_array().unwrap().len(), 1);
+        assert_eq!(list[0]["link"], seeder.link.as_str());
+        assert_eq!(list[0]["movie"], "Clip");
+        assert_eq!(list[0]["year"], 2020);
+        assert_eq!(list[0]["content"], json!({ "kind": "movie" }));
+        assert_eq!(list[0]["position_ms"], 120_000);
+        let again = ready(&app, &admin, &seeder.link).await;
+        assert_eq!(again["resume_ms"], 120_000);
+
+        progress(570_000).await;
+        assert_eq!(watched().await.json(), json!([]), "90% is finished");
+
+        progress(200_000).await;
+        let link: String = url_encode(&seeder.link);
+        let forgot = app
+            .call(
+                "DELETE",
+                &format!("/api/admin/streams/watched?link={link}"),
+                Some(&admin),
+                None,
+            )
+            .await;
+        assert_eq!(forgot.status, StatusCode::NO_CONTENT);
+        assert_eq!(watched().await.json(), json!([]));
+    }
+
+    fn url_encode(s: &str) -> String {
+        s.bytes()
+            .map(|b| match b {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                    (b as char).to_string()
+                }
+                _ => format!("%{b:02X}"),
+            })
+            .collect()
     }
 
     fn first_video_time(app: &TestApp, init: &[u8], segment: &[u8]) -> f64 {

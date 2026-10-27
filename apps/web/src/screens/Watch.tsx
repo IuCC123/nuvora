@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useCanGoBack, useNavigate, useParams, useRouter } from "@tanstack/react-router";
+import { useCanGoBack, useNavigate, useParams, useRouter, useSearch } from "@tanstack/react-router";
 import { ApiError, audioLanguage, formatBytes, type SubtitleTrack, type TorrentStream, type Version } from "@nuvora/core";
 import type { NoticeText } from "../components/Notice";
 import { playbackMode } from "../components/player/PlaybackMode";
@@ -17,11 +17,13 @@ const nothing = () => {};
 
 /**
  * A release playing while it downloads: the player, with what it waits for
- * until the torrent's details and the start of the video are in. Back stops
- * the stream and deletes what it fetched.
+ * until the torrent's details and the start of the video are in, then from
+ * `?t=`. Where it stops is kept for Continue Watching. Back stops the stream
+ * and deletes what it fetched.
  */
 export function Watch() {
   const { id } = useParams({ from: "/watch/$id" });
+  const { t } = useSearch({ from: "/watch/$id" });
   const navigate = useNavigate();
   const router = useRouter();
   const canGoBack = useCanGoBack();
@@ -36,6 +38,15 @@ export function Watch() {
   const [failed, setFailed] = useState(false);
   const name = stream?.movie || stream?.title || undefined;
   useDocumentTitle(name ?? "Starting");
+
+  // The address follows playback, so a reload picks up where the viewer is.
+  const keepPlace = useCallback(
+    (positionMs: number) => {
+      const seconds = Math.floor(positionMs / 1000);
+      void navigate({ to: "/watch/$id", params: { id }, search: seconds > 0 ? { t: seconds } : {}, replace: true, resetScroll: false });
+    },
+    [navigate, id],
+  );
 
   const back = useCallback(() => {
     void client.admin.stopStream(id).catch(nothing);
@@ -58,13 +69,14 @@ export function Watch() {
     <PlayerView
       key={served ? "server" : "file"}
       catalog={null}
+      streamId={id}
       title={name}
       year={stream?.year}
       episode={undefined}
       onNext={nothing}
       source={source}
       mode={playback ? playbackMode(playback, source?.kind === "rewrap") : undefined}
-      startAt={undefined}
+      startAt={t}
       subtitleTracks={NO_TRACKS}
       audioLanguage={stream?.media ? audioLanguage(stream.media.audio) : null}
       subtitleScope="stream"
@@ -73,7 +85,7 @@ export function Watch() {
       streamNote={downloadNote(stream)}
       onBack={back}
       onFailed={fallBack}
-      onPosition={nothing}
+      onPosition={keepPlace}
     />
   );
 }

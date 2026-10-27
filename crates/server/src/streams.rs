@@ -8,8 +8,12 @@
 //! the loopback interface, `http://127.0.0.1:<port>/<id>`: the id is 128
 //! random bits and never leaves the server's own processes.
 //!
-//! Nothing is saved: a stream nobody has asked about for [`IDLE`] stops,
+//! No video is kept: a stream nobody has asked about for [`IDLE`] stops,
 //! and its files are deleted, as are all of them when the server starts.
+//! What each person watched, and where they stopped, is kept (one JSON
+//! value in the catalog's `setting` table), so Home can offer it again under
+//! Continue Watching. The rules are the library's: under a minute is not
+//! kept, and 90% is finished.
 
 use std::collections::{HashMap, HashSet};
 use std::io::SeekFrom;
@@ -35,8 +39,17 @@ const IDLE: Duration = Duration::from_secs(120);
 const MAX_STREAMS: usize = 3;
 /// ffprobe waits for the pieces it reads; each try has the probe timeout.
 const PROBE_TRIES: u32 = 6;
+const HISTORY_KEY: &str = "stream_history";
+/// Streams kept per person; watching one more forgets the oldest.
+const HISTORY_PER_USER: usize = 20;
+/// Under this, a position is not kept: opening one by accident does not put
+/// it in Continue Watching.
+const TOO_EARLY_MS: u64 = 60_000;
 
 pub struct Streams {
+    library: nuvora_library::Library,
+    /// Newest first.
+    history: tokio::sync::Mutex<Vec<Watched>>,
     engine: Result<Arc<Session>, String>,
     fetcher: reqwest::Client,
     tools: MediaTools,
@@ -80,6 +93,19 @@ pub struct StreamFile {
     pub len: u64,
 }
 
+/// Where someone stopped in a stream.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct Watched {
+    pub user: i64,
+    /// What opens it again.
+    pub link: String,
+    pub title: String,
+    pub position_ms: u64,
+    pub duration_ms: u64,
+    /// Unix ms.
+    pub updated_at: i64,
+}
+
 pub struct Progress {
     pub done_bytes: u64,
     pub total_bytes: u64,
@@ -98,10 +124,22 @@ pub enum OpenError {
 impl Streams {
     /// Deletes what earlier runs left and starts the feed FFmpeg reads.
     pub async fn start(
+        library: nuvora_library::Library,
         engine: Result<Arc<Session>, String>,
         tools: MediaTools,
         data_dir: &Path,
     ) -> std::io::Result<Arc<Streams>> {
+        let history = match library.setting(HISTORY_KEY).await {
+            Ok(Some(json)) => serde_json::from_str(&json).unwrap_or_else(|e| {
+                tracing::warn!("saved stream history doesn't parse, starting empty: {e}");
+                Vec::new()
+            }),
+            Ok(None) => Vec::new(),
+            Err(e) => {
+                tracing::warn!("cannot read stream history: {e}");
+                Vec::new()
+            }
+        };
         let dir = data_dir.join("downloads").join("streams");
         if let Err(e) = tokio::fs::remove_dir_all(&dir).await
             && e.kind() != std::io::ErrorKind::NotFound
@@ -111,6 +149,8 @@ impl Streams {
         tokio::fs::create_dir_all(&dir).await?;
         let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
         let streams = Arc::new(Streams {
+            library,
+            history: tokio::sync::Mutex::new(history),
             engine,
             fetcher: crate::downloads::fetcher(),
             tools,
@@ -215,6 +255,70 @@ impl Streams {
         };
         self.end(&stream).await;
         true
+    }
+
+    /// Keeps where `user` is in `stream`, by the library's rules: under a
+    /// minute keeps nothing, 90% is finished and forgets it.
+    pub async fn record(
+        &self,
+        user: i64,
+        stream: &Stream,
+        position_ms: u64,
+        duration_ms: u64,
+    ) -> Result<(), nuvora_library::QueryError> {
+        let mut history = self.history.lock().await;
+        history.retain(|w| !(w.user == user && w.link == stream.link));
+        let finished = u128::from(position_ms) * 10 >= u128::from(duration_ms) * 9;
+        if !finished && position_ms >= TOO_EARLY_MS {
+            history.insert(
+                0,
+                Watched {
+                    user,
+                    link: stream.link.clone(),
+                    title: stream.title(),
+                    position_ms,
+                    duration_ms,
+                    updated_at: unix_ms(),
+                },
+            );
+        }
+        let mut kept = 0;
+        history.retain(|w| {
+            kept += usize::from(w.user == user);
+            w.user != user || kept <= HISTORY_PER_USER
+        });
+        self.save(&history).await
+    }
+
+    /// What `user` stopped partway through, newest first.
+    pub async fn watched(&self, user: i64) -> Vec<Watched> {
+        let history = self.history.lock().await;
+        history.iter().filter(|w| w.user == user).cloned().collect()
+    }
+
+    /// Where `user` stopped in the stream of `link`, if they did.
+    pub async fn resume_at(&self, user: i64, link: &str) -> Option<u64> {
+        let history = self.history.lock().await;
+        history
+            .iter()
+            .find(|w| w.user == user && w.link == link)
+            .map(|w| w.position_ms)
+    }
+
+    /// False when `user` has nothing kept for `link`.
+    pub async fn forget(&self, user: i64, link: &str) -> Result<bool, nuvora_library::QueryError> {
+        let mut history = self.history.lock().await;
+        let before = history.len();
+        history.retain(|w| !(w.user == user && w.link == link));
+        if history.len() == before {
+            return Ok(false);
+        }
+        self.save(&history).await.map(|()| true)
+    }
+
+    async fn save(&self, history: &[Watched]) -> Result<(), nuvora_library::QueryError> {
+        let json = serde_json::to_string(history).expect("history serializes");
+        self.library.set_setting(HISTORY_KEY, json).await
     }
 
     /// What the converter reads for a ready stream: the feed, and its media.
@@ -337,6 +441,11 @@ impl Streams {
 }
 
 impl Stream {
+    /// What opened it, and opens it again.
+    pub fn link(&self) -> &str {
+        &self.link
+    }
+
     /// The release's name, or `""` until the torrent's details are in.
     pub fn title(&self) -> String {
         self.title
@@ -489,6 +598,12 @@ fn byte_range(header: &str, len: u64) -> Option<Option<(u64, u64)>> {
         }
     };
     Some(range)
+}
+
+fn unix_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
 }
 
 #[cfg(test)]

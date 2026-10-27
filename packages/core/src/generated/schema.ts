@@ -299,6 +299,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/streams/watched": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_watched_streams"];
+        put?: never;
+        post?: never;
+        delete: operations["forget_watched_stream"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/streams/{id}": {
         parameters: {
             query?: never;
@@ -376,6 +392,26 @@ export interface paths {
         };
         get: operations["get_stream_segment"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/streams/{id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Kept per person, by the library's rules: under a minute keeps nothing,
+         *     90% is finished.
+         */
+        put: operations["put_stream_progress"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2370,6 +2406,12 @@ export interface components {
             /** Format: double */
             start: number;
         };
+        StreamProgressRequest: {
+            /** Format: int64 */
+            duration_ms: number;
+            /** Format: int64 */
+            position_ms: number;
+        };
         /** @enum {string} */
         StreamState: "waiting" | "converting" | "paused" | "finished" | "failed";
         /**
@@ -2444,6 +2486,12 @@ export interface components {
             /** Format: int32 */
             peers: number;
             playback?: null | components["schemas"]["Playback"];
+            /**
+             * Format: int64
+             * @description Where the signed-in person stopped in this release last time, if
+             *     they did: start the player there.
+             */
+            resume_ms?: number | null;
             /** Format: int64 */
             size_bytes?: number | null;
             state: components["schemas"]["TorrentStreamState"];
@@ -2782,6 +2830,27 @@ export interface components {
             position_ms?: number | null;
             /** @description Finished at least once. */
             watched: boolean;
+        };
+        /** @description A stream someone stopped partway through. */
+        WatchedStream: {
+            content: components["schemas"]["ReleaseContent"];
+            /** Format: int64 */
+            duration_ms: number;
+            /** @description Pass to `POST /api/admin/streams` to play it again. */
+            link: string;
+            /** @description The movie or show, and its year. */
+            movie: string;
+            /** Format: int64 */
+            position_ms: number;
+            /** @description The release's name. */
+            title: string;
+            /**
+             * Format: int64
+             * @description Unix ms.
+             */
+            updated_at: number;
+            /** Format: int32 */
+            year?: number | null;
         };
         /** @enum {string} */
         X264Preset: "ultrafast" | "superfast" | "veryfast" | "faster" | "fast" | "medium" | "slow" | "slower" | "veryslow";
@@ -3900,6 +3969,88 @@ export interface operations {
             };
         };
     };
+    get_watched_streams: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchedStream"][];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    forget_watched_stream: {
+        parameters: {
+            query: {
+                link: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_stream: {
         parameters: {
             query?: never;
@@ -4211,6 +4362,63 @@ export interface operations {
                 };
                 content: {
                     "video/mp4": number[];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_stream_progress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamProgressRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description No valid session */

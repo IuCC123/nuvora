@@ -239,6 +239,11 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(downloads::remove_indexer))
         .routes(routes!(streams::open_stream))
         .routes(routes!(streams::get_stream, streams::stop_stream))
+        .routes(routes!(streams::put_stream_progress))
+        .routes(routes!(
+            streams::get_watched_streams,
+            streams::forget_watched_stream
+        ))
         .routes(routes!(streams::get_stream_file))
         .routes(routes!(streams::get_stream_playlist))
         .routes(routes!(streams::get_stream_init))

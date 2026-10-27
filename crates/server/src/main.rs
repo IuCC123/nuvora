@@ -123,8 +123,13 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
         downloads::Engine::Internet,
     )
     .await;
-    let streams =
-        streams::Streams::start(downloads.engine(), tools.clone(), &config.data_dir).await?;
+    let streams = streams::Streams::start(
+        library.clone(),
+        downloads.engine(),
+        tools.clone(),
+        &config.data_dir,
+    )
+    .await?;
     let state = api::AppState {
         library: library.clone(),
         auth: Arc::new(auth::Auth::new(net::TrustedProxies::new(

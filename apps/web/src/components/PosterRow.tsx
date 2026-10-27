@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { homeRowQueryParams, librarySearch, parseLibraryView, rowCards, type HomeRow, type RowPage } from "@nuvora/core";
@@ -13,9 +13,10 @@ const MAX_PENDING_CARDS = 6;
 /**
  * A titled, horizontally scrolling row. Its first page comes with home; the
  * rest loads through the row cursor when the strip nears its end. Every card
- * is a link in tab order, and Left/Right move focus within the row.
+ * is a link in tab order, and Left/Right move focus within the row. `lead`
+ * cards come first (Continue Watching's torrent streams).
  */
-export function PosterRow({ row }: { row: HomeRow }) {
+export function PosterRow({ row, lead = [] }: { row: HomeRow; lead?: readonly { key: string; card: ReactNode }[] }) {
   const library = row.kind === "library" ? (row.library_id ?? undefined) : undefined;
   const headingId = `row-${row.id ?? (library === undefined ? row.kind : `library-${library}`)}`;
   const strip = useRef<HTMLUListElement>(null);
@@ -31,7 +32,7 @@ export function PosterRow({ row }: { row: HomeRow }) {
   const { cards, hasMore } = rowCards(row, pages.data?.pages as RowPage[] | undefined);
   const failed = pages.isError && !pages.isFetching;
   const pending = hasMore && !failed ? Math.min(MAX_PENDING_CARDS, Math.max(1, row.total - cards.length)) : 0;
-  const { atStart, atEnd } = useScrollEdges(strip, cards.length + pending);
+  const { atStart, atEnd } = useScrollEdges(strip, lead.length + cards.length + pending);
 
   const loadMore = useCallback(() => {
     if (!armed) setArmed(true);
@@ -70,6 +71,11 @@ export function PosterRow({ row }: { row: HomeRow }) {
         </div>
       </div>
       <ul className="row-strip" ref={strip} role="list" onKeyDown={moveFocus}>
+        {lead.map(({ key, card }) => (
+          <li key={key} className="row-item">
+            {card}
+          </li>
+        ))}
         {cards.map((card) => (
           <li key={card.id} className="row-item">
             <PosterCardView card={card} />

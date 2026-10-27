@@ -49,7 +49,7 @@ import { SettingsUsers } from "./screens/settings/Users";
  *   /library/$id?sort=&order=&filter=&res=&hdr=&group=  Library grid (view also kept per device)
  *   /episode/$id/play?file=&t=  Player for an episode; without `file` it resumes where the viewer stopped
  *   /downloads?q=               Find a movie on the indexers and download it (admins)
- *   /watch/$id                  Player for a release playing while it downloads (admins)
+ *   /watch/$id?t=<s>            Player for a release playing while it downloads (admins), from second `t`
  *   /settings/<section>         general, libraries, transcoding, downloads, activity, users (admins), account
  */
 /** Every screen, with Watch Together's invitations and follow-along under them. */
@@ -326,6 +326,7 @@ const watch = createRoute({
     },
     stringify: (p: { id: string }) => ({ id: p.id }),
   },
+  validateSearch: playSearch,
   beforeLoad: async (ctx) => requireAdmin({ context: await requireUser(ctx) }),
   loader: ({ params }) => void queryClient.prefetchQuery(queries.stream(params.id)),
   component: Watch,

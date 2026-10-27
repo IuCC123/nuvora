@@ -210,6 +210,76 @@
   transform: none;
 }
 
+/* A torrent stream in Continue Watching: marked as one, and removable. */
+
+.stream-poster {
+  position: relative;
+}
+
+.stream-poster > .poster-card {
+  width: 100%;
+  text-align: left;
+}
+
+.poster-stream {
+  position: absolute;
+  z-index: 1;
+  top: 6px;
+  left: 6px;
+  padding: 3px 8px;
+  border-radius: var(--nv-radius-pill);
+  background: color-mix(in srgb, var(--nv-color-canvas) 84%, transparent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-caption-size);
+  line-height: 1;
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.poster-remove {
+  position: absolute;
+  z-index: 3;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--nv-color-canvas) 84%, transparent);
+  color: var(--nv-color-text-primary);
+  opacity: 0;
+  transition: opacity var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.stream-poster:hover .poster-remove,
+.poster-remove:focus-visible {
+  opacity: 1;
+}
+
+.poster-spin {
+  animation: player-spin 0.9s linear infinite;
+}
+
+@keyframes player-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.poster-error {
+  margin-top: 4px;
+  color: var(--nv-color-danger);
+  font-size: var(--nv-type-caption-size);
+  line-height: var(--nv-type-caption-line);
+}
+
+@media (hover: none) {
+  .poster-remove {
+    opacity: 1;
+  }
+}
+
 /* Watch marks: a 3px amber bar while in progress, a check once watched. Unwatched posters carry nothing. */
 
 .poster-progress {

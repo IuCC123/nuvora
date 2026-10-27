@@ -96,6 +96,7 @@ impl TestApp {
             crate::downloads::Downloads::start(library.clone(), &dir.path().join("data"), engine)
                 .await;
         let streams = crate::streams::Streams::start(
+            library.clone(),
             downloads.engine(),
             tools.clone(),
             &dir.path().join("data"),

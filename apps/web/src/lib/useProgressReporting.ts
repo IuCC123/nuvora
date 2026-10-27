@@ -1,6 +1,9 @@
 import { useEffect, useRef } from "react";
-import { createProgressReporter, watchStateKeys, type ProgressRequest } from "@nuvora/core";
+import { createProgressReporter, queryKeys, watchStateKeys, type ProgressRequest } from "@nuvora/core";
 import { client, queryClient } from "../nuvora";
+
+/** What playback reports to: a library file, or a torrent stream (kept for Continue Watching). */
+export type ProgressTarget = { kind: "file"; itemId: number; fileId: number } | { kind: "stream"; id: string };
 
 const timers = {
   setTimeout: (fn: () => void, ms: number) => window.setTimeout(fn, ms),
@@ -13,33 +16,32 @@ const timers = {
  * request carries the position even if the page never comes back. Leaving the
  * player sends the last position, then refreshes home and the detail page.
  * `onReported` hears every position sent while the player is still open.
- * Without a library `file` (a torrent stream) nothing is reported.
+ * A stream reports to its own place; `null` reports nothing.
  */
-export function useProgressReporting(
-  video: HTMLVideoElement | null,
-  file: { itemId: number; fileId: number } | null,
-  onReported: (positionMs: number) => void,
-) {
+export function useProgressReporting(video: HTMLVideoElement | null, target: ProgressTarget | null, onReported: (positionMs: number) => void) {
   const reported = useRef(onReported);
   reported.current = onReported;
-  const itemId = file?.itemId;
-  const fileId = file?.fileId;
+  const itemId = target?.kind === "file" ? target.itemId : undefined;
+  const fileId = target?.kind === "file" ? target.fileId : undefined;
+  const streamId = target?.kind === "stream" ? target.id : undefined;
   useEffect(() => {
-    if (!video || itemId === undefined || fileId === undefined) return;
+    if (!video || (itemId === undefined && streamId === undefined)) return;
+    const send = (body: ProgressRequest, opts?: { keepalive: boolean }) =>
+      streamId !== undefined ? client.admin.streamProgress(streamId, body, opts) : client.reportProgress(itemId!, body, opts);
     let leaving = false;
     const told = (body: ProgressRequest) => !leaving && reported.current(body.position_ms);
     const reporter = createProgressReporter({
-      fileId,
+      fileId: fileId ?? 0,
       read: () => ({ positionMs: video.currentTime * 1000, durationMs: video.duration * 1000 }),
       send: (body) => {
         told(body);
-        return client.reportProgress(itemId, body);
+        return send(body);
       },
       timers,
     });
     const keepalive = (body: ProgressRequest) => {
       told(body);
-      void client.reportProgress(itemId, body, { keepalive: true }).catch(() => {});
+      void send(body, { keepalive: true }).catch(() => {});
     };
     const onPlaying = () => reporter.playing();
     const onPause = () => reporter.paused();
@@ -59,8 +61,9 @@ export function useProgressReporting(
       window.removeEventListener("pagehide", onPageHide);
       leaving = true;
       void reporter.leave().then(() => {
-        for (const queryKey of watchStateKeys(itemId)) void queryClient.invalidateQueries({ queryKey });
+        const keys = itemId !== undefined ? watchStateKeys(itemId) : [queryKeys.watchedStreams];
+        for (const queryKey of keys) void queryClient.invalidateQueries({ queryKey });
       });
     };
-  }, [video, itemId, fileId]);
+  }, [video, itemId, fileId, streamId]);
 }

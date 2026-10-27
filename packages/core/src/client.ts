@@ -101,6 +101,8 @@ export type AddIndexerRequest = Schemas["AddIndexerRequest"];
 export type TorrentStream = Schemas["TorrentStream"];
 export type TorrentStreamState = Schemas["TorrentStreamState"];
 export type OpenStreamRequest = Schemas["OpenStreamRequest"];
+export type WatchedStream = Schemas["WatchedStream"];
+export type StreamProgressRequest = Schemas["StreamProgressRequest"];
 
 export interface ClientOptions {
   /** Origin of the Nuvora server, e.g. `""` (same origin, web) or `"http://192.168.1.10:8640"` (TV). */
@@ -257,6 +259,12 @@ export interface AdminClient {
   stream(id: string, signal?: AbortSignalLike): Promise<TorrentStream>;
   /** Stops it and deletes what it fetched. */
   stopStream(id: string): Promise<void>;
+  /** Where the player is in a stream, kept per person for Continue Watching (not under a minute, not past 90%). */
+  streamProgress(id: string, body: StreamProgressRequest, opts?: { keepalive?: boolean }): Promise<void>;
+  /** Streams the signed-in person stopped partway through, newest first. */
+  watchedStreams(signal?: AbortSignalLike): Promise<WatchedStream[]>;
+  /** Takes a stream off Continue Watching. */
+  forgetStream(link: string): Promise<void>;
 }
 
 type Params = Record<string, string | number>;
@@ -392,6 +400,9 @@ export function createClient(options: ClientOptions): NuvoraClient {
       openStream: (body) => post<TorrentStream>("/api/admin/streams", {}, body),
       stream: (id, signal) => get<TorrentStream>("/api/admin/streams/{id}", { id }, signal),
       stopStream: (id) => remove("/api/admin/streams/{id}", { id }),
+      streamProgress: (id, body, opts) => put("/api/admin/streams/{id}/progress", { id }, body, opts?.keepalive),
+      watchedStreams: (signal) => get<WatchedStream[]>("/api/admin/streams/watched", {}, signal),
+      forgetStream: (link) => call<void>("DELETE", "/api/admin/streams/watched", {}, undefined, { link }),
     },
     imageUrl: (image, size) => options.baseUrl + fill("/api/images/{id}/{size}", { id: image.id, size }),
     subtitleUrl: (fileId, streamIndex, format) =>
