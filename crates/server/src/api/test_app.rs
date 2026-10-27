@@ -99,6 +99,11 @@ impl TestApp {
             )
             .await,
             parties: Default::default(),
+            updater: crate::update::Updater::new(
+                None,
+                dir.path().join("nuvora"),
+                dir.path().join("data"),
+            ),
             server: Arc::new(ServerSetup {
                 id: "0123456789abcdef0123456789abcdef".into(),
                 announcer: None,

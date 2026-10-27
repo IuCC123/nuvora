@@ -1,0 +1,35 @@
+[package]
+name = "nuvora-desktop"
+description = "Nuvora for Mac and Windows: the web app in the system's own web view."
+version = "0.3.2"
+edition = "2024"
+license = "AGPL-3.0-only"
+
+# Its own workspace: Tauri needs the system web view's development files,
+# which the server's CI and Docker build don't have.
+[workspace]
+
+[lib]
+name = "nuvora_desktop"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["macos-private-api"] }
+tauri-plugin-opener = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+mdns-sd = { version = "0.21", default-features = false }
+url = "2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

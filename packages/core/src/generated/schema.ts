@@ -177,6 +177,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_update"];
+        put?: never;
+        post: operations["install_update"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/users": {
         parameters: {
             query?: never;
@@ -1229,7 +1245,7 @@ export interface components {
          * @description Clients must treat an unknown code like `bad_request`.
          * @enum {string}
          */
-        ErrorCode: "bad_request" | "validation" | "unauthorized" | "bad_credentials" | "forbidden" | "not_found" | "setup_done" | "username_taken" | "last_admin" | "rate_limited" | "busy" | "internal";
+        ErrorCode: "bad_request" | "validation" | "unauthorized" | "bad_credentials" | "forbidden" | "not_found" | "setup_done" | "username_taken" | "last_admin" | "rate_limited" | "busy" | "update_unavailable" | "internal";
         /** @enum {string} */
         FfmpegLogLevel: "error" | "warning" | "info" | "verbose";
         /**
@@ -2176,8 +2192,33 @@ export interface components {
             /** @description A TMDB API key or API Read Access Token. Empty or `null` clears it. */
             tmdb_api_key?: string | null;
         };
+        /** @enum {string} */
+        UpdatePhase: "idle" | "downloading" | "restarting" | "failed";
         UpdateServerRequest: {
             server_name: string;
+        };
+        UpdateStatus: {
+            /** @description `latest` is newer than `current`. */
+            available: boolean;
+            /**
+             * @description The server can install `latest` itself: the release has a download for
+             *     this platform. Otherwise the admin updates it by hand.
+             */
+            can_install: boolean;
+            /**
+             * @description False when the server was started with `NUVORA_UPDATES=false`; nothing
+             *     else here is known then.
+             */
+            checks: boolean;
+            /** @description This server's version. */
+            current: string;
+            /** @description Why the check or the install failed, as a sentence. */
+            error?: string | null;
+            /** @description The newest release, when the last check worked. */
+            latest?: string | null;
+            phase: components["schemas"]["UpdatePhase"];
+            /** @description The newest release's page, with what changed. */
+            release_url?: string | null;
         };
         /**
          * @description Every field is optional. Disabling a user or resetting their password signs
@@ -2952,6 +2993,91 @@ export interface operations {
             };
             /** @description Not an admin */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_update: {
+        parameters: {
+            query?: {
+                /** @description Ask GitHub now rather than answering from the last check (at most once a minute). */
+                refresh?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStatus"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    install_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStatus"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

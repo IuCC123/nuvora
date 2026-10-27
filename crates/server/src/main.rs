@@ -9,6 +9,7 @@ mod net;
 mod party;
 mod transcode;
 mod tuning;
+mod update;
 mod web;
 
 use std::num::NonZeroUsize;
@@ -66,6 +67,18 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
         )
         .init();
     let config = config::load(&args)?;
+    if let Some(newer) = update::staged(&config.data_dir) {
+        tracing::info!(exe = %newer.display(), "starting the updated server");
+        update::restart_as(&newer);
+    }
+    let feed = config.update_feed.clone();
+    let updater = update::Updater::new(
+        config
+            .updates
+            .then(|| feed.unwrap_or_else(|| update::LATEST_RELEASE.to_owned())),
+        std::env::current_exe()?,
+        config.data_dir.clone(),
+    );
     let tools = MediaTools::locate(config.ffprobe.clone(), config.ffmpeg.clone()).await?;
     let cores = std::thread::available_parallelism().map_or(2, |n| n.get());
     let probe_concurrency =
@@ -107,6 +120,7 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
         ))),
         transcoder: transcoder.clone(),
         parties: Arc::new(party::Parties::default()),
+        updater: updater.clone(),
         server: Arc::new(api::ServerSetup {
             id,
             announcer,
@@ -133,11 +147,23 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
     library.request_scan();
     // The peer address keys sign-in rate limiting.
     let app = app.into_make_service_with_connect_info::<std::net::SocketAddr>();
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    let restart = updater.restarts();
+    let serving = axum::serve(listener, app).with_graceful_shutdown(stop(restart.clone()));
+    // After an update, open connections (a video, Watch Together) get a few
+    // seconds to finish rather than holding the restart up.
+    let restart_due = async {
+        restart_requested(restart.clone()).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    };
+    tokio::select! {
+        served = serving => served?,
+        () = restart_due => {}
+    }
     if let Some(announcer) = &server.announcer {
         announcer.stop();
+    }
+    if let Some(exe) = restart.borrow().clone() {
+        update::restart_as(&exe);
     }
     Ok(())
 }
@@ -162,6 +188,19 @@ async fn scheduled_scans(library: Library, transcoder: Arc<transcode::Transcoder
             tracing::info!(every_hours = hours, "scheduled scan");
             library.request_scan();
         }
+    }
+}
+
+async fn stop(restart: tokio::sync::watch::Receiver<Option<std::path::PathBuf>>) {
+    tokio::select! {
+        () = shutdown_signal() => {}
+        () = restart_requested(restart) => tracing::info!("restarting for an update"),
+    }
+}
+
+async fn restart_requested(mut restart: tokio::sync::watch::Receiver<Option<std::path::PathBuf>>) {
+    if restart.wait_for(Option::is_some).await.is_err() {
+        std::future::pending::<()>().await;
     }
 }
 

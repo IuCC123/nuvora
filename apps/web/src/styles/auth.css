@@ -218,6 +218,16 @@
   text-wrap: balance;
 }
 
+.auth-foot-link {
+  color: var(--nv-color-text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.auth-foot-link:hover {
+  color: var(--nv-color-text-primary);
+}
+
 /* Welcome progress: two segments, amber up to the current step. */
 .steps {
   display: flex;

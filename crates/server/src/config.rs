@@ -3,7 +3,7 @@
 //! Every flag also reads an environment variable: `NUVORA_CONFIG`,
 //! `NUVORA_BIND`, `NUVORA_DATA_DIR`, `NUVORA_MOVIES` (a path list,
 //! `:`-separated, `;` on Windows), `NUVORA_TRUSTED_PROXY` (comma-separated),
-//! `NUVORA_DISCOVERY` and `NUVORA_HARDWARE_ENCODING`.
+//! `NUVORA_DISCOVERY`, `NUVORA_HARDWARE_ENCODING` and `NUVORA_UPDATES`.
 //!
 //! The config file and `--movies` only add libraries and folders that do not
 //! exist yet; after that the admin panel owns them.
@@ -18,6 +18,7 @@
 //! discovery = true                 # announce on the local network so TVs find it
 //! hardware_encoding = "auto"       # or "off", "videotoolbox", "nvenc", "vaapi";
 //!                                  # when set here, the admin panel can't change it
+//! updates = true                   # ask GitHub for new versions when an admin opens Settings
 //!
 //! [[library]]
 //! key = "movies"                   # stable identity; renaming `name` keeps ids
@@ -79,6 +80,14 @@ pub struct ServeArgs {
     /// decides (`auto` until changed there).
     #[arg(long, env = "NUVORA_HARDWARE_ENCODING", value_enum)]
     pub hardware_encoding: Option<HardwareEncoding>,
+    /// Look for new versions on GitHub, so admins can update from Settings
+    /// (default: true). Off, the server never contacts GitHub.
+    #[arg(long, env = "NUVORA_UPDATES")]
+    pub updates: Option<bool>,
+    /// Where to ask for the newest release instead of GitHub's API (a fork's
+    /// repository, or a stand-in when testing updates).
+    #[arg(long, env = "NUVORA_UPDATE_FEED", hide = true)]
+    pub update_feed: Option<String>,
 }
 
 /// Which encoder converts video; see `nuvora_media::VideoEncoder`.
@@ -116,6 +125,8 @@ pub struct Config {
     pub discovery: bool,
     /// Named by the file or a flag; `None` leaves it to the admin panel.
     pub hardware_encoding: Option<HardwareEncoding>,
+    pub updates: bool,
+    pub update_feed: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -151,6 +162,7 @@ struct FileConfig {
     ffprobe: Option<PathBuf>,
     discovery: Option<bool>,
     hardware_encoding: Option<HardwareEncoding>,
+    updates: Option<bool>,
     #[serde(default)]
     library: Vec<FileLibrary>,
 }
@@ -256,6 +268,8 @@ pub fn load(args: &ServeArgs) -> Result<Config, ConfigError> {
             .collect::<Result<_, _>>()?,
         discovery: args.discovery.or(file.discovery).unwrap_or(true),
         hardware_encoding: args.hardware_encoding.or(file.hardware_encoding),
+        updates: args.updates.or(file.updates).unwrap_or(true),
+        update_feed: args.update_feed.clone(),
     })
 }
 
@@ -283,6 +297,8 @@ mod tests {
             trusted_proxy: vec![],
             discovery: None,
             hardware_encoding: None,
+            updates: None,
+            update_feed: None,
         }
     }
 
@@ -393,7 +409,9 @@ mod tests {
                 "NUVORA_MOVIES",
                 "NUVORA_TRUSTED_PROXY",
                 "NUVORA_DISCOVERY",
-                "NUVORA_HARDWARE_ENCODING"
+                "NUVORA_HARDWARE_ENCODING",
+                "NUVORA_UPDATES",
+                "NUVORA_UPDATE_FEED"
             ]
         );
         if cfg!(unix) {

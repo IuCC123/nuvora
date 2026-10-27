@@ -4,12 +4,13 @@ import { client, queries } from "../../nuvora";
 import { FormError, TextField } from "../../components/Field";
 import { serverError } from "../../lib/serverError";
 import { useForm } from "../../lib/useForm";
+import { ServerUpdates } from "../../components/Updates";
 import { LoadError, Saved, SettingsPage } from "./SettingsPage";
 
 export function SettingsGeneral() {
   const server = useQuery(queries.adminServer());
   return (
-    <SettingsPage title="General" lede="This server's name, and what it runs on.">
+    <SettingsPage title="General" lede="This server's name, its updates, and what it runs on.">
       {server.isPending ? (
         <div className="server-facts-skeleton" aria-busy="true" aria-label="Loading server details" />
       ) : server.isError ? (
@@ -17,6 +18,7 @@ export function SettingsGeneral() {
       ) : (
         <>
           <ServerName name={server.data.server_name} />
+          <ServerUpdates />
           <Metadata />
           <About server={server.data} />
         </>

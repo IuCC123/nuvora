@@ -64,6 +64,9 @@ export type ServerInfo = Schemas["ServerInfo"];
 export type Details = Schemas["Details"];
 export type CastMember = Schemas["CastMember"];
 export type MetadataSettings = Schemas["MetadataSettings"];
+export type UpdateStatus = Schemas["UpdateStatus"];
+export type UpdatePhase = Schemas["UpdatePhase"];
+export type Health = Schemas["Health"];
 export type UpdateMetadataRequest = Schemas["UpdateMetadataRequest"];
 export type UpdateServerRequest = Schemas["UpdateServerRequest"];
 export type Tuning = Schemas["Tuning"];
@@ -134,6 +137,8 @@ export interface NuvoraClient {
   startScan(): Promise<ScanStatus>;
   /** Never 401: without a session `user` is null. `setup_required` until the first admin exists. */
   authState(signal?: AbortSignalLike): Promise<AuthState>;
+  /** The server's version, without signing in. */
+  health(signal?: AbortSignalLike): Promise<Health>;
   /** Creates the first admin and signs them in. 409 `setup_done` once any user exists. */
   setup(body: SetupRequest): Promise<User>;
   /** 401 `bad_credentials` for any wrong detail; 429 `rate_limited` after five failures. */
@@ -212,6 +217,10 @@ export interface AdminClient {
   updateTuning(body: Tuning): Promise<TuningResponse>;
   /** What the server is converting, scanning and making previews for, right now. */
   activity(signal?: AbortSignalLike): Promise<Activity>;
+  /** This version and the newest; `refresh` asks GitHub now (at most once a minute). */
+  update(refresh?: boolean, signal?: AbortSignalLike): Promise<UpdateStatus>;
+  /** Downloads and installs the newest version; the server then restarts. */
+  installUpdate(): Promise<UpdateStatus>;
 }
 
 type Params = Record<string, string | number>;
@@ -285,6 +294,7 @@ export function createClient(options: ClientOptions): NuvoraClient {
     scanStatus: (signal) => get<ScanStatus>("/api/scan", {}, signal),
     startScan: () => post<ScanStatus>("/api/scan"),
     authState: (signal) => get<AuthState>("/api/auth/state", {}, signal),
+    health: (signal) => get<Health>("/api/health", {}, signal),
     setup: (body) => post<User>("/api/setup", {}, body),
     login: (body) => post<User>("/api/auth/login", {}, body),
     appSignIn: (body) => post<AppSession>("/api/auth/token", {}, body),
@@ -331,6 +341,8 @@ export function createClient(options: ClientOptions): NuvoraClient {
       tuning: (signal) => get<TuningResponse>("/api/admin/tuning", {}, signal),
       updateTuning: (body) => call<TuningResponse>("PUT", "/api/admin/tuning", {}, undefined, undefined, body),
       activity: (signal) => get<Activity>("/api/admin/activity", {}, signal),
+      update: (refresh, signal) => get<UpdateStatus>("/api/admin/update", {}, signal, refresh ? { refresh: "true" } : undefined),
+      installUpdate: () => post<UpdateStatus>("/api/admin/update"),
     },
     imageUrl: (image, size) => options.baseUrl + fill("/api/images/{id}/{size}", { id: image.id, size }),
     subtitleUrl: (fileId, streamIndex, format) =>

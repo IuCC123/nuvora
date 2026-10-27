@@ -15,9 +15,10 @@ import { languageName } from "../../lib/languageName";
 import { setSessionUser, useUser } from "../../lib/session";
 import { serverError } from "../../lib/serverError";
 import { useForm } from "../../lib/useForm";
+import { AppUpdates } from "../../components/Updates";
 import { Saved, SettingsPage } from "./SettingsPage";
 
-/** Every user's own name, password and subtitle preferences, and how to get the TV app. */
+/** Every user's own name, password and subtitle preferences, the Mac or Windows app's updates, and how to get the TV app. */
 export function SettingsAccount() {
   const user = useUser();
   if (!user) return null;
@@ -26,6 +27,7 @@ export function SettingsAccount() {
       <Profile user={user} />
       <Subtitles user={user} />
       <Password />
+      <AppUpdates />
       <TvApp />
     </SettingsPage>
   );

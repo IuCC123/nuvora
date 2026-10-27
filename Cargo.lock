@@ -1311,6 +1311,7 @@ dependencies = [
  "nuvora-library",
  "nuvora-media",
  "password-hash",
+ "reqwest",
  "rust-embed",
  "serde",
  "serde_json",

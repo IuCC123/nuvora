@@ -100,6 +100,8 @@ export default defineConfig(({ mode }) => {
       outDir: "dist",
       assetsDir: "assets",
       target: "es2022",
+      // connect.html is the Mac and Windows apps' first page, bundled with them (apps/desktop).
+      rollupOptions: { input: { index: "index.html", connect: "connect.html" } },
     },
   };
 });

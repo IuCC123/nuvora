@@ -71,6 +71,8 @@ export const queryKeys = {
   adminMetadata: ["admin", "metadata"] as const,
   adminTuning: ["admin", "tuning"] as const,
   adminActivity: ["admin", "activity"] as const,
+  adminUpdate: ["admin", "update"] as const,
+  health: ["health"] as const,
   homeLayout: ["home-layout"] as const,
   search: (q: string) => ["search", q] as const,
   previews: (fileId: number) => ["previews", fileId] as const,

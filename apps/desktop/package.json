@@ -1,0 +1,13 @@
+{
+  "name": "@nuvora/desktop",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4"
+  }
+}

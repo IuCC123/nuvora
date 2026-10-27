@@ -20,6 +20,8 @@
 //! | GET    | /api/files/{id}/hls/...     | Remuxed or converted HLS ([`hls`])       |
 //! | GET    | /api/scan                   | Scan status                              |
 //! | POST   | /api/scan                   | Request a scan (admin; coalescing)       |
+//! | GET    | /api/admin/update           | Newest version, install progress (admin) |
+//! | POST   | /api/admin/update           | Install the newest version ([`update`])  |
 //! | GET    | /api/openapi.json           | The spec                                 |
 //!
 //! Accounts, admin, watch, show and library page, subtitle, and transcoding
@@ -46,6 +48,7 @@ mod subtitles;
 #[cfg(test)]
 mod test_app;
 mod transcoding;
+mod update;
 mod watch;
 
 use std::net::SocketAddr;
@@ -110,6 +113,7 @@ pub struct AppState {
     pub auth: Arc<crate::auth::Auth>,
     pub transcoder: Arc<crate::transcode::Transcoder>,
     pub parties: Arc<crate::party::Parties>,
+    pub updater: Arc<crate::update::Updater>,
     pub server: Arc<ServerSetup>,
 }
 
@@ -215,7 +219,8 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(metadata::get_metadata, metadata::update_metadata))
         .routes(routes!(metadata::refresh_metadata))
         .routes(routes!(transcoding::get_tuning, transcoding::put_tuning))
-        .routes(routes!(transcoding::get_activity));
+        .routes(routes!(transcoding::get_activity))
+        .routes(routes!(update::get_update, update::install_update));
     document_access(member.get_openapi_mut(), Access::Member);
     document_access(admin.get_openapi_mut(), Access::Admin);
     if let Some(state) = state {
@@ -1378,6 +1383,8 @@ pub enum ErrorCode {
     RateLimited,
     /// The server is doing as much as it's set to; try again later.
     Busy,
+    /// The server can't install an update now; `message` says why, for people.
+    UpdateUnavailable,
     Internal,
 }
 

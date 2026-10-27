@@ -1,0 +1,113 @@
+/* Updates: the section in Settings, and the card in the corner when something is newer. */
+.updates {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+}
+
+.update-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: var(--nv-type-body-large-size);
+  line-height: var(--nv-type-body-large-line);
+}
+
+.update-line-strong {
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.update-ok {
+  color: var(--nv-color-accent);
+}
+
+.update-spin {
+  color: var(--nv-color-accent);
+  animation: spin 900ms linear infinite;
+}
+
+.updates .settings-note a {
+  color: var(--nv-color-text-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.updates .settings-note code {
+  color: var(--nv-color-text-primary);
+  font-size: 0.95em;
+}
+
+.updates .form-actions {
+  margin-bottom: 12px;
+}
+
+.update-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 68ch;
+  margin: 4px 0 0;
+  color: var(--nv-color-danger);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+}
+
+.update-error svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.update-card {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 55;
+  width: min(340px, calc(100vw - 40px));
+  padding: 16px;
+  border-radius: var(--nv-radius-lg);
+  background: var(--nv-color-surface-raised);
+  border: 1px solid color-mix(in srgb, var(--nv-color-accent) 35%, var(--nv-color-hairline));
+  box-shadow: var(--nv-shadow-lift);
+  animation: update-card-in var(--nv-motion-duration-base) var(--nv-motion-easing-enter);
+}
+
+.update-card-title {
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.update-card-text {
+  margin: 2px 0 14px;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  text-wrap: pretty;
+}
+
+.update-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+@keyframes update-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-card {
+    animation: none;
+  }
+
+  .update-spin {
+    animation-duration: 2.5s;
+  }
+}

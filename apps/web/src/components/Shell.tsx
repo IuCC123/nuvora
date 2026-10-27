@@ -1,6 +1,7 @@
 import { Outlet } from "@tanstack/react-router";
 import { NavRail } from "./NavRail";
 import { TopBar } from "./TopBar";
+import { UpdateNotice } from "./Updates";
 import "../styles/shell.css";
 
 export function Shell() {
@@ -14,6 +15,7 @@ export function Shell() {
       <main id="content" className="content" tabIndex={-1}>
         <Outlet />
       </main>
+      <UpdateNotice />
     </div>
   );
 }

@@ -1,0 +1,110 @@
+/* The Mac and Windows apps' connect page: the sign-in card, with the servers found on the network above the address field. */
+.connect-waiting {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.connect-waiting .auth-lede {
+  margin: 0;
+}
+
+.connect-spin {
+  color: var(--nv-color-accent);
+  animation: connect-spin 900ms linear infinite;
+}
+
+@keyframes connect-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.connect-found {
+  margin-bottom: 22px;
+}
+
+.connect-found h2 {
+  margin-bottom: 8px;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.connect-found ul {
+  display: grid;
+  gap: 6px;
+}
+
+.connect-server {
+  box-sizing: border-box;
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--nv-radius-md);
+  border: 1px solid var(--nv-color-hairline);
+  background: var(--nv-color-canvas);
+  text-align: start;
+  transition: background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.connect-server:hover:not(:disabled) {
+  background: var(--nv-color-surface-raised);
+}
+
+.connect-server:disabled {
+  opacity: 0.6;
+}
+
+.connect-server[aria-busy="true"] {
+  opacity: 1;
+  border-color: var(--nv-color-accent);
+}
+
+.connect-server svg {
+  grid-row: span 2;
+  color: var(--nv-color-accent);
+}
+
+.connect-server-name {
+  font-weight: var(--nv-font-weight-semibold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connect-server-host,
+.connect-looking {
+  color: var(--nv-color-text-muted);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  font-variant-numeric: tabular-nums;
+}
+
+.connect-looking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+}
+
+.auth-foot a {
+  color: var(--nv-color-text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.auth-foot a:hover {
+  color: var(--nv-color-text-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connect-spin {
+    animation-duration: 2.5s;
+  }
+}

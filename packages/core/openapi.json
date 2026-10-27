@@ -874,6 +874,115 @@
         ]
       }
     },
+    "/api/admin/update": {
+      "get": {
+        "operationId": "get_update",
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "description": "Ask GitHub now rather than answering from the last check (at most once a minute).",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "install_update",
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/admin/users": {
       "get": {
         "operationId": "list_users",
@@ -4483,6 +4592,7 @@
           "last_admin",
           "rate_limited",
           "busy",
+          "update_unavailable",
           "internal"
         ]
       },
@@ -7110,6 +7220,15 @@
           }
         }
       },
+      "UpdatePhase": {
+        "type": "string",
+        "enum": [
+          "idle",
+          "downloading",
+          "restarting",
+          "failed"
+        ]
+      },
       "UpdateServerRequest": {
         "type": "object",
         "required": [
@@ -7121,6 +7240,58 @@
           }
         },
         "additionalProperties": false
+      },
+      "UpdateStatus": {
+        "type": "object",
+        "required": [
+          "current",
+          "available",
+          "can_install",
+          "checks",
+          "phase"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "`latest` is newer than `current`."
+          },
+          "can_install": {
+            "type": "boolean",
+            "description": "The server can install `latest` itself: the release has a download for\nthis platform. Otherwise the admin updates it by hand."
+          },
+          "checks": {
+            "type": "boolean",
+            "description": "False when the server was started with `NUVORA_UPDATES=false`; nothing\nelse here is known then."
+          },
+          "current": {
+            "type": "string",
+            "description": "This server's version."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the check or the install failed, as a sentence."
+          },
+          "latest": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The newest release, when the last check worked."
+          },
+          "phase": {
+            "$ref": "#/components/schemas/UpdatePhase"
+          },
+          "release_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The newest release's page, with what changed."
+          }
+        }
       },
       "UpdateUserRequest": {
         "type": "object",

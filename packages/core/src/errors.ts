@@ -19,6 +19,7 @@ const SENTENCES: Record<ErrorCode, string> = {
   last_admin: "Nuvora needs at least one admin who can sign in. Make someone else an admin first.",
   rate_limited: "Too many sign-in attempts. Try again in 15 minutes.",
   busy: "The server is as busy as it's set to be. Try again in a minute.",
+  update_unavailable: "This server can't update itself right now.",
   internal: SERVER_TROUBLE,
 };
 
@@ -32,8 +33,8 @@ export function describeError(error: unknown, overrides: Partial<Record<ErrorCod
   const code = errorCode(error);
   if (!code) return error.status >= 500 ? SERVER_TROUBLE : SENTENCES.bad_request;
   if (overrides[code]) return overrides[code];
-  // The server writes validation messages for people ("Usernames are 1 to 32 letters..."); others are generic.
-  if (code === "validation" && error.detail) return sentence(error.detail);
+  // The server writes these messages for people ("Usernames are 1 to 32 letters..."); others are generic.
+  if ((code === "validation" || code === "update_unavailable") && error.detail) return sentence(error.detail);
   return SENTENCES[code];
 }
 

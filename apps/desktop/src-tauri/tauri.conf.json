@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Nuvora",
+  "identifier": "app.nuvora.desktop",
+  "build": {
+    "frontendDist": "../../web/dist",
+    "beforeBuildCommand": "bun run --cwd ../web build"
+  },
+  "app": {
+    "windows": [],
+    "macOSPrivateApi": true,
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg", "nsis"],
+    "createUpdaterArtifacts": true,
+    "category": "Entertainment",
+    "shortDescription": "Nuvora",
+    "longDescription": "Watch your Nuvora server's movies and shows.",
+    "copyright": "Nuvora contributors. AGPL-3.0.",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "macOS": {
+      "minimumSystemVersion": "12.3",
+      "signingIdentity": "-"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgwOTkwREMyMTFFQzA5Q0UKUldUT0Nld1J3ZzJaZ0NWaVdJMjVJVGIvQ0FPRnI0NmpHSDQ3Qk4wSm9FMFkrbUZOUDltTWFhUVQK",
+      "endpoints": ["https://github.com/IuCC123/nuvora/releases/latest/download/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

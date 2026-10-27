@@ -16,6 +16,7 @@
   <a href="https://getnuvora.online"><b>Website</b></a> &nbsp;·&nbsp;
   <a href="#set-up-your-server"><b>Install</b></a> &nbsp;·&nbsp;
   <a href="#watch-on-your-tv"><b>TV app</b></a> &nbsp;·&nbsp;
+  <a href="#on-your-mac-or-pc"><b>Mac and Windows apps</b></a> &nbsp;·&nbsp;
   <a href="https://github.com/IuCC123/nuvora/releases/latest"><b>Latest release</b></a>
 </p>
 
@@ -116,6 +117,15 @@ To update the app, repeat step 3 and you stay signed in. The app is also on the 
 3. Download `nuvora-vega_armv7.vpkg` from [Releases](https://github.com/IuCC123/nuvora/releases/latest) and run `vega device install-app --packagePath nuvora-vega_armv7.vpkg`.
 4. Open **Nuvora** and pick your server, or type its address.
 
+## On your Mac or PC
+
+Any browser works: open your server's address, like `http://192.168.1.20:8640`. The Nuvora app for Mac and Windows is the same app in its own window. It runs on the system's own web engine (Safari's on a Mac, Edge's on Windows), so it is small, and it shows exactly what the browser shows, straight from your server. It finds servers on your network, remembers yours, and updates itself.
+
+- **Mac** (macOS 12.3 or later, Apple silicon and Intel): download [`Nuvora-mac.dmg`](https://github.com/IuCC123/nuvora/releases/latest/download/Nuvora-mac.dmg), open it and drag Nuvora to Applications. The app isn't notarized by Apple yet, so the first time, macOS refuses to open it: go to **System Settings › Privacy & Security**, scroll down and choose **Open Anyway**.
+- **Windows** (10 or 11): download [`Nuvora-windows-setup.exe`](https://github.com/IuCC123/nuvora/releases/latest/download/Nuvora-windows-setup.exe) and run it. If SmartScreen warns about an unrecognized app, choose **More info › Run anyway**.
+
+Open Nuvora, pick your server under **On your network** (or type its address) and sign in. **Switch server** is in the account menu, and in the Mac's Nuvora menu. When a new version of the app is out, it offers to update and restart; **Settings › Account › This app** checks by hand.
+
 ## Organizing your files
 
 Nuvora goes by folder and file names, so a little order goes a long way:
@@ -136,13 +146,15 @@ Movies want a year in the name. Episodes want a number: `S02E01`, `2x01` and ani
 
 ## Updating
 
-Run the installer again. It keeps your answers and says which version you moved to. Or do this in the folder with `compose.yaml`:
+When a new version is out, admins see it in the web app and the Mac and Windows apps. **Settings › General › Update and restart** downloads it, checks it, and restarts the server as the new version; open pages reload by themselves. With Docker, the new server is kept in the `data` folder and the container keeps using it, so it survives restarts; pulling a newer image later replaces it.
+
+You can also update by hand: run the installer again, which keeps your answers and says which version you moved to, or do this in the folder with `compose.yaml`, which also brings the newest FFmpeg:
 
 ```sh
 docker compose pull && docker compose up -d
 ```
 
-Accounts, progress and settings carry over. To stay on one version, set `NUVORA_IMAGE=ghcr.io/iucc123/nuvora:0.3.2` in `.env`, or pass `--version 0.3.2` to the installer.
+Accounts, progress and settings carry over. To stay on one version, set `NUVORA_IMAGE=ghcr.io/iucc123/nuvora:0.3.2` and `NUVORA_UPDATES=false` in `.env`, or pass `--version 0.3.2` to the installer.
 
 To remove Nuvora, run `curl -fsSL https://getnuvora.online/install.sh | bash -s -- --uninstall`. It stops and removes Nuvora and asks before deleting its data.
 
@@ -161,6 +173,7 @@ Set these in `.env` next to `compose.yaml`, then run `docker compose up -d`:
 | `NUVORA_UID`, `NUVORA_GID` | `10001` | User and group Nuvora runs as; must be able to read your media and write `data` (the installer sets yours) |
 | `NUVORA_TRUSTED_PROXY` | | Your reverse proxy's address or network, see [Remote access](#remote-access) |
 | `NUVORA_HARDWARE_ENCODING` | `auto` | Convert video on the graphics chip when one works: `auto`, `off`, or `videotoolbox`, `nvenc`, `vaapi` |
+| `NUVORA_UPDATES` | `true` | Look for new versions on GitHub so admins can update from Settings; `false` and the server never contacts GitHub (update by hand) |
 | `TZ` | `UTC` | Time zone, for example `Europe/Amsterdam` |
 
 The image is published for x86-64 and ARM64, which covers the Raspberry Pi 4 and 5, Apple Silicon and most recent NAS boxes.

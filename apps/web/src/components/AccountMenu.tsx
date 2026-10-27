@@ -2,7 +2,8 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { initials } from "@nuvora/core";
 import { useSignOut, useUser } from "../lib/session";
-import { SettingsIcon, SignOutIcon, UserIcon } from "./Icon";
+import { desktop } from "../platform/desktop";
+import { ServerIcon, SettingsIcon, SignOutIcon, UserIcon } from "./Icon";
 
 /**
  * The initials button at the right of the top bar and its menu. Up and Down
@@ -86,6 +87,12 @@ export function AccountMenu() {
               <UserIcon size={18} />
               Account
             </Link>
+          )}
+          {desktop && (
+            <button type="button" role="menuitem" className="menu-item" onClick={() => void desktop?.switchServer()}>
+              <ServerIcon size={18} />
+              Switch server
+            </button>
           )}
           <button
             type="button"

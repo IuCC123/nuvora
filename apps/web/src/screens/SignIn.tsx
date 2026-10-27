@@ -8,6 +8,7 @@ import { forgetResponses, setSessionUser } from "../lib/session";
 import { serverError } from "../lib/serverError";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useForm } from "../lib/useForm";
+import { desktop } from "../platform/desktop";
 
 /** No sign-up link: only an admin creates accounts. */
 export function SignIn() {
@@ -43,7 +44,18 @@ export function SignIn() {
             {login.isPending ? "Signing in…" : "Sign in"}
           </button>
         </form>
-        <p className="auth-foot">No account yet? Ask the person who runs this server to add you.</p>
+        <p className="auth-foot">
+          No account yet? Ask the person who runs this server to add you.
+          {desktop && (
+            <>
+              {" "}
+              Wrong server?{" "}
+              <button type="button" className="auth-foot-link" onClick={() => void desktop?.switchServer()}>
+                Switch server
+              </button>
+            </>
+          )}
+        </p>
       </div>
     </AuthScreen>
   );
