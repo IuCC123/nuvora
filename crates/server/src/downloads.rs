@@ -46,6 +46,10 @@ const PEER_LIMIT: usize = 400;
 /// How long a peer has to answer before its place goes to another (librqbit
 /// waits 10 seconds).
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+/// Disk reads and writes the engine runs at once. librqbit's 8 suit a local
+/// disk; on a network share each waits a round trip, and 8 held a download
+/// to a Hetzner Storage Box at 22 MB/s where 64 reach 42.
+const DISK_THREADS: usize = 64;
 /// Files worth fetching: videos and subtitles. Everything else in a torrent
 /// (`.nfo`, `.txt`, `.exe`, artwork) stays behind.
 const WANTED_FILES: &str =
@@ -784,6 +788,7 @@ async fn start_engine(dir: &Path, engine: Engine) -> Result<Arc<Session>, String
             ..Default::default()
         }),
         peer_limit: Some(PEER_LIMIT),
+        runtime_worker_threads: Some(DISK_THREADS),
         ..Default::default()
     };
     // `[::]` takes IPv6 and IPv4 peers on one socket; a machine without IPv6
