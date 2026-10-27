@@ -22,8 +22,9 @@
 //! | POST   | /api/scan                   | Request a scan (admin; coalescing)       |
 //! | GET    | /api/openapi.json           | The spec                                 |
 //!
-//! Accounts, admin, watch, show and library page, and subtitle routes live in
-//! [`accounts`], [`admin`], [`watch`], [`browse`] and [`subtitles`]. Access is set
+//! Accounts, admin, watch, show and library page, subtitle, and transcoding
+//! settings and activity routes live in [`accounts`], [`admin`], [`watch`],
+//! [`browse`], [`subtitles`] and [`transcoding`]. Access is set
 //! by the group a route is registered in ([`Access`]), which decides both the
 //! middleware and the spec's `security`, so the two cannot disagree.
 //!
@@ -44,6 +45,7 @@ mod search;
 mod subtitles;
 #[cfg(test)]
 mod test_app;
+mod transcoding;
 mod watch;
 
 use std::net::SocketAddr;
@@ -119,8 +121,6 @@ pub struct ServerSetup {
     pub data_dir: PathBuf,
     pub bind: SocketAddr,
     pub tools: MediaTools,
-    /// What converts video; see `transcode::pick_encoder`.
-    pub encoder: nuvora_media::VideoEncoder,
     pub started: Instant,
 }
 
@@ -213,7 +213,9 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(admin::update_user, admin::delete_user))
         .routes(routes!(admin::get_server, admin::update_server))
         .routes(routes!(metadata::get_metadata, metadata::update_metadata))
-        .routes(routes!(metadata::refresh_metadata));
+        .routes(routes!(metadata::refresh_metadata))
+        .routes(routes!(transcoding::get_tuning, transcoding::put_tuning))
+        .routes(routes!(transcoding::get_activity));
     document_access(member.get_openapi_mut(), Access::Member);
     document_access(admin.get_openapi_mut(), Access::Admin);
     if let Some(state) = state {
@@ -1374,6 +1376,8 @@ pub enum ErrorCode {
     UsernameTaken,
     LastAdmin,
     RateLimited,
+    /// The server is doing as much as it's set to; try again later.
+    Busy,
     Internal,
 }
 
@@ -1416,6 +1420,12 @@ impl ApiError {
     }
 
     /// Logged where it happened; the client gets a generic message.
+    pub(crate) fn busy(message: impl Into<String>) -> ApiError {
+        let mut error = ApiError::new(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::Busy, message);
+        error.retry_after_s = Some(15);
+        error
+    }
+
     pub(crate) fn internal(e: impl std::fmt::Display) -> ApiError {
         tracing::error!("{e}");
         ApiError::new(

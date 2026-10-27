@@ -1,0 +1,299 @@
+/* Activity: one card per stream, a timeline of what is made, and the background tasks. */
+.activity-empty {
+  margin: 0;
+  padding: 20px;
+  border: 1px dashed var(--nv-color-hairline);
+  border-radius: var(--nv-radius-lg);
+  color: var(--nv-color-text-secondary);
+}
+
+.stream-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+}
+
+.stream-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 20px 20px;
+  border: 1px solid var(--nv-color-hairline);
+  border-radius: var(--nv-radius-lg);
+  background: var(--nv-color-surface);
+}
+
+.stream-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.stream-title {
+  min-width: 0;
+}
+
+.stream-title h3 {
+  font-size: var(--nv-type-body-large-size);
+  line-height: var(--nv-type-body-large-line);
+  font-weight: var(--nv-font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.stream-title p {
+  margin-top: 2px;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+}
+
+.stream-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  padding: 4px 10px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-color-surface-raised);
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  font-weight: var(--nv-font-weight-medium);
+  white-space: nowrap;
+}
+
+.stream-state.is-converting {
+  background: color-mix(in srgb, var(--nv-color-accent) 16%, transparent);
+  color: var(--nv-color-accent);
+}
+
+.stream-state.is-finished {
+  color: var(--nv-color-text-primary);
+}
+
+.stream-state.is-failed {
+  background: color-mix(in srgb, var(--nv-color-danger) 16%, transparent);
+  color: var(--nv-color-danger);
+}
+
+.stream-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: stream-pulse 1.2s var(--nv-motion-easing-standard) infinite;
+}
+
+@keyframes stream-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.stream-route {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+}
+
+.stream-route > div {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.stream-route dt {
+  color: var(--nv-color-text-muted);
+}
+
+.stream-route dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 0;
+  color: var(--nv-color-text-secondary);
+}
+
+.stream-output {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.stream-output.is-converted {
+  color: var(--nv-color-text-primary);
+}
+
+.stream-arrow {
+  color: var(--nv-color-text-muted);
+}
+
+/* The whole video: made spans in accent, the run's edge, and the player's position. */
+.timeline {
+  position: relative;
+  height: 10px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-color-surface-raised);
+  overflow: hidden;
+}
+
+.timeline-made {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 2px;
+  background: color-mix(in srgb, var(--nv-color-accent) 70%, transparent);
+  transition:
+    left var(--nv-motion-duration-slow) var(--nv-motion-easing-standard),
+    width var(--nv-motion-duration-slow) var(--nv-motion-easing-standard);
+}
+
+.timeline-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--nv-color-accent-hover);
+  box-shadow: 0 0 8px var(--nv-color-accent);
+  transition: left var(--nv-motion-duration-slow) var(--nv-motion-easing-standard);
+}
+
+.timeline-player {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: var(--nv-color-text-primary);
+  transition: left var(--nv-motion-duration-slow) var(--nv-motion-easing-standard);
+}
+
+.timeline-legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: -8px;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-legend strong {
+  color: var(--nv-color-text-primary);
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.stream-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 14px 16px;
+  margin: 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--nv-color-divider);
+}
+
+.stream-stats dt {
+  color: var(--nv-color-text-muted);
+  font-size: var(--nv-type-caption-size);
+  line-height: var(--nv-type-caption-line);
+}
+
+.stream-stats dd {
+  display: flex;
+  flex-direction: column;
+  margin: 2px 0 0;
+  font-size: var(--nv-type-body-large-size);
+  line-height: var(--nv-type-body-large-line);
+  font-weight: var(--nv-font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.stream-stats dd span {
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-caption-size);
+  line-height: var(--nv-type-caption-line);
+  font-weight: var(--nv-font-weight-regular);
+}
+
+.stream-error {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--nv-radius-md);
+  background: color-mix(in srgb, var(--nv-color-danger) 10%, var(--nv-color-canvas));
+  color: var(--nv-color-text-primary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Scan and seek previews */
+.activity-task {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.activity-task p {
+  margin: 0;
+}
+
+.activity-task .form-actions {
+  margin-top: 0;
+}
+
+.activity-file {
+  overflow-wrap: anywhere;
+}
+
+.activity-bar {
+  position: relative;
+  height: 6px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-color-surface-raised);
+  overflow: hidden;
+}
+
+.activity-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--nv-color-accent);
+  transition: width var(--nv-motion-duration-slow) var(--nv-motion-easing-standard);
+}
+
+.activity-bar.is-indeterminate > span {
+  width: 30%;
+  animation: activity-sweep 1.4s var(--nv-motion-easing-standard) infinite;
+}
+
+@keyframes activity-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-pulse,
+  .activity-bar.is-indeterminate > span {
+    animation: none;
+  }
+
+  .timeline-made,
+  .timeline-edge,
+  .timeline-player,
+  .activity-bar > span {
+    transition: none;
+  }
+}

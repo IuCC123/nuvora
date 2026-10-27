@@ -8,11 +8,12 @@ mod discovery;
 mod net;
 mod party;
 mod transcode;
+mod tuning;
 mod web;
 
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use clap::{Parser, Subcommand};
 use nuvora_library::{Library, LibraryConfig};
@@ -66,7 +67,6 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
         .init();
     let config = config::load(&args)?;
     let tools = MediaTools::locate(config.ffprobe.clone(), config.ffmpeg.clone()).await?;
-    let encoder = transcode::pick_encoder(&tools, config.hardware_encoding).await;
     let cores = std::thread::available_parallelism().map_or(2, |n| n.get());
     let probe_concurrency =
         NonZeroUsize::new(cores.min(MAX_PROBE_CONCURRENCY)).expect("at least one");
@@ -80,6 +80,15 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
     })
     .await?;
     tracing::info!(data_dir = %config.data_dir.display(), "catalog open");
+    let tuning = tuning::Tuning::load(&library).await;
+    library.set_previews_enabled(tuning.seek_previews);
+    let transcoder = transcode::Transcoder::start(
+        tools.clone(),
+        &config.data_dir,
+        tuning,
+        config.hardware_encoding,
+    )
+    .await;
 
     let listener = TcpListener::bind(config.bind).await?;
     let bind = listener.local_addr()?;
@@ -96,7 +105,7 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
         auth: Arc::new(auth::Auth::new(net::TrustedProxies::new(
             config.trusted_proxies,
         ))),
-        transcoder: transcode::Transcoder::new(tools.clone(), encoder.clone(), &config.data_dir),
+        transcoder: transcoder.clone(),
         parties: Arc::new(party::Parties::default()),
         server: Arc::new(api::ServerSetup {
             id,
@@ -104,7 +113,6 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
             data_dir: config.data_dir,
             bind,
             tools,
-            encoder,
             started: Instant::now(),
         }),
     };
@@ -117,6 +125,7 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
             parties.tidy();
         }
     });
+    tokio::spawn(scheduled_scans(library.clone(), transcoder));
     let app = api::router(state)
         .fallback(web::serve_app)
         .layer(api::compression());
@@ -131,6 +140,29 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
         announcer.stop();
     }
     Ok(())
+}
+
+/// Scans every library as often as the admin panel says, counting from the
+/// end of the last scan, however it was started.
+async fn scheduled_scans(library: Library, transcoder: Arc<transcode::Transcoder>) {
+    let mut tick = tokio::time::interval(Duration::from_secs(60));
+    loop {
+        tick.tick().await;
+        let hours = transcoder.tuning().scan_every_hours;
+        let status = library.scan_status();
+        let Some(last) = status.last.map(|s| s.finished_at) else {
+            continue;
+        };
+        let due = hours > 0
+            && matches!(status.state, nuvora_library::ScanState::Idle)
+            && SystemTime::now()
+                .duration_since(last)
+                .is_ok_and(|since| since >= Duration::from_secs(u64::from(hours) * 3600));
+        if due {
+            tracing::info!(every_hours = hours, "scheduled scan");
+            library.request_scan();
+        }
+    }
 }
 
 /// Ctrl-C, or SIGTERM: `docker stop` sends SIGTERM through tini.

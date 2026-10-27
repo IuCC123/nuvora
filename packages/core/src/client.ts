@@ -66,6 +66,16 @@ export type CastMember = Schemas["CastMember"];
 export type MetadataSettings = Schemas["MetadataSettings"];
 export type UpdateMetadataRequest = Schemas["UpdateMetadataRequest"];
 export type UpdateServerRequest = Schemas["UpdateServerRequest"];
+export type Tuning = Schemas["Tuning"];
+export type TuningResponse = Schemas["TuningResponse"];
+export type HardwareEncoding = Schemas["HardwareEncoding"];
+export type X264Preset = Schemas["X264Preset"];
+export type X264Tune = Schemas["X264Tune"];
+export type FfmpegLogLevel = Schemas["FfmpegLogLevel"];
+export type Activity = Schemas["Activity"];
+export type ActiveStream = Schemas["ActiveStream"];
+export type StreamState = Schemas["StreamState"];
+export type PreviewQueue = Schemas["PreviewQueue"];
 export type ErrorBody = Schemas["ErrorBody"];
 export type ProgressRequest = Schemas["ProgressRequest"];
 export type WatchState = Schemas["WatchState"];
@@ -196,6 +206,12 @@ export interface AdminClient {
   metadata(signal?: AbortSignalLike): Promise<MetadataSettings>;
   updateMetadata(body: UpdateMetadataRequest): Promise<MetadataSettings>;
   refreshMetadata(): Promise<void>;
+  /** Transcoding settings, their defaults, and the encoder in use. */
+  tuning(signal?: AbortSignalLike): Promise<TuningResponse>;
+  /** Saves every setting; can take a few seconds while a new encoder is tested. 400 `validation` names the field. */
+  updateTuning(body: Tuning): Promise<TuningResponse>;
+  /** What the server is converting, scanning and making previews for, right now. */
+  activity(signal?: AbortSignalLike): Promise<Activity>;
 }
 
 type Params = Record<string, string | number>;
@@ -312,6 +328,9 @@ export function createClient(options: ClientOptions): NuvoraClient {
         return get<MetadataSettings>("/api/admin/metadata");
       },
       refreshMetadata: () => post<void>("/api/admin/metadata/refresh"),
+      tuning: (signal) => get<TuningResponse>("/api/admin/tuning", {}, signal),
+      updateTuning: (body) => call<TuningResponse>("PUT", "/api/admin/tuning", {}, undefined, undefined, body),
+      activity: (signal) => get<Activity>("/api/admin/activity", {}, signal),
     },
     imageUrl: (image, size) => options.baseUrl + fill("/api/images/{id}/{size}", { id: image.id, size }),
     subtitleUrl: (fileId, streamIndex, format) =>

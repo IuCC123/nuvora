@@ -4,6 +4,22 @@
  */
 
 export interface paths {
+    "/api/admin/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_activity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/fs": {
         parameters: {
             query?: never;
@@ -137,6 +153,28 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["update_server"];
+        trace?: never;
+    };
+    "/api/admin/tuning": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_tuning"];
+        /**
+         * Saves every setting at once. Streams already playing keep their encoder,
+         *     quality and segment length; pacing, limits and timeouts apply to them
+         *     too. Changing what the encoder depends on converts a test clip first, so
+         *     this can take a few seconds.
+         */
+        put: operations["put_tuning"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/admin/users": {
@@ -880,6 +918,67 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description One HLS stream. Times are in seconds of the video (0 is its first frame). */
+        ActiveStream: {
+            audio_output?: null | components["schemas"]["AudioOutputWire"];
+            /** Format: double */
+            bitrate_kbps?: number | null;
+            container: string;
+            /** Format: int64 */
+            disk_bytes: number;
+            /** Format: double */
+            duration_s: number;
+            /** @description For `failed`: FFmpeg's last words. */
+            error?: string | null;
+            /** Format: int64 */
+            file_id: number;
+            /** Format: double */
+            fps?: number | null;
+            /** Format: int64 */
+            frames?: number | null;
+            id: string;
+            /**
+             * Format: int64
+             * @description Since the player last asked for anything.
+             */
+            idle_s: number;
+            /** @description What is made and still on disk. */
+            made: components["schemas"]["Span"][];
+            /**
+             * Format: int64
+             * @description Unix ms.
+             */
+            opened_at: number;
+            /**
+             * Format: double
+             * @description Where the player is: the segment it asked for last.
+             */
+            position_s: number;
+            run?: null | components["schemas"]["Span"];
+            /** Format: double */
+            run_for_s?: number | null;
+            /** Format: int32 */
+            segments: number;
+            source_audio?: null | components["schemas"]["AudioTrack"];
+            source_video?: null | components["schemas"]["VideoTrack"];
+            /**
+             * Format: double
+             * @description Seconds of video made per second; above 1 keeps ahead of the player.
+             */
+            speed?: number | null;
+            state: components["schemas"]["StreamState"];
+            /** @description The movie, or `Show · S1E3`. */
+            title: string;
+            /** @description Display name of who is watching. */
+            user: string;
+            video_output?: null | components["schemas"]["VideoOutput"];
+        };
+        Activity: {
+            previews: components["schemas"]["PreviewQueue"];
+            scan: components["schemas"]["ScanStatus"];
+            /** @description Oldest first. */
+            streams: components["schemas"]["ActiveStream"][];
+        };
         AdminLibrary: {
             /** @description A preset icon name; `None` means the default for its kind. */
             icon?: string | null;
@@ -926,6 +1025,17 @@ export interface components {
         AppSession: {
             token: string;
             user: components["schemas"]["User"];
+        };
+        AudioOutputWire: {
+            /** @enum {string} */
+            kind: "copy";
+        } | {
+            /** Format: int32 */
+            channels: number;
+            /** Format: int32 */
+            kbps: number;
+            /** @enum {string} */
+            kind: "aac";
         };
         AudioSupport: {
             codec: string;
@@ -1019,6 +1129,17 @@ export interface components {
             containers: string[];
             video: components["schemas"]["VideoSupport"][];
         };
+        EncoderStatus: {
+            /**
+             * @description What converts video for streams that start now: `"x264 (processor)"`,
+             *     `"VideoToolbox (Apple graphics)"`.
+             */
+            active: string;
+            hardware: boolean;
+            pinned?: null | components["schemas"]["HardwareEncoding"];
+            /** @description Why the chosen graphics encoder isn't the one in use. */
+            problem?: string | null;
+        };
         /** @description One row of a season's episode list. */
         Episode: {
             /** Format: int64 */
@@ -1108,7 +1229,9 @@ export interface components {
          * @description Clients must treat an unknown code like `bad_request`.
          * @enum {string}
          */
-        ErrorCode: "bad_request" | "validation" | "unauthorized" | "bad_credentials" | "forbidden" | "not_found" | "setup_done" | "username_taken" | "last_admin" | "rate_limited" | "internal";
+        ErrorCode: "bad_request" | "validation" | "unauthorized" | "bad_credentials" | "forbidden" | "not_found" | "setup_done" | "username_taken" | "last_admin" | "rate_limited" | "busy" | "internal";
+        /** @enum {string} */
+        FfmpegLogLevel: "error" | "warning" | "info" | "verbose";
         /**
          * @description A font attached to the file (Matroska attachments). Styled tracks name
          *     fonts that only these provide.
@@ -1156,6 +1279,11 @@ export interface components {
             /** @description The listed folder, canonical. Empty for the list of Windows drives. */
             path: string;
         };
+        /**
+         * @description Which encoder converts video; see `nuvora_media::VideoEncoder`.
+         * @enum {string}
+         */
+        HardwareEncoding: "auto" | "off" | "videotoolbox" | "nvenc" | "vaapi";
         Health: {
             status: components["schemas"]["HealthStatus"];
             /** @description The server's version, e.g. `"0.1.0"`. */
@@ -1586,6 +1714,21 @@ export interface components {
             /** Format: int32 */
             width: number;
         };
+        PreviewQueue: {
+            /** @description The file being worked on. */
+            current?: string | null;
+            /** @description Off in Transcoding settings: nothing new is made. */
+            enabled: boolean;
+            /** Format: int32 */
+            failed: number;
+            /**
+             * Format: int32
+             * @description Since the server started.
+             */
+            made: number;
+            /** Format: int32 */
+            queued: number;
+        };
         /**
          * @description Where playback is. Clients send it every 10 s while playing, on pause,
          *     after a seek settles and when leaving the player.
@@ -1786,6 +1929,15 @@ export interface components {
          * @enum {string}
          */
         SortOrder: "asc" | "desc";
+        /** @description Seconds of the video. */
+        Span: {
+            /** Format: double */
+            end: number;
+            /** Format: double */
+            start: number;
+        };
+        /** @enum {string} */
+        StreamState: "waiting" | "converting" | "paused" | "finished" | "failed";
         /**
          * @description What the track is, for choosing how to draw it. Clients treat an unknown
          *     format like `other`.
@@ -1835,6 +1987,162 @@ export interface components {
             path: string;
             /** @description As the tool reports it, e.g. `"7.1.1"`. */
             version: string;
+        };
+        Tuning: {
+            /**
+             * Format: int32
+             * @description How far ahead, 30 to 3600 seconds; converting resumes at half of it.
+             * @default 180
+             */
+            buffer_ahead_s: number;
+            /**
+             * Format: int32
+             * @description A jump at most this far past what is made waits for it instead of
+             *     restarting FFmpeg: 0 to 120 seconds.
+             * @default 20
+             */
+            catch_up_s: number;
+            /**
+             * @description Deinterlace frames flagged interlaced (old TV recordings, DVDs).
+             * @default false
+             */
+            deinterlace: boolean;
+            /**
+             * @description Converted audio is never more than stereo.
+             * @default false
+             */
+            downmix_stereo: boolean;
+            /** @default error */
+            ffmpeg_log_level: components["schemas"]["FfmpegLogLevel"];
+            /**
+             * @description Decode on the graphics chip as well as encode (VideoToolbox).
+             * @default true
+             */
+            hardware_decoding: boolean;
+            /** @default auto */
+            hardware_encoding: components["schemas"]["HardwareEncoding"];
+            /**
+             * Format: int32
+             * @description A stream nobody asks anything of for this long stops: 30 to 1800 s.
+             * @default 90
+             */
+            idle_timeout_s: number;
+            /**
+             * Format: int32
+             * @description Segments this far behind the player are deleted: 60 to 7200 seconds.
+             * @default 600
+             */
+            keep_behind_s: number;
+            /**
+             * Format: int32
+             * @description Videos converted at once across the server, 0 (no limit) to 32.
+             * @default 0
+             */
+            max_conversions: number;
+            /**
+             * Format: int32
+             * @description Converted video is never taller than this: 2160, 1440, 1080, 720 or 480.
+             * @default 2160
+             */
+            max_height: number;
+            /**
+             * Format: int32
+             * @description The bitrate ceiling for every encoder in Mbit/s, 1 to 200. `null`: by
+             *     resolution.
+             * @default null
+             */
+            max_mbps: number | null;
+            /**
+             * @description Converted audio is compressed: loud scenes quieter, speech clearer.
+             * @default false
+             */
+            night_mode: boolean;
+            /**
+             * Format: int32
+             * @description NVENC's constant quality, 1 to 51: lower is better and bigger.
+             * @default 23
+             */
+            nvenc_cq: number;
+            /**
+             * Format: int32
+             * @description NVENC's preset, 1 (fastest) to 7 (best).
+             * @default 4
+             */
+            nvenc_preset: number;
+            /**
+             * Format: int32
+             * @description Scan every library this often, 0 (never; only at startup and when
+             *     asked) to 168 hours.
+             * @default 0
+             */
+            scan_every_hours: number;
+            /**
+             * @description Make seek previews for every video.
+             * @default true
+             */
+            seek_previews: boolean;
+            /**
+             * Format: int32
+             * @description Length of a converted segment, 2 to 10 seconds.
+             * @default 6
+             */
+            segment_seconds: number;
+            /**
+             * Format: int32
+             * @description AAC bitrate for mono and stereo, kbit/s: 64 to 512.
+             * @default 192
+             */
+            stereo_kbps: number;
+            /**
+             * Format: int32
+             * @description Streams one person may have open, 1 to 10; one more stops their oldest.
+             * @default 3
+             */
+            streams_per_user: number;
+            /**
+             * Format: int32
+             * @description AAC bitrate per surround channel, kbit/s: 32 to 192.
+             * @default 64
+             */
+            surround_kbps: number;
+            /**
+             * Format: int32
+             * @description Mbit/s for VideoToolbox and VA-API, 1 to 200. `null`: by resolution.
+             * @default null
+             */
+            target_mbps: number | null;
+            /**
+             * Format: int32
+             * @description Encoder threads, 0 to 64; 0 lets FFmpeg decide.
+             * @default 0
+             */
+            threads: number;
+            /**
+             * @description Pause converting once this far ahead of the player.
+             * @default true
+             */
+            throttle: boolean;
+            /**
+             * @description The render node VA-API opens (Linux).
+             * @default /dev/dri/renderD128
+             */
+            vaapi_device: string;
+            /**
+             * Format: int32
+             * @description x264's constant rate factor, 0 to 51: lower is better and bigger.
+             * @default 21
+             */
+            x264_crf: number;
+            /** @default veryfast */
+            x264_preset: components["schemas"]["X264Preset"];
+            /** @default none */
+            x264_tune: components["schemas"]["X264Tune"];
+        };
+        TuningResponse: {
+            /** @description What every setting starts as. */
+            defaults: components["schemas"]["Tuning"];
+            encoder: components["schemas"]["EncoderStatus"];
+            settings: components["schemas"]["Tuning"];
         };
         /**
          * @description Every field is optional. `paths` replaces the whole list; removing a folder
@@ -1909,6 +2217,16 @@ export interface components {
              */
             summary: string;
         };
+        VideoOutput: {
+            /** @description Always `"H.264"`. */
+            codec: string;
+            encoder: string;
+            /**
+             * Format: int32
+             * @description At most this many lines (smaller sources keep their own).
+             */
+            max_height: number;
+        };
         VideoSupport: {
             codec: string;
             /** @description Subset of `hdr10`, `hlg`, `dolby_vision`. */
@@ -1964,6 +2282,10 @@ export interface components {
             /** @description Finished at least once. */
             watched: boolean;
         };
+        /** @enum {string} */
+        X264Preset: "ultrafast" | "superfast" | "veryfast" | "faster" | "fast" | "medium" | "slow" | "slower" | "veryslow";
+        /** @enum {string} */
+        X264Tune: "none" | "film" | "animation" | "grain" | "stillimage" | "fastdecode";
     };
     responses: never;
     parameters: never;
@@ -1973,6 +2295,43 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_activity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Activity"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_dirs: {
         parameters: {
             query?: {
@@ -2486,6 +2845,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ServerInfo"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_tuning: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TuningResponse"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_tuning: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Tuning"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TuningResponse"];
                 };
             };
             400: {

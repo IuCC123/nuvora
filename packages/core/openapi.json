@@ -10,6 +10,51 @@
     "version": "1"
   },
   "paths": {
+    "/api/admin/activity": {
+      "get": {
+        "operationId": "get_activity",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Activity"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/admin/fs": {
       "get": {
         "operationId": "list_dirs",
@@ -675,6 +720,115 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ServerInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/tuning": {
+      "get": {
+        "operationId": "get_tuning",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TuningResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "Saves every setting at once. Streams already playing keep their encoder,\nquality and segment length; pacing, limits and timeouts apply to them\ntoo. Changing what the encoder depends on converts a test clip first, so\nthis can take a few seconds.",
+        "operationId": "put_tuning",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Tuning"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TuningResponse"
                 }
               }
             }
@@ -3370,6 +3524,206 @@
   },
   "components": {
     "schemas": {
+      "ActiveStream": {
+        "type": "object",
+        "description": "One HLS stream. Times are in seconds of the video (0 is its first frame).",
+        "required": [
+          "id",
+          "user",
+          "title",
+          "file_id",
+          "state",
+          "container",
+          "duration_s",
+          "position_s",
+          "made",
+          "segments",
+          "disk_bytes",
+          "idle_s",
+          "opened_at"
+        ],
+        "properties": {
+          "audio_output": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AudioOutputWire",
+                "description": "`None`: no audio. `copy`: as it is."
+              }
+            ]
+          },
+          "bitrate_kbps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "container": {
+            "type": "string"
+          },
+          "disk_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "duration_s": {
+            "type": "number",
+            "format": "double"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For `failed`: FFmpeg's last words."
+          },
+          "file_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "frames": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string"
+          },
+          "idle_s": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Since the player last asked for anything.",
+            "minimum": 0
+          },
+          "made": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Span"
+            },
+            "description": "What is made and still on disk."
+          },
+          "opened_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix ms."
+          },
+          "position_s": {
+            "type": "number",
+            "format": "double",
+            "description": "Where the player is: the segment it asked for last."
+          },
+          "run": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Span",
+                "description": "The current FFmpeg run: where it started and how far it has got."
+              }
+            ]
+          },
+          "run_for_s": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "segments": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "source_audio": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AudioTrack",
+                "description": "The audio track playing; `None` for a video without sound."
+              }
+            ]
+          },
+          "source_video": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/VideoTrack"
+              }
+            ]
+          },
+          "speed": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Seconds of video made per second; above 1 keeps ahead of the player."
+          },
+          "state": {
+            "$ref": "#/components/schemas/StreamState"
+          },
+          "title": {
+            "type": "string",
+            "description": "The movie, or `Show · S1E3`."
+          },
+          "user": {
+            "type": "string",
+            "description": "Display name of who is watching."
+          },
+          "video_output": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/VideoOutput",
+                "description": "`None`: the picture is copied as it is."
+              }
+            ]
+          }
+        }
+      },
+      "Activity": {
+        "type": "object",
+        "required": [
+          "streams",
+          "scan",
+          "previews"
+        ],
+        "properties": {
+          "previews": {
+            "$ref": "#/components/schemas/PreviewQueue"
+          },
+          "scan": {
+            "$ref": "#/components/schemas/ScanStatus"
+          },
+          "streams": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActiveStream"
+            },
+            "description": "Oldest first."
+          }
+        }
+      },
       "AdminLibrary": {
         "type": "object",
         "required": [
@@ -3477,6 +3831,50 @@
             "$ref": "#/components/schemas/User"
           }
         }
+      },
+      "AudioOutputWire": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "copy"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "channels",
+              "kbps",
+              "kind"
+            ],
+            "properties": {
+              "channels": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "kbps": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "aac"
+                ]
+              }
+            }
+          }
+        ]
       },
       "AudioSupport": {
         "type": "object",
@@ -3776,6 +4174,40 @@
           }
         }
       },
+      "EncoderStatus": {
+        "type": "object",
+        "required": [
+          "active",
+          "hardware"
+        ],
+        "properties": {
+          "active": {
+            "type": "string",
+            "description": "What converts video for streams that start now: `\"x264 (processor)\"`,\n`\"VideoToolbox (Apple graphics)\"`."
+          },
+          "hardware": {
+            "type": "boolean"
+          },
+          "pinned": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HardwareEncoding",
+                "description": "Set by `nuvora.toml` or `--hardware-encoding`, which win over\n`settings.hardware_encoding`."
+              }
+            ]
+          },
+          "problem": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the chosen graphics encoder isn't the one in use."
+          }
+        }
+      },
       "Episode": {
         "type": "object",
         "description": "One row of a season's episode list.",
@@ -4050,7 +4482,17 @@
           "username_taken",
           "last_admin",
           "rate_limited",
+          "busy",
           "internal"
+        ]
+      },
+      "FfmpegLogLevel": {
+        "type": "string",
+        "enum": [
+          "error",
+          "warning",
+          "info",
+          "verbose"
         ]
       },
       "FontAttachment": {
@@ -4163,6 +4605,17 @@
             "description": "The listed folder, canonical. Empty for the list of Windows drives."
           }
         }
+      },
+      "HardwareEncoding": {
+        "type": "string",
+        "description": "Which encoder converts video; see `nuvora_media::VideoEncoder`.",
+        "enum": [
+          "auto",
+          "off",
+          "videotoolbox",
+          "nvenc",
+          "vaapi"
+        ]
       },
       "Health": {
         "type": "object",
@@ -5564,6 +6017,44 @@
           }
         }
       },
+      "PreviewQueue": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "queued",
+          "made",
+          "failed"
+        ],
+        "properties": {
+          "current": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The file being worked on."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Off in Transcoding settings: nothing new is made."
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "made": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Since the server started.",
+            "minimum": 0
+          },
+          "queued": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "ProgressRequest": {
         "type": "object",
         "description": "Where playback is. Clients send it every 10 s while playing, on pause,\nafter a seek settles and when leaving the player.",
@@ -6183,6 +6674,34 @@
           "desc"
         ]
       },
+      "Span": {
+        "type": "object",
+        "description": "Seconds of the video.",
+        "required": [
+          "start",
+          "end"
+        ],
+        "properties": {
+          "end": {
+            "type": "number",
+            "format": "double"
+          },
+          "start": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "StreamState": {
+        "type": "string",
+        "enum": [
+          "waiting",
+          "converting",
+          "paused",
+          "finished",
+          "failed"
+        ]
+      },
       "SubtitleFormat": {
         "type": "string",
         "description": "What the track is, for choosing how to draw it. Clients treat an unknown\nformat like `other`.",
@@ -6277,6 +6796,224 @@
           "version": {
             "type": "string",
             "description": "As the tool reports it, e.g. `\"7.1.1\"`."
+          }
+        }
+      },
+      "Tuning": {
+        "type": "object",
+        "properties": {
+          "buffer_ahead_s": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How far ahead, 30 to 3600 seconds; converting resumes at half of it.",
+            "default": 180,
+            "minimum": 0
+          },
+          "catch_up_s": {
+            "type": "integer",
+            "format": "int32",
+            "description": "A jump at most this far past what is made waits for it instead of\nrestarting FFmpeg: 0 to 120 seconds.",
+            "default": 20,
+            "minimum": 0
+          },
+          "deinterlace": {
+            "type": "boolean",
+            "description": "Deinterlace frames flagged interlaced (old TV recordings, DVDs).",
+            "default": false
+          },
+          "downmix_stereo": {
+            "type": "boolean",
+            "description": "Converted audio is never more than stereo.",
+            "default": false
+          },
+          "ffmpeg_log_level": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FfmpegLogLevel"
+              }
+            ],
+            "default": "error"
+          },
+          "hardware_decoding": {
+            "type": "boolean",
+            "description": "Decode on the graphics chip as well as encode (VideoToolbox).",
+            "default": true
+          },
+          "hardware_encoding": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/HardwareEncoding",
+                "description": "Which chip converts video. A `hardware_encoding` in `nuvora.toml` or\non the command line wins over this."
+              }
+            ],
+            "default": "auto"
+          },
+          "idle_timeout_s": {
+            "type": "integer",
+            "format": "int32",
+            "description": "A stream nobody asks anything of for this long stops: 30 to 1800 s.",
+            "default": 90,
+            "minimum": 0
+          },
+          "keep_behind_s": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Segments this far behind the player are deleted: 60 to 7200 seconds.",
+            "default": 600,
+            "minimum": 0
+          },
+          "max_conversions": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Videos converted at once across the server, 0 (no limit) to 32.",
+            "default": 0,
+            "minimum": 0
+          },
+          "max_height": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Converted video is never taller than this: 2160, 1440, 1080, 720 or 480.",
+            "default": 2160,
+            "minimum": 0
+          },
+          "max_mbps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The bitrate ceiling for every encoder in Mbit/s, 1 to 200. `null`: by\nresolution.",
+            "default": null,
+            "minimum": 0
+          },
+          "night_mode": {
+            "type": "boolean",
+            "description": "Converted audio is compressed: loud scenes quieter, speech clearer.",
+            "default": false
+          },
+          "nvenc_cq": {
+            "type": "integer",
+            "format": "int32",
+            "description": "NVENC's constant quality, 1 to 51: lower is better and bigger.",
+            "default": 23,
+            "minimum": 0
+          },
+          "nvenc_preset": {
+            "type": "integer",
+            "format": "int32",
+            "description": "NVENC's preset, 1 (fastest) to 7 (best).",
+            "default": 4,
+            "minimum": 0
+          },
+          "scan_every_hours": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Scan every library this often, 0 (never; only at startup and when\nasked) to 168 hours.",
+            "default": 0,
+            "minimum": 0
+          },
+          "seek_previews": {
+            "type": "boolean",
+            "description": "Make seek previews for every video.",
+            "default": true
+          },
+          "segment_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Length of a converted segment, 2 to 10 seconds.",
+            "default": 6,
+            "minimum": 0
+          },
+          "stereo_kbps": {
+            "type": "integer",
+            "format": "int32",
+            "description": "AAC bitrate for mono and stereo, kbit/s: 64 to 512.",
+            "default": 192,
+            "minimum": 0
+          },
+          "streams_per_user": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Streams one person may have open, 1 to 10; one more stops their oldest.",
+            "default": 3,
+            "minimum": 0
+          },
+          "surround_kbps": {
+            "type": "integer",
+            "format": "int32",
+            "description": "AAC bitrate per surround channel, kbit/s: 32 to 192.",
+            "default": 64,
+            "minimum": 0
+          },
+          "target_mbps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Mbit/s for VideoToolbox and VA-API, 1 to 200. `null`: by resolution.",
+            "default": null,
+            "minimum": 0
+          },
+          "threads": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Encoder threads, 0 to 64; 0 lets FFmpeg decide.",
+            "default": 0,
+            "minimum": 0
+          },
+          "throttle": {
+            "type": "boolean",
+            "description": "Pause converting once this far ahead of the player.",
+            "default": true
+          },
+          "vaapi_device": {
+            "type": "string",
+            "description": "The render node VA-API opens (Linux).",
+            "default": "/dev/dri/renderD128"
+          },
+          "x264_crf": {
+            "type": "integer",
+            "format": "int32",
+            "description": "x264's constant rate factor, 0 to 51: lower is better and bigger.",
+            "default": 21,
+            "minimum": 0
+          },
+          "x264_preset": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/X264Preset"
+              }
+            ],
+            "default": "veryfast"
+          },
+          "x264_tune": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/X264Tune"
+              }
+            ],
+            "default": "none"
+          }
+        }
+      },
+      "TuningResponse": {
+        "type": "object",
+        "required": [
+          "settings",
+          "defaults",
+          "encoder"
+        ],
+        "properties": {
+          "defaults": {
+            "$ref": "#/components/schemas/Tuning",
+            "description": "What every setting starts as."
+          },
+          "encoder": {
+            "$ref": "#/components/schemas/EncoderStatus"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/Tuning"
           }
         }
       },
@@ -6497,6 +7234,29 @@
           }
         }
       },
+      "VideoOutput": {
+        "type": "object",
+        "required": [
+          "codec",
+          "max_height",
+          "encoder"
+        ],
+        "properties": {
+          "codec": {
+            "type": "string",
+            "description": "Always `\"H.264\"`."
+          },
+          "encoder": {
+            "type": "string"
+          },
+          "max_height": {
+            "type": "integer",
+            "format": "int32",
+            "description": "At most this many lines (smaller sources keep their own).",
+            "minimum": 0
+          }
+        }
+      },
       "VideoSupport": {
         "type": "object",
         "required": [
@@ -6639,6 +7399,31 @@
             "description": "Finished at least once."
           }
         }
+      },
+      "X264Preset": {
+        "type": "string",
+        "enum": [
+          "ultrafast",
+          "superfast",
+          "veryfast",
+          "faster",
+          "fast",
+          "medium",
+          "slow",
+          "slower",
+          "veryslow"
+        ]
+      },
+      "X264Tune": {
+        "type": "string",
+        "enum": [
+          "none",
+          "film",
+          "animation",
+          "grain",
+          "stillimage",
+          "fastdecode"
+        ]
       }
     },
     "securitySchemes": {

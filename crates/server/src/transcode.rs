@@ -5,73 +5,85 @@
 //! for when the run is about to, and otherwise restarts the run at that
 //! segment (a seek). A run far ahead of the player is paused (SIGSTOP) until
 //! the player catches up, segments far behind it are deleted, and a session
-//! nobody has asked anything of for [`IDLE`] is stopped and removed. See
-//! `nuvora_media::hls` for why segments from different runs line up.
+//! nobody has asked anything of for a while is stopped and removed. How far,
+//! how long and how many come from the admin panel's [`Tuning`]: a session
+//! keeps the encoder, encode options and segment length it opened with (every
+//! run must cut and encode the same way), while pacing and limits follow the
+//! current settings. See `nuvora_media::hls` for why segments from different
+//! runs line up.
+//!
+//! Each run reports its progress on stdout; [`Transcoder::activity`] reads
+//! it, with what is on disk, for the admin panel's Activity page.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, Weak};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex, RwLock, Weak};
+use std::time::{Duration, Instant, SystemTime};
 
 use nuvora_library::StreamSource;
 use nuvora_media::{
-    HlsError, INIT_SEGMENT, MediaInfo, MediaTools, Run, Segments, StreamPlan, VideoEncoder,
-    VideoPlan, hardware_candidates,
+    EncodeOptions, HlsError, INIT_SEGMENT, MediaInfo, MediaTools, Run, RunProgress, Segments,
+    StreamPlan, VideoEncoder, VideoPlan, hardware_candidates,
 };
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 
 use crate::config::HardwareEncoding;
+use crate::tuning::Tuning;
 
-/// The encoder for converted video: the one the setting names, or with
-/// `auto` the first graphics encoder that converts a test clip here, else x264.
-pub async fn pick_encoder(tools: &MediaTools, setting: HardwareEncoding) -> VideoEncoder {
-    let candidates = match setting {
+/// The encoder for converted video: the one `choice` names, or with `auto`
+/// the first graphics encoder that converts a test clip here (with
+/// `options`), else x264. When a named one fails, also why.
+pub async fn pick_encoder(
+    tools: &MediaTools,
+    choice: HardwareEncoding,
+    vaapi_device: &Path,
+    options: &EncodeOptions,
+) -> (VideoEncoder, Option<String>) {
+    let vaapi = || VideoEncoder::Vaapi {
+        device: vaapi_device.to_path_buf(),
+    };
+    let candidates = match choice {
         HardwareEncoding::Off => vec![],
-        HardwareEncoding::Auto => hardware_candidates(),
+        HardwareEncoding::Auto => hardware_candidates()
+            .into_iter()
+            .map(|c| match c {
+                VideoEncoder::Vaapi { .. } => vaapi(),
+                other => other,
+            })
+            .collect(),
         HardwareEncoding::Videotoolbox => vec![VideoEncoder::VideoToolbox],
         HardwareEncoding::Nvenc => vec![VideoEncoder::Nvenc],
-        HardwareEncoding::Vaapi => vec![VideoEncoder::Vaapi {
-            device: nuvora_media::DEFAULT_VAAPI_DEVICE.into(),
-        }],
+        HardwareEncoding::Vaapi => vec![vaapi()],
     };
+    let mut problem = None;
     for candidate in candidates {
-        match tools.try_encoder(&candidate).await {
+        match tools.try_encoder(&candidate, options).await {
             Ok(()) => {
                 tracing::info!(
                     encoder = candidate.label(),
                     "converting video on the graphics chip"
                 );
-                return candidate;
+                return (candidate, None);
             }
             // With `auto`, a chip this machine lacks is the usual case, not a problem.
-            Err(reason) if setting == HardwareEncoding::Auto => {
+            Err(reason) if choice == HardwareEncoding::Auto => {
                 tracing::debug!(encoder = candidate.label(), %reason, "not usable here");
             }
             Err(reason) => {
                 tracing::warn!(encoder = candidate.label(), %reason, "the chosen encoder doesn't work here; using the processor");
+                problem = Some(format!("{} didn't work here: {reason}", candidate.label()));
             }
         }
     }
     tracing::info!("converting video on the processor (x264)");
-    VideoEncoder::Software
+    (VideoEncoder::Software, problem)
 }
 
-/// A session nobody has requested anything of for this long is removed.
-const IDLE: Duration = Duration::from_secs(90);
 /// How long a request waits for its segment before giving up.
 const WAIT: Duration = Duration::from_secs(60);
-/// A request this little ahead of the run (in media seconds) waits for it
-/// rather than restarting it.
-const CATCH_UP_SECONDS: f64 = 20.0;
-/// Pause a run this far ahead of the player; resume below [`RESUME_AHEAD`].
-const PAUSE_AHEAD: f64 = 180.0;
-const RESUME_AHEAD: f64 = 90.0;
-/// Segments this far behind the player are deleted.
-const KEEP_BEHIND: f64 = 600.0;
-/// Sessions per user; opening one more stops that user's least recent.
-const SESSIONS_PER_USER: usize = 3;
 /// A seek target past a keyframe by more than ffmpeg's 3/23 s backoff, so a
 /// copying run starts on that keyframe and not the one before.
 const SEEK_PAST_KEYFRAME: f64 = 0.2;
@@ -89,6 +101,9 @@ pub struct SessionKey {
 pub enum TranscodeError {
     #[error("no such segment")]
     NotFound,
+    /// The server converts as many videos at once as it is allowed to.
+    #[error("already converting {0} videos, the most this server is set to")]
+    Busy(u32),
     #[error("the file has no video stream")]
     NoVideo,
     #[error("converting timed out")]
@@ -103,23 +118,43 @@ pub enum TranscodeError {
 
 pub struct Transcoder {
     tools: MediaTools,
-    encoder: VideoEncoder,
     root: PathBuf,
+    /// The encoder `nuvora.toml` or a flag names; the panel's choice otherwise.
+    pinned: Option<HardwareEncoding>,
+    setup: RwLock<Setup>,
+    /// One [`Transcoder::retune`] at a time.
+    retuning: tokio::sync::Mutex<()>,
     sessions: Mutex<HashMap<SessionKey, Arc<Session>>>,
     /// Keyframe times by file fingerprint, for the few most recent files.
     keyframes: Mutex<Vec<(String, Arc<Vec<f64>>)>>,
 }
 
+/// The settings and the encoder they picked.
+#[derive(Clone)]
+struct Setup {
+    tuning: Arc<Tuning>,
+    encoder: VideoEncoder,
+    /// Why the chosen graphics encoder isn't the one in use.
+    problem: Option<String>,
+}
+
 pub struct Session {
+    /// The session folder's name: opaque, unique.
+    id: String,
     tools: MediaTools,
     encoder: VideoEncoder,
+    options: EncodeOptions,
+    /// Waiting for a run versus restarting it.
+    catch_up: f64,
     dir: PathBuf,
     path: PathBuf,
     media: MediaInfo,
     plan: StreamPlan,
     segments: Segments,
+    opened: SystemTime,
     run: tokio::sync::Mutex<RunState>,
     activity: Mutex<Activity>,
+    progress: Arc<Mutex<LiveProgress>>,
 }
 
 #[derive(Default)]
@@ -130,6 +165,56 @@ struct RunState {
     /// The lowest segment of the run not on disk yet.
     made: usize,
     paused: bool,
+    started: Option<Instant>,
+    /// The last run failed with this (FFmpeg's last lines).
+    failed: Option<String>,
+}
+
+/// The current run's latest progress report.
+#[derive(Default)]
+struct LiveProgress {
+    /// Counts runs, so a killed run's last words never land on its successor.
+    run: u64,
+    report: Option<RunProgress>,
+}
+
+/// One stream, as the admin panel's Activity page shows it. Times are in
+/// player seconds (0 is the first frame).
+pub struct StreamActivity {
+    pub id: String,
+    pub user: i64,
+    pub file: i64,
+    pub plan: StreamPlan,
+    pub media: MediaInfo,
+    /// What converts the video; `None` when it is copied.
+    pub encoder: Option<&'static str>,
+    pub options: EncodeOptions,
+    pub duration: f64,
+    /// The start of the segment the player asked for last.
+    pub position: f64,
+    /// What is on disk, as `(start, end)` spans.
+    pub made: Vec<(f64, f64)>,
+    pub segments: usize,
+    /// The current run: where it started and how far it has got.
+    pub run_span: Option<(f64, f64)>,
+    pub run_for: Option<Duration>,
+    pub state: RunPhase,
+    pub progress: Option<RunProgress>,
+    /// The session folder's size: segments, the init segment and the log.
+    pub disk_bytes: u64,
+    pub idle: Duration,
+    pub opened: SystemTime,
+}
+
+pub enum RunPhase {
+    /// No run: none asked for yet, or between one and the next.
+    Waiting,
+    Converting,
+    /// Far enough ahead of the player; resumes as it catches up.
+    Paused,
+    /// The run reached the end of the file.
+    Finished,
+    Failed(String),
 }
 
 struct Activity {
@@ -141,20 +226,105 @@ struct Activity {
 }
 
 impl Transcoder {
-    /// Clears what a previous process left in `<data>/transcode` and starts
-    /// the housekeeping task.
-    pub fn new(tools: MediaTools, encoder: VideoEncoder, data_dir: &Path) -> Arc<Transcoder> {
+    /// Picks the encoder, clears what a previous process left in
+    /// `<data>/transcode` and starts the housekeeping task.
+    pub async fn start(
+        tools: MediaTools,
+        data_dir: &Path,
+        tuning: Tuning,
+        pinned: Option<HardwareEncoding>,
+    ) -> Arc<Transcoder> {
+        let (encoder, problem) = pick_encoder(
+            &tools,
+            pinned.unwrap_or(tuning.hardware_encoding),
+            Path::new(&tuning.vaapi_device),
+            &tuning.encode_options(),
+        )
+        .await;
         let root = data_dir.join("transcode");
         let _ = std::fs::remove_dir_all(&root);
         let transcoder = Arc::new(Transcoder {
             tools,
-            encoder,
             root,
+            pinned,
+            setup: RwLock::new(Setup {
+                tuning: Arc::new(tuning),
+                encoder,
+                problem,
+            }),
+            retuning: tokio::sync::Mutex::new(()),
             sessions: Mutex::new(HashMap::new()),
             keyframes: Mutex::new(Vec::new()),
         });
         tokio::spawn(housekeeping(Arc::downgrade(&transcoder)));
         transcoder
+    }
+
+    fn setup(&self) -> Setup {
+        self.setup.read().unwrap().clone()
+    }
+
+    pub fn tuning(&self) -> Arc<Tuning> {
+        self.setup().tuning
+    }
+
+    /// What converts video for streams opened now.
+    pub fn encoder(&self) -> VideoEncoder {
+        self.setup().encoder
+    }
+
+    /// Why the chosen graphics encoder isn't the one in use, if it isn't.
+    pub fn encoder_problem(&self) -> Option<String> {
+        self.setup().problem
+    }
+
+    /// The encoder `nuvora.toml` or a flag names, over the panel's.
+    pub fn pinned(&self) -> Option<HardwareEncoding> {
+        self.pinned
+    }
+
+    /// New settings for streams opened from now on, and for every stream's
+    /// pacing. The encoder is picked again (a test clip) when anything it
+    /// depends on changed.
+    pub async fn retune(&self, tuning: Tuning) {
+        let _one_at_a_time = self.retuning.lock().await;
+        let old = self.setup();
+        let same_encoder = old.tuning.hardware_encoding == tuning.hardware_encoding
+            && old.tuning.vaapi_device == tuning.vaapi_device
+            && old.tuning.encode_options() == tuning.encode_options();
+        let (encoder, problem) = if same_encoder {
+            (old.encoder, old.problem)
+        } else {
+            pick_encoder(
+                &self.tools,
+                self.pinned.unwrap_or(tuning.hardware_encoding),
+                Path::new(&tuning.vaapi_device),
+                &tuning.encode_options(),
+            )
+            .await
+        };
+        *self.setup.write().unwrap() = Setup {
+            tuning: Arc::new(tuning),
+            encoder,
+            problem,
+        };
+    }
+
+    /// Every open stream, oldest first.
+    pub async fn activity(&self) -> Vec<StreamActivity> {
+        let sessions: Vec<(SessionKey, Arc<Session>)> = self
+            .sessions
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(k, s)| (k.clone(), s.clone()))
+            .collect();
+        let mut out = Vec::with_capacity(sessions.len());
+        for (key, session) in sessions {
+            out.push(session.snapshot(&key).await);
+        }
+        out.sort_by_key(|a| a.opened);
+        out
     }
 
     /// The session for `key`, opened on first use: the file's segments are
@@ -167,6 +337,7 @@ impl Transcoder {
         if let Some(session) = self.sessions.lock().unwrap().get(&key) {
             return Ok(session.clone());
         }
+        let setup = self.setup();
         let video = source
             .media
             .video
@@ -183,46 +354,79 @@ impl Transcoder {
                 let origin = nuvora_media::landing(&self.tools, &source.path, video, 0.0)
                     .await?
                     .unwrap_or(0.0);
-                Segments::every(origin, duration)
+                Segments::every(origin, duration, f64::from(setup.tuning.segment_seconds))
             }
         };
-        let dir = self.root.join(session_dir_name(&key));
-        tokio::fs::create_dir_all(&dir).await?;
+        let id = session_dir_name(&key);
+        let dir = self.root.join(&id);
+        let tuning = &setup.tuning;
         let session = Arc::new(Session {
+            id,
             tools: self.tools.clone(),
-            encoder: self.encoder.clone(),
+            encoder: setup.encoder.clone(),
+            options: tuning.encode_options(),
+            catch_up: f64::from(tuning.catch_up_s),
             dir,
             path: source.path,
             media: source.media,
             plan: key.plan,
             segments,
+            opened: SystemTime::now(),
             run: tokio::sync::Mutex::new(RunState::default()),
             activity: Mutex::new(Activity {
                 at: Instant::now(),
                 index: 0,
                 swept: 0,
             }),
+            progress: Arc::default(),
         });
-        let evicted = {
+        tokio::fs::create_dir_all(&session.dir).await?;
+        // `Err` holds what to answer instead: the session another request
+        // opened meanwhile, or a refusal.
+        let evicted = (|| {
             let mut sessions = self.sessions.lock().unwrap();
             if let Some(existing) = sessions.get(&key) {
                 // Another request opened it while this one worked.
-                return Ok(existing.clone());
+                return Err(Ok(existing.clone()));
             }
-            let mut mine: Vec<(SessionKey, Instant)> = sessions
-                .iter()
-                .filter(|(k, _)| k.user == key.user)
-                .map(|(k, s)| (k.clone(), s.activity.lock().unwrap().at))
-                .collect();
-            mine.sort_by_key(|(_, at)| *at);
-            let excess = (mine.len() + 1).saturating_sub(SESSIONS_PER_USER);
-            let evicted: Vec<Arc<Session>> = mine
-                .into_iter()
-                .take(excess)
-                .filter_map(|(k, _)| sessions.remove(&k))
-                .collect();
+            let least_recent_first =
+                |sessions: &HashMap<SessionKey, Arc<Session>>, also: &dyn Fn(&Session) -> bool| {
+                    let mut mine: Vec<(SessionKey, Instant)> = sessions
+                        .iter()
+                        .filter(|(k, s)| k.user == key.user && also(s))
+                        .map(|(k, s)| (k.clone(), s.activity.lock().unwrap().at))
+                        .collect();
+                    mine.sort_by_key(|(_, at)| *at);
+                    mine.into_iter().map(|(k, _)| k).collect::<Vec<_>>()
+                };
+            let mut evicted = Vec::new();
+            // At the server's limit, a person starting a video gives up their
+            // own oldest conversions (likely abandoned) before anyone is refused.
+            let limit = tuning.max_conversions as usize;
+            if limit > 0 && session.converts() {
+                let others = sessions
+                    .iter()
+                    .filter(|(k, s)| k.user != key.user && s.converts())
+                    .count();
+                if others >= limit {
+                    return Err(Err(TranscodeError::Busy(tuning.max_conversions)));
+                }
+                let mine = least_recent_first(&sessions, &Session::converts);
+                let excess = (others + mine.len() + 1).saturating_sub(limit);
+                evicted.extend(mine.iter().take(excess).filter_map(|k| sessions.remove(k)));
+            }
+            let mine = least_recent_first(&sessions, &|_| true);
+            let excess = (mine.len() + 1).saturating_sub(tuning.streams_per_user as usize);
+            evicted.extend(mine.iter().take(excess).filter_map(|k| sessions.remove(k)));
             sessions.insert(key, session.clone());
-            evicted
+            Ok(evicted)
+        })();
+        let evicted = match evicted {
+            Ok(evicted) => evicted,
+            Err(not_opened) => {
+                let _ = tokio::fs::remove_dir_all(&session.dir).await;
+                return not_opened;
+            }
         };
         for old in evicted {
             old.stop().await;
@@ -257,6 +461,10 @@ impl Transcoder {
 }
 
 impl Session {
+    fn converts(&self) -> bool {
+        matches!(self.plan.video, VideoPlan::H264 { .. })
+    }
+
     /// The playlist. `query` is appended to every URI (the session id), and
     /// the init segment's URI names the segment playback starts at, so the
     /// first run starts there.
@@ -300,7 +508,9 @@ impl Session {
                     Some(Ok(None)) => true,
                     Some(Ok(Some(status))) if !status.success() => {
                         run.child = None;
-                        return Err(TranscodeError::Failed(self.log_tail().await));
+                        let why = self.log_tail().await;
+                        run.failed = Some(why.clone());
+                        return Err(TranscodeError::Failed(why));
                     }
                     _ => false,
                 };
@@ -309,7 +519,7 @@ impl Session {
                     && run.first <= index
                     && self.segments.start(index)
                         <= self.segments.start(run.made.min(self.segments.len() - 1))
-                            + CATCH_UP_SECONDS;
+                            + self.catch_up;
                 if !reachable {
                     self.start(&mut run, index).await?;
                 } else if run.paused {
@@ -395,23 +605,137 @@ impl Session {
             seek,
             dir: &self.dir,
             encoder: &self.encoder,
+            options: &self.options,
         }
         .args();
-        let child = Command::new(self.tools.ffmpeg())
+        let mut child = Command::new(self.tools.ffmpeg())
             .args(args)
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(Stdio::from(log))
             .kill_on_drop(true)
             .spawn()?;
         tracing::debug!(dir = %self.dir.display(), first, ?seek, "transcode run started");
+        if let Some(stdout) = child.stdout.take() {
+            let this_run = {
+                let mut live = self.progress.lock().unwrap();
+                live.run += 1;
+                live.report = None;
+                live.run
+            };
+            let live = Arc::clone(&self.progress);
+            // Reads to the end whatever happens, so FFmpeg never blocks on a full pipe.
+            tokio::spawn(async move {
+                let mut lines = BufReader::new(stdout).lines();
+                let mut report = RunProgress::default();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if report.read_line(&line) {
+                        let mut live = live.lock().unwrap();
+                        if live.run == this_run {
+                            live.report = Some(report.clone());
+                        }
+                    }
+                }
+            });
+        }
         *run = RunState {
             child: Some(child),
             first,
             made: first,
             paused: false,
+            started: Some(Instant::now()),
+            failed: None,
         };
         Ok(())
+    }
+
+    /// See [`StreamActivity`].
+    async fn snapshot(&self, key: &SessionKey) -> StreamActivity {
+        let (index, at) = {
+            let a = self.activity.lock().unwrap();
+            (a.index, a.at)
+        };
+        let mut on_disk = Vec::new();
+        let mut disk_bytes = 0;
+        if let Ok(mut entries) = tokio::fs::read_dir(&self.dir).await {
+            while let Ok(Some(entry)) = entries.next_entry().await {
+                disk_bytes += entry.metadata().await.map_or(0, |m| m.len());
+                let name = entry.file_name();
+                if let Some(n) = name
+                    .to_str()
+                    .and_then(|n| n.strip_suffix(".m4s"))
+                    .and_then(|n| n.parse::<usize>().ok())
+                    .filter(|n| *n < self.segments.len())
+                {
+                    on_disk.push(n);
+                }
+            }
+        }
+        on_disk.sort_unstable();
+        let origin = self.segments.origin();
+        let player = |source: f64| (source - origin).max(0.0);
+        let mut made: Vec<(f64, f64)> = Vec::new();
+        let mut previous = None;
+        for n in on_disk {
+            let (start, end) = (
+                player(self.segments.start(n)),
+                player(self.segments.end_of(n)),
+            );
+            match made.last_mut() {
+                Some(span) if previous == Some(n.wrapping_sub(1)) => span.1 = end,
+                _ => made.push((start, end)),
+            }
+            previous = Some(n);
+        }
+        let last = self.segments.len() - 1;
+        let duration = player(self.segments.end_of(last));
+        let (state, run_span, run_for) = match self.run.try_lock() {
+            // A run is starting or a request is checking on it.
+            Err(_) => (RunPhase::Converting, None, None),
+            Ok(mut run) => {
+                self.advance(&mut run).await;
+                let state = match run.child.as_mut().map(Child::try_wait) {
+                    None => match &run.failed {
+                        Some(why) => RunPhase::Failed(why.clone()),
+                        None => RunPhase::Waiting,
+                    },
+                    Some(Ok(None)) if run.paused => RunPhase::Paused,
+                    Some(Ok(None)) => RunPhase::Converting,
+                    Some(Ok(Some(status))) if status.success() => RunPhase::Finished,
+                    Some(_) => RunPhase::Failed(self.log_tail().await),
+                };
+                let span = run.child.is_some().then(|| {
+                    let reached = if run.made > last {
+                        duration
+                    } else {
+                        player(self.segments.start(run.made))
+                    };
+                    (player(self.segments.start(run.first.min(last))), reached)
+                });
+                (state, span, run.started.map(|s| s.elapsed()))
+            }
+        };
+        let progress = self.progress.lock().unwrap().report.clone();
+        StreamActivity {
+            id: self.id.clone(),
+            user: key.user,
+            file: key.file,
+            plan: self.plan,
+            media: self.media.clone(),
+            encoder: self.converts().then(|| self.encoder.label()),
+            options: self.options.clone(),
+            duration,
+            position: player(self.segments.start(index.min(last))),
+            made,
+            segments: self.segments.len(),
+            run_span,
+            run_for,
+            state,
+            progress,
+            disk_bytes,
+            idle: at.elapsed(),
+            opened: self.opened,
+        }
     }
 
     /// Copies the run's init segment to a name no later run overwrites, once
@@ -442,7 +766,8 @@ impl Session {
 
     /// Pauses a run far ahead of the player, resumes one it is catching up
     /// to, and deletes segments far behind it.
-    async fn keep_pace(&self) {
+    async fn keep_pace(&self, tuning: &Tuning) {
+        let pause_ahead = f64::from(tuning.buffer_ahead_s);
         let (index, swept) = {
             let a = self.activity.lock().unwrap();
             (a.index, a.swept)
@@ -454,16 +779,16 @@ impl Session {
         if run.child.is_some() && run.made > index {
             let ahead = self.segments.start(run.made.min(self.segments.len() - 1))
                 - self.segments.start(index);
-            if !run.paused && ahead > PAUSE_AHEAD {
+            if tuning.throttle && !run.paused && ahead > pause_ahead {
                 signal(&run, true);
                 run.paused = true;
-            } else if run.paused && ahead < RESUME_AHEAD {
+            } else if run.paused && (!tuning.throttle || ahead < pause_ahead / 2.0) {
                 signal(&run, false);
                 run.paused = false;
             }
         }
         drop(run);
-        let behind = self.segments.start(index) - KEEP_BEHIND;
+        let behind = self.segments.start(index) - f64::from(tuning.keep_behind_s);
         let mut i = swept;
         while i < index && self.segments.start(i) < behind {
             let _ = tokio::fs::remove_file(self.dir.join(format!("{i}.m4s"))).await;
@@ -481,11 +806,13 @@ async fn housekeeping(transcoder: Weak<Transcoder>) {
         let Some(transcoder) = transcoder.upgrade() else {
             return;
         };
+        let tuning = transcoder.tuning();
+        let idle_after = Duration::from_secs(tuning.idle_timeout_s.into());
         let (idle, live): (Vec<_>, Vec<_>) = {
             let mut sessions = transcoder.sessions.lock().unwrap();
             let idle_keys: Vec<SessionKey> = sessions
                 .iter()
-                .filter(|(_, s)| s.activity.lock().unwrap().at.elapsed() > IDLE)
+                .filter(|(_, s)| s.activity.lock().unwrap().at.elapsed() > idle_after)
                 .map(|(k, _)| k.clone())
                 .collect();
             let idle = idle_keys
@@ -498,7 +825,7 @@ async fn housekeeping(transcoder: Weak<Transcoder>) {
             session.stop().await;
         }
         for session in live {
-            session.keep_pace().await;
+            session.keep_pace(&tuning).await;
         }
     }
 }

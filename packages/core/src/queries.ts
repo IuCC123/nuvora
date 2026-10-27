@@ -22,6 +22,8 @@ import type {
   HomeRowQuery,
   MetadataSettings,
   ServerInfo,
+  TuningResponse,
+  Activity,
 } from "./client";
 import type { AbortSignalLike } from "./transport";
 
@@ -67,6 +69,8 @@ export const queryKeys = {
   adminUsers: ["admin", "users"] as const,
   adminServer: ["admin", "server"] as const,
   adminMetadata: ["admin", "metadata"] as const,
+  adminTuning: ["admin", "tuning"] as const,
+  adminActivity: ["admin", "activity"] as const,
   homeLayout: ["home-layout"] as const,
   search: (q: string) => ["search", q] as const,
   previews: (fileId: number) => ["previews", fileId] as const,
@@ -123,6 +127,9 @@ export interface Queries {
   adminUsers(): QueryDef<AdminUser[]>;
   adminServer(): QueryDef<ServerInfo>;
   adminMetadata(): QueryDef<MetadataSettings>;
+  adminTuning(): QueryDef<TuningResponse>;
+  /** Live: poll it while the Activity page is open. */
+  adminActivity(): QueryDef<Activity>;
   homeLayout(): QueryDef<HomeLayout>;
   /** `q` as typed; callers skip blank queries. */
   search(q: string): QueryDef<SearchResponse>;
@@ -174,6 +181,8 @@ export function createQueries(client: NuvoraClient): Queries {
     adminServer: () => ({ queryKey: queryKeys.adminServer, queryFn: ({ signal }) => client.admin.server(signal), staleTime: ADMIN_FRESH }),
     homeLayout: () => ({ queryKey: queryKeys.homeLayout, queryFn: ({ signal }) => client.homeLayout(signal), staleTime: 30_000 }),
     adminMetadata: () => ({ queryKey: queryKeys.adminMetadata, queryFn: ({ signal }) => client.admin.metadata(signal), staleTime: ADMIN_FRESH }),
+    adminTuning: () => ({ queryKey: queryKeys.adminTuning, queryFn: ({ signal }) => client.admin.tuning(signal), staleTime: ADMIN_FRESH }),
+    adminActivity: () => ({ queryKey: queryKeys.adminActivity, queryFn: ({ signal }) => client.admin.activity(signal), staleTime: 0 }),
   };
 }
 

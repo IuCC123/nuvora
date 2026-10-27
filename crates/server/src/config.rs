@@ -16,7 +16,8 @@
 //! ffmpeg = "/usr/bin/ffmpeg"       # default: PATH
 //! ffprobe = "/usr/bin/ffprobe"
 //! discovery = true                 # announce on the local network so TVs find it
-//! hardware_encoding = "auto"       # or "off", "videotoolbox", "nvenc", "vaapi"
+//! hardware_encoding = "auto"       # or "off", "videotoolbox", "nvenc", "vaapi";
+//!                                  # when set here, the admin panel can't change it
 //!
 //! [[library]]
 //! key = "movies"                   # stable identity; renaming `name` keeps ids
@@ -73,14 +74,26 @@ pub struct ServeArgs {
     /// it without an address (default: true).
     #[arg(long, env = "NUVORA_DISCOVERY")]
     pub discovery: Option<bool>,
-    /// Convert video on the graphics chip: `auto` (default) uses the first
-    /// one that works here, `off` always uses the processor.
+    /// Convert video on the graphics chip: `auto` uses the first one that
+    /// works here, `off` always uses the processor. Unset, the admin panel
+    /// decides (`auto` until changed there).
     #[arg(long, env = "NUVORA_HARDWARE_ENCODING", value_enum)]
     pub hardware_encoding: Option<HardwareEncoding>,
 }
 
 /// Which encoder converts video; see `nuvora_media::VideoEncoder`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, clap::ValueEnum)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Deserialize,
+    serde::Serialize,
+    utoipa::ToSchema,
+    clap::ValueEnum,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum HardwareEncoding {
     #[default]
@@ -101,7 +114,8 @@ pub struct Config {
     pub ffprobe: Option<PathBuf>,
     pub trusted_proxies: Vec<IpNet>,
     pub discovery: bool,
-    pub hardware_encoding: HardwareEncoding,
+    /// Named by the file or a flag; `None` leaves it to the admin panel.
+    pub hardware_encoding: Option<HardwareEncoding>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -241,10 +255,7 @@ pub fn load(args: &ServeArgs) -> Result<Config, ConfigError> {
             .map(|p| p.parse())
             .collect::<Result<_, _>>()?,
         discovery: args.discovery.or(file.discovery).unwrap_or(true),
-        hardware_encoding: args
-            .hardware_encoding
-            .or(file.hardware_encoding)
-            .unwrap_or_default(),
+        hardware_encoding: args.hardware_encoding.or(file.hardware_encoding),
     })
 }
 
@@ -276,27 +287,24 @@ mod tests {
     }
 
     #[test]
-    fn hardware_encoding_is_auto_unless_named() {
+    fn hardware_encoding_is_left_to_the_panel_unless_named() {
         use clap::Parser;
         let dir = tempfile::tempdir().unwrap();
-        assert_eq!(
-            load(&args(None, vec![])).unwrap().hardware_encoding,
-            HardwareEncoding::Auto
-        );
+        assert_eq!(load(&args(None, vec![])).unwrap().hardware_encoding, None);
         let toml = dir.path().join("nuvora.toml");
         std::fs::write(&toml, "hardware_encoding = \"videotoolbox\"\n").unwrap();
         assert_eq!(
             load(&args(Some(toml.clone()), vec![]))
                 .unwrap()
                 .hardware_encoding,
-            HardwareEncoding::Videotoolbox
+            Some(HardwareEncoding::Videotoolbox)
         );
         let mut cli = crate::Cli::try_parse_from(["nuvora", "--hardware-encoding", "off"]).unwrap();
         cli.serve.config = Some(toml.clone());
         cli.serve.data_dir = Some(dir.path().into());
         assert_eq!(
             load(&cli.serve).unwrap().hardware_encoding,
-            HardwareEncoding::Off,
+            Some(HardwareEncoding::Off),
             "the flag wins"
         );
         std::fs::write(&toml, "hardware_encoding = \"gpu\"\n").unwrap();

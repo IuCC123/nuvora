@@ -433,3 +433,90 @@
   font-variant-numeric: tabular-nums;
   user-select: all;
 }
+
+/* Transcoding: long form, one save bar that stays in reach. */
+.settings-section-note {
+  margin-top: 6px;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+}
+
+.tuning-subhead {
+  margin-top: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--nv-color-divider);
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-caption-size);
+  line-height: var(--nv-type-caption-line);
+  font-weight: var(--nv-font-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tuning-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 0 calc(-1 * var(--nv-space-4));
+  padding: 14px var(--nv-space-4) 18px;
+  border-top: 1px solid var(--nv-color-hairline);
+  background: color-mix(in srgb, var(--nv-color-canvas) 92%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.tuning-actions .form-actions {
+  margin-top: 0;
+}
+
+.tuning-actions .form-error {
+  margin-bottom: 12px;
+}
+
+.encoder-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--nv-color-hairline);
+  border-radius: var(--nv-radius-lg);
+  background: var(--nv-color-surface);
+}
+
+.encoder-status p {
+  margin: 0;
+}
+
+.encoder-chip {
+  padding: 3px 8px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-color-surface-raised);
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-chip-size);
+  line-height: var(--nv-type-chip-line);
+  font-weight: var(--nv-font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.encoder-chip.is-hardware {
+  background: color-mix(in srgb, var(--nv-color-accent) 18%, transparent);
+  color: var(--nv-color-accent);
+}
+
+.encoder-status .encoder-problem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-basis: 100%;
+  color: var(--nv-color-danger);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  overflow-wrap: anywhere;
+}
+
+.encoder-problem svg {
+  flex: none;
+  margin-top: 1px;
+}

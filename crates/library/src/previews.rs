@@ -1,7 +1,8 @@
 //! Seek previews (see `nuvora_media::PreviewSheets`), made in the background:
 //! after each scan, every video without them, newest first, one at a time so
 //! playback and scans keep most of the machine. A video someone opens in the
-//! player goes to the front.
+//! player goes to the front. The admin panel can switch the worker off; what
+//! it is doing is published as [`PreviewActivity`].
 //!
 //! Stored by content fingerprint, like artwork: a renamed or moved file keeps
 //! its previews and identical files share them. One folder per video,
@@ -167,9 +168,25 @@ pub(crate) fn key_of(conn: &Connection, file: FileId) -> rusqlite::Result<Option
     Ok(job(conn, file)?.map(|j| j.key))
 }
 
+/// What the seek-preview worker is doing.
+#[derive(Debug, Clone, Default)]
+pub struct PreviewActivity {
+    /// Off in the admin panel: nothing new is made.
+    pub enabled: bool,
+    /// The video being worked on.
+    pub current: Option<PathBuf>,
+    /// Videos waiting after it.
+    pub queued: usize,
+    /// Since the server started.
+    pub made: u32,
+    pub failed: u32,
+}
+
 pub(crate) struct PreviewHandle {
     pub(crate) store: Arc<PreviewStore>,
     urgent: mpsc::UnboundedSender<FileId>,
+    enabled: watch::Sender<bool>,
+    activity: watch::Receiver<PreviewActivity>,
 }
 
 impl PreviewHandle {
@@ -180,6 +197,11 @@ impl PreviewHandle {
         mut scans: watch::Receiver<ScanStatus>,
     ) -> PreviewHandle {
         let (urgent, mut requests) = mpsc::unbounded_channel::<FileId>();
+        let (enabled, mut switch) = watch::channel(true);
+        let (publish, activity) = watch::channel(PreviewActivity {
+            enabled: true,
+            ..PreviewActivity::default()
+        });
         let worker_store = Arc::clone(&store);
         tokio::spawn(async move {
             let store = worker_store;
@@ -192,22 +214,50 @@ impl PreviewHandle {
                 while let Ok(file) = requests.try_recv() {
                     asked.push_back(file);
                 }
+                let on = *switch.borrow_and_update();
                 let next = match asked.pop_front() {
+                    _ if !on => None,
                     Some(file) => db.read(move |c| job(c, file)).await.ok().flatten(),
                     None => backlog.pop_front(),
                 };
                 if let Some(job) = next {
                     let wanted = store.sheets(&job.key).is_none() && !failed.contains(&job.key);
-                    if wanted && let Err(e) = store.render(&tools, &job).await {
-                        tracing::warn!(path = %job.path.display(), "no seek previews: {e}");
-                        failed.insert(job.key);
+                    if wanted {
+                        let queued = asked.len() + backlog.len();
+                        publish.send_modify(|a| {
+                            a.current = Some(job.path.clone());
+                            a.queued = queued;
+                        });
+                        match store.render(&tools, &job).await {
+                            Ok(_) => publish.send_modify(|a| a.made += 1),
+                            Err(e) => {
+                                tracing::warn!(path = %job.path.display(), "no seek previews: {e}");
+                                failed.insert(job.key);
+                                publish.send_modify(|a| a.failed += 1);
+                            }
+                        }
                     }
                     continue;
                 }
+                let queued = asked.len() + backlog.len();
+                publish.send_modify(|a| {
+                    a.enabled = on;
+                    a.current = None;
+                    a.queued = queued;
+                });
                 tokio::select! {
                     request = requests.recv() => match request {
                         Some(file) => asked.push_back(file),
                         None => return,
+                    },
+                    changed = switch.changed() => {
+                        if changed.is_err() {
+                            return;
+                        }
+                        if *switch.borrow() {
+                            let Ok(jobs) = db.read(all_jobs).await else { continue };
+                            backlog = jobs.into_iter().filter(|j| store.sheets(&j.key).is_none()).collect();
+                        }
                     },
                     changed = scans.changed() => {
                         if changed.is_err() {
@@ -236,7 +286,21 @@ impl PreviewHandle {
                 }
             }
         });
-        PreviewHandle { store, urgent }
+        PreviewHandle {
+            store,
+            urgent,
+            enabled,
+            activity,
+        }
+    }
+
+    pub(crate) fn set_enabled(&self, on: bool) {
+        self.enabled
+            .send_if_modified(|was| std::mem::replace(was, on) != on);
+    }
+
+    pub(crate) fn activity(&self) -> PreviewActivity {
+        self.activity.borrow().clone()
     }
 
     /// Puts `file` at the front of the queue.

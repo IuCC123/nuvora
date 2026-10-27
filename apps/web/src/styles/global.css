@@ -89,11 +89,13 @@ button:disabled {
 
 /* Buttons */
 
+/* One line, always: the height is fixed, so a wrapped label would spill out. Rows of buttons wrap whole buttons instead. */
 .btn {
   display: inline-flex;
   align-items: center;
   gap: 10px;
   height: 44px;
+  white-space: nowrap;
   padding: 0 22px 0 18px;
   border-radius: var(--nv-radius-md);
   font-size: var(--nv-type-button-size);

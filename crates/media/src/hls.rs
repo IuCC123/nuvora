@@ -9,7 +9,8 @@
 //!
 //! - A copied video is cut at every keyframe of the source (the only places
 //!   a copy can start), found once with ffprobe. A converted one gets a
-//!   keyframe forced every [`SEGMENT_SECONDS`] and none elsewhere.
+//!   keyframe forced every few seconds ([`SEGMENT_SECONDS`] by default) and
+//!   none elsewhere.
 //! - Every run keeps the source's timestamps (`-copyts`, `frag_discont`), so
 //!   a segment made by any run sits at the same place on the timeline.
 //! - A run that copies video starts on a keyframe the demuxer can seek to;
@@ -28,9 +29,12 @@ use std::time::Duration;
 
 use tokio::process::Command;
 
-use crate::{AudioOutput, MediaInfo, MediaTools, StreamPlan, VideoCodec, VideoEncoder, VideoPlan};
+use crate::{
+    AudioOutput, EncodeOptions, MediaInfo, MediaTools, StreamPlan, VideoCodec, VideoEncoder,
+    VideoPlan,
+};
 
-/// Target length of a converted segment.
+/// Default length of a converted segment.
 pub const SEGMENT_SECONDS: f64 = 6.0;
 /// The init segment every run writes, before its first media segment.
 pub const INIT_SEGMENT: &str = "init.mp4";
@@ -70,14 +74,12 @@ impl Segments {
         Some(Segments { starts, end })
     }
 
-    /// A segment every [`SEGMENT_SECONDS`] from `origin`: what a converted
-    /// video is cut at.
-    pub fn every(origin: f64, duration: f64) -> Segments {
-        let count = ((duration / SEGMENT_SECONDS).ceil() as usize).max(1);
+    /// A segment every `seconds` from `origin`: what a converted video is
+    /// cut at.
+    pub fn every(origin: f64, duration: f64, seconds: f64) -> Segments {
+        let count = ((duration / seconds).ceil() as usize).max(1);
         Segments {
-            starts: (0..count)
-                .map(|i| origin + i as f64 * SEGMENT_SECONDS)
-                .collect(),
+            starts: (0..count).map(|i| origin + i as f64 * seconds).collect(),
             end: origin + duration.max(0.001),
         }
     }
@@ -100,7 +102,8 @@ impl Segments {
         self.starts[index]
     }
 
-    fn end_of(&self, index: usize) -> f64 {
+    /// Source time segment `index` ends at.
+    pub fn end_of(&self, index: usize) -> f64 {
         self.starts.get(index + 1).copied().unwrap_or(self.end)
     }
 
@@ -236,19 +239,27 @@ pub struct Run<'a> {
     pub dir: &'a Path,
     /// For converted video.
     pub encoder: &'a VideoEncoder,
+    /// For converted video and audio, and the log level.
+    pub options: &'a EncodeOptions,
 }
 
 impl Run<'_> {
     /// The arguments after the ffmpeg binary. Every segment is written to a
     /// temporary name and renamed when complete, so a file named
-    /// `{n}.m4s` is always whole.
+    /// `{n}.m4s` is always whole. FFmpeg reports progress on stdout
+    /// (`key=value` lines, see [`RunProgress`]).
     pub fn args(&self) -> Vec<OsString> {
         let mut a: Vec<OsString> = Vec::new();
         let mut push = |items: &[&str]| a.extend(items.iter().map(OsString::from));
         push(&[
             "-hide_banner",
             "-loglevel",
-            "error",
+            self.options.log_level,
+            "-nostats",
+            "-progress",
+            "pipe:1",
+            "-stats_period",
+            "1",
             "-nostdin",
             "-y",
             "-copyts",
@@ -263,7 +274,7 @@ impl Run<'_> {
             push(&["-ss", &format!("{seek:.3}")]);
         }
         if self.plan.video != VideoPlan::Copy {
-            a.extend(self.encoder.input_args());
+            a.extend(self.encoder.input_args(self.options));
         }
         a.push("-i".into());
         a.push(self.path.as_os_str().to_owned());
@@ -288,7 +299,9 @@ impl Run<'_> {
                 let forced: Vec<String> = (self.first..self.segments.len())
                     .map(|i| format!("{:.3}", self.segments.start(i)))
                     .collect();
-                converted = self.encoder.output_args(max_height, &forced.join(","));
+                converted = self
+                    .encoder
+                    .output_args(max_height, &forced.join(","), self.options);
             }
         }
         a.extend(converted);
@@ -297,11 +310,22 @@ impl Run<'_> {
             None => {}
             Some(AudioOutput::Copy) => push(&["-c:a", "copy"]),
             Some(AudioOutput::Aac { channels }) => {
-                let bitrate = if channels <= 2 {
-                    192
-                } else {
-                    64 * u32::from(channels)
-                };
+                let options = self.options;
+                let (channels, bitrate) = options.aac(channels);
+                // Nothing may start before zero: ExoPlayer rejects the
+                // stream. Sources often have audio a few ms early (an
+                // encoder's delay, rounded to MKV's milliseconds), so that
+                // goes; and the AAC encoder's 1024-sample lead-in would
+                // stamp the first frame early, so audio moves 21 ms later,
+                // inaudible and the same in every run.
+                let mut filters = "atrim=start=0,asetpts=PTS+1024/SR/TB".to_owned();
+                if options.night_mode {
+                    // About -18 dB, 4:1, with +6 dB back: loud scenes come
+                    // down, speech comes up.
+                    filters.push_str(
+                        ",acompressor=threshold=0.125:ratio=4:attack=5:release=250:makeup=2",
+                    );
+                }
                 push(&[
                     "-c:a",
                     "aac",
@@ -309,14 +333,8 @@ impl Run<'_> {
                     &channels.to_string(),
                     "-b:a",
                     &format!("{bitrate}k"),
-                    // Nothing may start before zero: ExoPlayer rejects the
-                    // stream. Sources often have audio a few ms early (an
-                    // encoder's delay, rounded to MKV's milliseconds), so that
-                    // goes; and the AAC encoder's 1024-sample lead-in would
-                    // stamp the first frame early, so audio moves 21 ms later,
-                    // inaudible and the same in every run.
                     "-af",
-                    "atrim=start=0,asetpts=PTS+1024/SR/TB",
+                    &filters,
                 ]);
             }
         }
@@ -347,6 +365,50 @@ impl Run<'_> {
         a.push(self.dir.join("%d.m4s").into_os_string());
         a.push(self.dir.join("ffmpeg.m3u8").into_os_string());
         a
+    }
+}
+
+/// What a run's FFmpeg says about itself on stdout (`-progress`), once a
+/// second: a block of `key=value` lines ending in `progress=continue` (or
+/// `end`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RunProgress {
+    /// Video frames written.
+    pub frame: u64,
+    pub fps: f64,
+    /// The output's bitrate so far, kbit/s.
+    pub bitrate_kbps: Option<f64>,
+    /// Where the output has got to, in source seconds (runs keep source time).
+    pub out_time: Option<f64>,
+    /// Media seconds made per second of wall time.
+    pub speed: Option<f64>,
+    /// FFmpeg reached the end of the file.
+    pub ended: bool,
+}
+
+impl RunProgress {
+    /// Reads one line into `self`. True when it ends a block: `self` then
+    /// holds a whole report.
+    pub fn read_line(&mut self, line: &str) -> bool {
+        let Some((key, value)) = line.trim().split_once('=') else {
+            return false;
+        };
+        let number = |v: &str| v.trim().parse::<f64>().ok().filter(|n| n.is_finite());
+        match key {
+            "frame" => self.frame = value.trim().parse().unwrap_or(self.frame),
+            "fps" => self.fps = number(value).unwrap_or(0.0),
+            "bitrate" => self.bitrate_kbps = number(value.trim_end_matches("kbits/s")),
+            "out_time_us" => {
+                self.out_time = number(value).filter(|t| *t >= 0.0).map(|us| us / 1e6);
+            }
+            "speed" => self.speed = number(value.trim_end_matches('x')),
+            "progress" => {
+                self.ended = value.trim() == "end";
+                return true;
+            }
+            _ => {}
+        }
+        false
     }
 }
 
@@ -403,7 +465,7 @@ mod tests {
 
     #[test]
     fn converted_segments_are_evenly_spaced_from_the_first_frame() {
-        let s = Segments::every(1.4, 20.0);
+        let s = Segments::every(1.4, 20.0, SEGMENT_SECONDS);
         assert_eq!(s.len(), 4);
         assert_eq!(s.start(3), 1.4 + 18.0);
         assert_eq!(s.index_at(6.0), 1);
@@ -411,6 +473,34 @@ mod tests {
         assert!(playlist.contains("#EXT-X-START:TIME-OFFSET=61.500,PRECISE=YES\n"));
         assert!(playlist.contains("#EXT-X-MAP:URI=\"init.mp4?x=1\"\n"));
         assert!(playlist.contains("#EXTINF:2.000000,\n3.m4s?x=1\n"));
+    }
+
+    #[test]
+    fn progress_blocks_read_into_a_report() {
+        let mut progress = RunProgress::default();
+        let block = "frame=240\nfps=48.10\nstream_0_0_q=-1.0\nbitrate=N/A\ntotal_size=1024\nout_time_us=10010000\nout_time=00:00:10.010000\nspeed=2.05x\n";
+        for line in block.lines() {
+            assert!(!progress.read_line(line));
+        }
+        assert!(progress.read_line("progress=continue"));
+        assert_eq!(
+            progress,
+            RunProgress {
+                frame: 240,
+                fps: 48.1,
+                bitrate_kbps: None,
+                out_time: Some(10.01),
+                speed: Some(2.05),
+                ended: false,
+            }
+        );
+        progress.read_line("bitrate=5120.3kbits/s");
+        progress.read_line("speed=N/A");
+        progress.read_line("out_time_us=-9223372036854775807");
+        assert!(progress.read_line("progress=end"));
+        assert_eq!(progress.bitrate_kbps, Some(5120.3));
+        assert_eq!((progress.speed, progress.out_time), (None, None));
+        assert!(progress.ended);
     }
 
     #[test]

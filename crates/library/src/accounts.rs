@@ -560,6 +560,35 @@ impl Library {
             .await?)
     }
 
+    /// A server setting saved under `key` (the server owns its format).
+    pub async fn setting(&self, key: &'static str) -> Result<Option<String>, QueryError> {
+        Ok(self
+            .inner
+            .db
+            .read(move |c| {
+                c.query_row("SELECT value FROM setting WHERE key = ?1", [key], |r| {
+                    r.get(0)
+                })
+                .optional()
+            })
+            .await?)
+    }
+
+    pub async fn set_setting(&self, key: &'static str, value: String) -> Result<(), QueryError> {
+        Ok(self
+            .inner
+            .db
+            .write(move |tx| {
+                tx.execute(
+                    "INSERT INTO setting (key, value) VALUES (?1, ?2) \
+                     ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    params![key, value],
+                )?;
+                Ok(())
+            })
+            .await?)
+    }
+
     pub async fn set_server_name(&self, name: String) -> Result<(), QueryError> {
         Ok(self
             .inner

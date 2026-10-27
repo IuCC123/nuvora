@@ -1,4 +1,4 @@
-import { useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { useId, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
 import { AlertIcon } from "./Icon";
 import "../styles/forms.css";
 
@@ -40,6 +40,79 @@ export function SelectField({ label, error, hint, id, children, ...select }: Des
       <select id={fieldId} className="input select" aria-invalid={error ? true : undefined} aria-describedby={describedBy} {...select}>
         {children}
       </select>
+      {messages}
+    </div>
+  );
+}
+
+/** An on/off setting: the label and hint on the left, the switch on the right. The whole row toggles it. */
+export function SwitchField({
+  label,
+  hint,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  hint?: ReactNode;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const { fieldId, describedBy, messages } = useDescription(undefined, null, hint);
+  return (
+    <div className="field switch-field">
+      <label htmlFor={fieldId} className="switch-row">
+        <span className="switch-label">{label}</span>
+        <input
+          id={fieldId}
+          type="checkbox"
+          role="switch"
+          className="switch"
+          checked={checked}
+          disabled={disabled}
+          aria-describedby={describedBy}
+          onChange={(e) => onChange(e.currentTarget.checked)}
+        />
+      </label>
+      {messages}
+    </div>
+  );
+}
+
+/** A number picked on a slider, with its value (`format`ted) beside the label. */
+export function RangeField({
+  label,
+  hint,
+  value,
+  min,
+  max,
+  step = 1,
+  format = String,
+  error,
+  onChange,
+}: Described & { value: number; min: number; max: number; step?: number; format?: (value: number) => string; onChange: (value: number) => void }) {
+  const { fieldId, describedBy, messages } = useDescription(undefined, error, hint);
+  return (
+    <div className="field range-field">
+      <div className="range-head">
+        <label htmlFor={fieldId}>{label}</label>
+        <output htmlFor={fieldId}>{format(value)}</output>
+      </div>
+      <input
+        id={fieldId}
+        type="range"
+        className="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        aria-valuetext={format(value)}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy}
+        style={{ "--fill": `${((value - min) / (max - min)) * 100}%` } as CSSProperties}
+        onChange={(e) => onChange(Number(e.currentTarget.value))}
+      />
       {messages}
     </div>
   );

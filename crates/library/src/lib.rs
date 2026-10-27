@@ -44,7 +44,7 @@ pub use home_layout::HomeRowSpec;
 pub use ids::{ArtworkId, FileId, ItemId, LibraryId, ParseIdError, UserId};
 pub use libraries::{LibraryError, LibraryInfo};
 pub use metadata::read::{Credit, Extras};
-pub use previews::{PreviewKey, Previews};
+pub use previews::{PreviewActivity, PreviewKey, Previews};
 pub use scan::{ScanIssue, ScanPhase, ScanProgress, ScanState, ScanStatus, ScanSummary};
 pub use search::{EpisodeHit, PersonHit, PersonRole, SearchResults};
 pub use shows::{Episode, EpisodeRef, Season, SeasonSummary, Show};
@@ -366,6 +366,27 @@ impl Library {
                 Ok(None)
             }
         }
+    }
+
+    /// Switch making seek previews on or off. Previews already made are
+    /// still served; switching on again picks up every video without them.
+    pub fn set_previews_enabled(&self, on: bool) {
+        self.inner.previews.set_enabled(on);
+    }
+
+    /// What the seek-preview worker is doing (cheap; reads a `watch` channel).
+    pub fn preview_activity(&self) -> PreviewActivity {
+        self.inner.previews.activity()
+    }
+
+    /// The name a person would know `file` by: the movie's title, or
+    /// `Show · S1E3` for an episode.
+    pub async fn file_title(&self, file: FileId) -> Result<Option<String>, QueryError> {
+        Ok(self
+            .inner
+            .db
+            .read(move |c| views::file_title(c, file))
+            .await?)
     }
 
     /// Path of sheet `n` of the previews named `key`, if it exists. No database

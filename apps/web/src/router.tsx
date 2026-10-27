@@ -25,8 +25,10 @@ import { playable, playState } from "./lib/playState";
 import { SignIn } from "./screens/SignIn";
 import { WelcomeAccount, WelcomeLibrary } from "./screens/Welcome";
 import { SettingsAccount } from "./screens/settings/Account";
+import { SettingsActivity } from "./screens/settings/Activity";
 import { SettingsGeneral } from "./screens/settings/General";
 import { SettingsLibraries } from "./screens/settings/Libraries";
+import { SettingsTranscoding } from "./screens/settings/Transcoding";
 import { SettingsUsers } from "./screens/settings/Users";
 
 /**
@@ -43,7 +45,7 @@ import { SettingsUsers } from "./screens/settings/Users";
  *   /show/$id?season=<n>        Show: seasons and episodes, season `n` open
  *   /library/$id?sort=&order=&filter=&res=&hdr=&group=  Library grid (view also kept per device)
  *   /episode/$id/play?file=&t=  Player for an episode; without `file` it resumes where the viewer stopped
- *   /settings/<section>         general, libraries, users (admins), account
+ *   /settings/<section>         general, libraries, transcoding, activity, users (admins), account
  */
 /** Every screen, with Watch Together's invitations and follow-along under them. */
 const root = createRootRoute({
@@ -212,6 +214,22 @@ const settingsLibraries = createRoute({
   component: SettingsLibraries,
 });
 
+const settingsTranscoding = createRoute({
+  getParentRoute: () => settings,
+  path: "/transcoding",
+  beforeLoad: requireAdmin,
+  loader: () => void queryClient.prefetchQuery(queries.adminTuning()),
+  component: SettingsTranscoding,
+});
+
+const settingsActivity = createRoute({
+  getParentRoute: () => settings,
+  path: "/activity",
+  beforeLoad: requireAdmin,
+  loader: () => void queryClient.prefetchQuery(queries.adminActivity()),
+  component: SettingsActivity,
+});
+
 const settingsUsers = createRoute({
   getParentRoute: () => settings,
   path: "/users",
@@ -277,7 +295,15 @@ export const router = createRouter({
     welcome,
     welcomeLibrary,
     signin,
-    shell.addChildren([home, movie, show, library, search, settings.addChildren([settingsIndex, settingsGeneral, settingsLibraries, settingsUsers, settingsAccount])]),
+    shell.addChildren([home, movie, show, library, search, settings.addChildren([
+      settingsIndex,
+      settingsGeneral,
+      settingsLibraries,
+      settingsTranscoding,
+      settingsActivity,
+      settingsUsers,
+      settingsAccount,
+    ])]),
     play,
     playEpisode,
   ]),

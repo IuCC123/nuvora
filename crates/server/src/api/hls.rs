@@ -158,6 +158,9 @@ async fn open(
 fn api_error(e: TranscodeError) -> ApiError {
     match e {
         TranscodeError::NotFound | TranscodeError::NoVideo => ApiError::not_found(),
+        TranscodeError::Busy(most) => ApiError::busy(format!(
+            "The server is already converting as many videos as it's set to ({most}). Try again when one ends."
+        )),
         other => {
             tracing::warn!(error = %other, "transcode failed");
             ApiError::internal(other)
@@ -341,7 +344,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[tokio::test(flavor = "multi_thread")]
     async fn videotoolbox_converts_into_the_same_six_second_segments() {
-        let app = TestApp::with_encoder(nuvora_media::VideoEncoder::VideoToolbox).await;
+        let app = TestApp::with_encoder(crate::config::HardwareEncoding::Videotoolbox).await;
         let admin = app.setup_admin().await;
         let dir = app.path("movies/Long (2020)");
         std::fs::create_dir_all(&dir).unwrap();
@@ -425,6 +428,58 @@ mod tests {
             nuvora_media::keyframes(&tools, &jumped, 0).await.unwrap(),
             [18.0]
         );
+    }
+
+    #[tokio::test]
+    async fn settings_shape_new_streams_and_activity_shows_their_progress() {
+        let (app, admin, id) = library().await;
+        let mut tuning = app.get("/api/admin/tuning", &admin).await.json()["settings"].clone();
+        tuning["segment_seconds"] = serde_json::json!(2);
+        tuning["stereo_kbps"] = serde_json::json!(128);
+        let saved = app
+            .call("PUT", "/api/admin/tuning", Some(&admin), Some(tuning))
+            .await;
+        assert_eq!(saved.status, StatusCode::OK);
+
+        let detail = app.get(&format!("/api/items/{id}"), &admin).await.json();
+        let file = detail["versions"][0]["file_id"].as_i64().unwrap();
+        let base = format!("/api/files/{file}/hls/h264-180.a1-aac2/");
+        let playlist = app
+            .get(&format!("{base}main.m3u8?session=a1"), &admin)
+            .await;
+        let text = String::from_utf8(playlist.body).unwrap();
+        assert_eq!(text.matches("#EXTINF:2.000000,").count(), 2, "{text}");
+        let zero = app.get(&format!("{base}0.m4s?session=a1"), &admin).await;
+        assert_eq!(zero.status, StatusCode::OK);
+
+        // Four seconds convert in a blink; wait for the run's last report.
+        let mut stream = serde_json::Value::Null;
+        for _ in 0..100 {
+            stream = app.get("/api/admin/activity", &admin).await.json()["streams"][0].clone();
+            if stream["state"] == "finished" && stream["speed"].is_number() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert_eq!(stream["state"], "finished", "{stream}");
+        assert_eq!(stream["title"], "Conv");
+        assert_eq!(stream["user"], "Admin");
+        assert_eq!(stream["source_video"]["codec"], "H.264");
+        assert_eq!(stream["source_audio"]["codec"], "Dolby Digital");
+        assert_eq!(stream["video_output"]["max_height"], 180);
+        assert_eq!(stream["video_output"]["encoder"], "x264 (processor)");
+        assert_eq!(
+            stream["audio_output"],
+            serde_json::json!({"kind": "aac", "channels": 2, "kbps": 128})
+        );
+        // Two of 2 s, and the few milliseconds of sound past the last
+        // frame, which has no picture to cut a segment at.
+        assert_eq!(stream["segments"], 3);
+        let span = serde_json::json!({"start": 0.0, "end": 4.0});
+        assert_eq!(stream["made"], serde_json::json!([span]));
+        assert_eq!(stream["run"], span);
+        assert!(stream["frames"].as_u64().unwrap() >= 90, "{stream}");
+        assert!(stream["disk_bytes"].as_u64().unwrap() > 0);
     }
 
     /// Every `tfdt` (fragment start, in its track's timescale) in a segment.

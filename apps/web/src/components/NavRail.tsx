@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { queries } from "../nuvora";
 import { useUser } from "../lib/session";
-import { FolderIcon, HouseIcon, ServerIcon, UserIcon, UsersIcon } from "./Icon";
+import { ActivityIcon, FolderIcon, HouseIcon, ServerIcon, SlidersIcon, UserIcon, UsersIcon } from "./Icon";
 import { LibraryIcon } from "./LibraryIcon";
 
 /** Home, then one entry per library with its type's icon, each opening the library page. */
@@ -47,6 +47,8 @@ function LibraryRail({ pathname }: { pathname: string }) {
 const SECTIONS = [
   { to: "/settings/general", label: "General", icon: ServerIcon, admin: true },
   { to: "/settings/libraries", label: "Libraries", icon: FolderIcon, admin: true },
+  { to: "/settings/transcoding", label: "Transcoding", icon: SlidersIcon, admin: true },
+  { to: "/settings/activity", label: "Activity", icon: ActivityIcon, admin: true },
   { to: "/settings/users", label: "Users", icon: UsersIcon, admin: true },
   { to: "/settings/account", label: "Account", icon: UserIcon, admin: false },
 ] as const;

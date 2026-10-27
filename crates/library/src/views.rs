@@ -972,6 +972,36 @@ fn stream_into(r: &rusqlite::Row<'_>, info: &mut MediaInfo) -> rusqlite::Result<
 
 /// `media_file JOIN library_root`: root.path joined with rel_path, with the
 /// file's probed streams and fingerprint.
+/// See `Library::file_title`.
+pub(crate) fn file_title(conn: &Connection, id: FileId) -> rusqlite::Result<Option<String>> {
+    use rusqlite::OptionalExtension;
+    conn.prepare_cached(
+        "SELECT e.kind, e.title, e.index_number, se.index_number, sh.title \
+         FROM media_file f JOIN item_display e ON e.id = f.item_id \
+         LEFT JOIN item_display se ON se.id = e.parent_id \
+         LEFT JOIN item_display sh ON sh.id = se.parent_id \
+         WHERE f.id = ?1",
+    )?
+    .query_row([id.0], |r| {
+        let kind: String = r.get(0)?;
+        let title: Option<String> = r.get(1)?;
+        let show: Option<String> = r.get(4)?;
+        Ok(match (kind.as_str(), show) {
+            ("episode", Some(show)) => {
+                let season: Option<i64> = r.get(3)?;
+                let episode: Option<i64> = r.get(2)?;
+                match (season, episode) {
+                    (Some(s), Some(e)) => format!("{show} · S{s}E{e}"),
+                    (_, Some(e)) => format!("{show} · E{e}"),
+                    _ => format!("{show} · {}", title.unwrap_or_default()),
+                }
+            }
+            _ => title.unwrap_or_default(),
+        })
+    })
+    .optional()
+}
+
 pub(crate) fn stream_source(
     conn: &Connection,
     id: FileId,

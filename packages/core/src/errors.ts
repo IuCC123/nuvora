@@ -18,6 +18,7 @@ const SENTENCES: Record<ErrorCode, string> = {
   username_taken: "That username is taken. Choose another.",
   last_admin: "Nuvora needs at least one admin who can sign in. Make someone else an admin first.",
   rate_limited: "Too many sign-in attempts. Try again in 15 minutes.",
+  busy: "The server is as busy as it's set to be. Try again in a minute.",
   internal: SERVER_TROUBLE,
 };
 

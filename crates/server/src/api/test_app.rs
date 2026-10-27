@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 use tower::ServiceExt;
 
 use super::{AppState, ServerSetup};
+use crate::config::HardwareEncoding;
 
 pub struct TestApp {
     dir: tempfile::TempDir,
@@ -55,17 +56,17 @@ impl TestApp {
 
     /// A server started with `--trusted-proxy` for each of `proxies`.
     pub async fn behind(proxies: &[&str]) -> TestApp {
-        TestApp::build(proxies, nuvora_media::VideoEncoder::Software).await
+        TestApp::build(proxies, HardwareEncoding::Off).await
     }
 
-    /// A server that converts video with `encoder`. Only Macs have a
-    /// graphics encoder to test.
+    /// A server started with `--hardware-encoding <encoder>`. Only Macs have
+    /// a graphics encoder to test.
     #[cfg(target_os = "macos")]
-    pub async fn with_encoder(encoder: nuvora_media::VideoEncoder) -> TestApp {
+    pub async fn with_encoder(encoder: HardwareEncoding) -> TestApp {
         TestApp::build(&[], encoder).await
     }
 
-    async fn build(proxies: &[&str], encoder: nuvora_media::VideoEncoder) -> TestApp {
+    async fn build(proxies: &[&str], encoder: HardwareEncoding) -> TestApp {
         let dir = tempfile::tempdir().unwrap();
         let movies = dir.path().join("movies");
         std::fs::create_dir_all(&movies).unwrap();
@@ -90,11 +91,13 @@ impl TestApp {
             auth: Arc::new(crate::auth::Auth::new(crate::net::TrustedProxies::new(
                 proxies.iter().map(|p| p.parse().unwrap()).collect(),
             ))),
-            transcoder: crate::transcode::Transcoder::new(
+            transcoder: crate::transcode::Transcoder::start(
                 tools.clone(),
-                encoder.clone(),
                 &dir.path().join("data"),
-            ),
+                crate::tuning::Tuning::default(),
+                Some(encoder),
+            )
+            .await,
             parties: Default::default(),
             server: Arc::new(ServerSetup {
                 id: "0123456789abcdef0123456789abcdef".into(),
@@ -102,7 +105,6 @@ impl TestApp {
                 data_dir: dir.path().join("data"),
                 bind: "127.0.0.1:8640".parse().unwrap(),
                 tools,
-                encoder,
                 started: Instant::now(),
             }),
         };

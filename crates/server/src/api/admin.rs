@@ -586,7 +586,7 @@ async fn server_info(state: &AppState) -> Result<ServerInfo, ApiError> {
             path: on_path(tools.ffprobe()).display().to_string(),
             version: tools.ffprobe_version().to_owned(),
         },
-        video_encoder: server.encoder.label().to_owned(),
+        video_encoder: state.transcoder.encoder().label().to_owned(),
         uptime_s: server.started.elapsed().as_secs(),
     })
 }
