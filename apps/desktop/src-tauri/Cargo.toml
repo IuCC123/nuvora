@@ -1,7 +1,7 @@
 [package]
 name = "nuvora-desktop"
 description = "Nuvora for Mac and Windows: the web app in the system's own web view."
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 license = "AGPL-3.0-only"
 

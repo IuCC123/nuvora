@@ -2,7 +2,7 @@ schema-version = 1
 
 [package]
 title = "Nuvora"
-version = "0.6.0"
+version = "0.7.0"
 id = "app.nuvora.vega"
 icon = "@image/icon.png"
 
