@@ -322,6 +322,57 @@ mod tests {
         assert!(starts.iter().all(|t| *t >= 0), "{starts:?}");
     }
 
+    /// XviD in AVI with B-frames, the way old DVD and BD rips come: its
+    /// packets carry a decode time but no presentation time, and seeking it
+    /// to 0 lands past the first keyframe. It converts, from the start and
+    /// from later on.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn xvid_in_avi_without_timestamps_converts() {
+        let app = TestApp::new().await;
+        let admin = app.setup_admin().await;
+        let dir = app.path("movies/Old Rip (1999)");
+        std::fs::create_dir_all(&dir).unwrap();
+        let status = Command::new("ffmpeg")
+            .args(["-y", "-nostdin", "-v", "error", "-f", "lavfi"])
+            .args(["-i", "testsrc2=size=320x180:rate=24:duration=14"])
+            .args(["-f", "lavfi", "-i", "sine=frequency=440:duration=14"])
+            .args(["-c:v", "mpeg4", "-vtag", "XVID", "-bf", "2", "-g", "48"])
+            .args(["-c:a", "libmp3lame", "-shortest"])
+            .arg(dir.join("Old Rip (1999).avi"))
+            .status()
+            .unwrap();
+        assert!(status.success());
+        app.scan().await;
+        let movies = app.get("/api/rows/all_movies", &admin).await.json();
+        let id = movies["items"][0]["id"].as_i64().unwrap();
+        let detail = app.get(&format!("/api/items/{id}"), &admin).await.json();
+        let playback = &detail["versions"][0]["playback"];
+        assert_eq!(playback["kind"], "hls", "{playback}");
+        assert_eq!(playback["converts_video"], true);
+        let url = playback["url"].as_str().unwrap();
+        let base = url.trim_end_matches("main.m3u8");
+
+        let playlist = app.get(&format!("{url}?session=t9"), &admin).await;
+        assert_eq!(playlist.status, StatusCode::OK);
+        let text = String::from_utf8(playlist.body).unwrap();
+        assert_eq!(text.matches("#EXTINF:").count(), 3, "{text}");
+        let init = app.get(&format!("{base}init.mp4?session=t9"), &admin).await;
+        assert_eq!(init.status, StatusCode::OK);
+        let zero = app.get(&format!("{base}0.m4s?session=t9"), &admin).await;
+        assert_eq!(
+            zero.status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(&zero.body)
+        );
+        let at = first_video_time(&app, &init.body, &zero.body);
+        assert!(at.abs() < 0.1, "segment 0 starts at {at}");
+        let two = app.get(&format!("{base}2.m4s?session=t9"), &admin).await;
+        assert_eq!(two.status, StatusCode::OK);
+        let at = first_video_time(&app, &init.body, &two.body);
+        assert!((at - 12.0).abs() < 0.1, "segment 2 starts at {at}");
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn copied_video_with_b_frames_never_starts_before_zero() {
         // B-frames decode before they show, so the first decode time of a

@@ -190,7 +190,9 @@ pub async fn keyframes(tools: &MediaTools, path: &Path, video: u32) -> Result<Ve
 
 /// The first video packet's time when ffmpeg seeks to `at` the way a run
 /// does: the keyframe a copying run will start on. `at` must be past the
-/// wanted keyframe by more than ffmpeg's 3/23 s seek backoff.
+/// wanted keyframe by more than ffmpeg's 3/23 s seek backoff. At 0 there is
+/// no seek, as a run from the start has none: seeking an AVI to 0 lands past
+/// its first keyframe.
 pub async fn landing(
     tools: &MediaTools,
     path: &Path,
@@ -200,8 +202,11 @@ pub async fn landing(
     let mut command = Command::new(&tools.ffmpeg);
     command
         .args(["-hide_banner", "-loglevel", "error", "-nostdin"])
-        .args(["-copyts", "-seek_timestamp", "1", "-noaccurate_seek", "-ss"])
-        .arg(format!("{at:.3}"))
+        .args(["-copyts", "-seek_timestamp", "1", "-noaccurate_seek"]);
+    if at > 0.0 {
+        command.arg("-ss").arg(format!("{at:.3}"));
+    }
+    command
         .arg("-i")
         .arg(path)
         .arg("-map")
@@ -211,7 +216,8 @@ pub async fn landing(
     Ok(parse_framecrc(&String::from_utf8_lossy(&output.stdout)))
 }
 
-/// `#tb 0: 1/1000` then `0, dts, pts, duration, size, crc`: the pts in seconds.
+/// `#tb 0: 1/1000` then `0, dts, pts, duration, size, crc`: the pts in
+/// seconds, or the dts for a packet without a pts (XviD in AVI has none).
 fn parse_framecrc(text: &str) -> Option<f64> {
     let (num, den) = text.lines().find_map(|l| {
         let (n, d) = l.strip_prefix("#tb 0:")?.trim().split_once('/')?;
@@ -220,8 +226,12 @@ fn parse_framecrc(text: &str) -> Option<f64> {
     let line = text
         .lines()
         .find(|l| !l.starts_with('#') && !l.trim().is_empty())?;
-    let pts: f64 = line.split(',').nth(2)?.trim().parse().ok()?;
-    Some(pts * num / den)
+    // FFmpeg's AV_NOPTS_VALUE: no time at all, not a time.
+    let time = |field: &str| field.trim().parse::<i64>().ok().filter(|&t| t != i64::MIN);
+    let mut fields = line.split(',').skip(1);
+    let dts = fields.next().and_then(time);
+    let pts = fields.next().and_then(time);
+    Some(pts.or(dts)? as f64 * num / den)
 }
 
 /// One ffmpeg run of a stream.
@@ -512,5 +522,19 @@ mod tests {
             Some(1.4)
         );
         assert_eq!(parse_framecrc(""), None);
+    }
+
+    #[test]
+    fn framecrc_without_a_pts_gives_the_dts() {
+        // Oppenheimer.2023.D.BDRip.avi (XviD), seeked to 600.2 s.
+        let text = "#tb 0: 104271/2500000\n#media_type 0: video\n0,      14373, -9223372036854775808,        1,    51247, 0x9ecdf930\n";
+        let at = parse_framecrc(text).unwrap();
+        assert!((at - 599.475).abs() < 0.001, "{at}");
+        assert_eq!(
+            parse_framecrc(
+                "#tb 0: 1/25\n0, -9223372036854775808, -9223372036854775808, 1, 5, 0x0\n"
+            ),
+            None
+        );
     }
 }
