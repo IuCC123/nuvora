@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nuvora-site",
+  "compatibility_date": "2026-10-01",
+  // Assets only, no Worker code: every request is a static asset, which Cloudflare serves free and unmetered.
+  "assets": {
+    "directory": "./out",
+    "not_found_handling": "404-page"
+  },
+  "workers_dev": false,
+  // Routes rather than custom domains: both hostnames already have proxied DNS records,
+  // so the Worker answers at Cloudflare's edge and the records' origin is never contacted.
+  "routes": [
+    { "pattern": "getnuvora.online/*", "zone_name": "getnuvora.online" },
+    { "pattern": "www.getnuvora.online/*", "zone_name": "getnuvora.online" }
+  ]
+}

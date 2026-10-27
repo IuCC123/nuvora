@@ -1,0 +1,7 @@
+.next/
+out/
+.wrangler/
+next-env.d.ts
+*.tsbuildinfo
+/public/install.sh
+/public/install.ps1
