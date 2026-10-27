@@ -472,9 +472,11 @@ mod tests {
             stream["audio_output"],
             serde_json::json!({"kind": "aac", "channels": 2, "kbps": 128})
         );
-        // Two of 2 s, and the few milliseconds of sound past the last
-        // frame, which has no picture to cut a segment at.
-        assert_eq!(stream["segments"], 3);
+        // Two of 2 s. Some FFmpeg builds also cut a sliver for the few
+        // milliseconds of sound past the last frame (Homebrew's does;
+        // Debian's, in the Docker image and CI, doesn't).
+        let segments = stream["segments"].as_u64().unwrap();
+        assert!((2..=3).contains(&segments), "{stream}");
         let span = serde_json::json!({"start": 0.0, "end": 4.0});
         assert_eq!(stream["made"], serde_json::json!([span]));
         assert_eq!(stream["run"], span);
