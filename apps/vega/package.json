@@ -14,8 +14,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@amazon-devices/keplerscript-netmgr-lib": "~2.0.20",
     "@amazon-devices/react-native-async-storage__async-storage": "~2.1.0",
     "@amazon-devices/react-native-kepler": "~4.0.0",
+    "@amazon-devices/react-native-svg": "~3.0.9000000001",
     "@amazon-devices/react-native-w3cmedia": "~2.3.2",
     "base-64": "^1.0.0",
     "fastestsmallesttextencoderdecoder": "~1.0.22",

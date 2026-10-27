@@ -68,7 +68,8 @@ export async function streamHls(video: VideoPlayer, url: string, token: string, 
     request.headers.Authorization = `Bearer ${token}`;
   });
   player.configure({
-    streaming: { bufferingGoal: 30, rebufferingGoal: 2, retryParameters: { maxAttempts: 3 } },
+    // A segment after a long seek can take a few seconds while the server restarts its conversion.
+    streaming: { bufferingGoal: 30, rebufferingGoal: 2, retryParameters: { maxAttempts: 4, baseDelay: 1000, timeout: 60_000 } },
     manifest: { hls: { sequenceMode: false } },
     // One rendition per playlist: the server already chose it for this TV.
     abr: { enabled: false },

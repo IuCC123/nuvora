@@ -21,9 +21,6 @@ categories = ["com.amazon.category.main"]
 [[needs.module]]
 id = "/com.amazon.vega.os@IVega_1_2"
 
-[[needs.privilege]]
-id = "com.amazon.network.privilege.net-info"
-
 [[needs.module]]
 id = "/com.amazon.kepler.kepler_media_controls_1@IKeplerMediaControls_0"
 
@@ -38,6 +35,12 @@ id = "/com.amazon.kepler.keplerscript_4@IKeplerScript_0"
 
 [[needs.module]]
 id = "/com.amazon.kepler.w3cmedia_2@IW3cmedia_3"
+
+[[needs.module]]
+id = "/com.amazon.kepler.keplerscript_netmgr_lib_2@INetmgrTurbomodule_0"
+
+[[needs.module]]
+id = "/com.amazon.kepler.svg_3@ISVG_0"
 
 # Playing video (W3C Media API), typing with the on-screen keyboard, the network.
 [wants]
@@ -61,3 +64,5 @@ id = "com.amazon.inputmethod.service"
 id = "com.amazon.network.service"
 [[wants.privilege]]
 id = "com.amazon.devconf.privilege.accessibility"
+[[wants.privilege]]
+id = "com.amazon.network.privilege.net-info"

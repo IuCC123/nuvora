@@ -114,3 +114,12 @@ export async function findServer(typed: string, device: DeviceProfile): Promise<
 export function imageSource(server: string, token: string, image: Image, size: 'small' | 'large' = 'small') {
   return { uri: `${server}/api/images/${image.id}/${size}`, headers: { Authorization: `Bearer ${token}` } };
 }
+
+/** The TV's language as a BCP 47 tag (`"en-US"`), or English when it won't say. */
+export function deviceLanguage(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().locale || 'en';
+  } catch {
+    return 'en';
+  }
+}
