@@ -57,6 +57,7 @@ export function WelcomeAccount() {
         >
           <TextField
             label="Your name"
+            floating
             autoComplete="name"
             autoFocus
             {...form.field("display_name")}
@@ -64,6 +65,7 @@ export function WelcomeAccount() {
           />
           <TextField
             label="Username"
+            floating
             autoComplete="username"
             autoCapitalize="none"
             spellCheck={false}
@@ -74,13 +76,14 @@ export function WelcomeAccount() {
           <div className="form-row">
             <TextField
               label="Password"
+              floating
               type="password"
               autoComplete="new-password"
               hint={`At least ${PASSWORD_MIN_LENGTH} characters.`}
               {...form.field("password")}
               error={form.error("password") ?? failed.field.password}
             />
-            <TextField label="Confirm password" type="password" autoComplete="new-password" {...form.field("confirm")} />
+            <TextField label="Confirm password" floating type="password" autoComplete="new-password" {...form.field("confirm")} />
           </div>
           <FormError message={failed.form} />
           <button type="submit" className="btn btn-primary btn-block" disabled={setup.isPending || setup.isSuccess} aria-busy={setup.isPending}>

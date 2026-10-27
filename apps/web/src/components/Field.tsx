@@ -9,13 +9,24 @@ interface Described {
   hint?: ReactNode;
 }
 
-/** A labelled `surface` input. The error and hint are wired to `aria-describedby`, so screen readers read them with the field. */
-export function TextField({ label, error, hint, id, ...input }: Described & InputHTMLAttributes<HTMLInputElement>) {
+/**
+ * A labelled `surface` input. The error and hint are wired to `aria-describedby`, so screen readers read them with the field.
+ * `floating` puts the label inside the input, where it rises once there is text; the label stands in for a placeholder.
+ */
+export function TextField({ label, error, hint, id, floating = false, ...input }: Described & { floating?: boolean } & InputHTMLAttributes<HTMLInputElement>) {
   const { fieldId, describedBy, messages } = useDescription(id, error, hint);
   return (
-    <div className="field">
+    <div className={floating ? "field field-floating" : "field"}>
       <label htmlFor={fieldId}>{label}</label>
-      <input id={fieldId} className="input" aria-invalid={error ? true : undefined} aria-describedby={describedBy} {...input} />
+      <input
+        id={fieldId}
+        className="input"
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy}
+        {...input}
+        // `:placeholder-shown` is how CSS knows the field is empty.
+        placeholder={floating ? " " : input.placeholder}
+      />
       {messages}
     </div>
   );

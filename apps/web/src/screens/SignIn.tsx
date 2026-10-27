@@ -36,15 +36,15 @@ export function SignIn() {
         <h1>Sign in</h1>
         <p className="auth-lede">{serverName && serverName !== "Nuvora" ? `to ${serverName}` : "to your Nuvora server"}</p>
         <form className="form" noValidate onSubmit={form.submit((v) => login.mutate({ username: v.username.trim(), password: v.password }))}>
-          <TextField label="Username" autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus {...form.field("username")} />
-          <TextField label="Password" type="password" autoComplete="current-password" {...form.field("password")} />
+          <TextField label="Username" floating autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus {...form.field("username")} />
+          <TextField label="Password" floating type="password" autoComplete="current-password" {...form.field("password")} />
           <FormError message={failed.form} />
           <button type="submit" className="btn btn-primary btn-block" disabled={login.isPending || login.isSuccess} aria-busy={login.isPending}>
             {login.isPending ? "Signing in…" : "Sign in"}
           </button>
         </form>
+        <p className="auth-foot">No account yet? Ask the person who runs this server to add you.</p>
       </div>
-      <p className="auth-foot">No account yet? Ask the person who runs this server to add you.</p>
     </AuthScreen>
   );
 }

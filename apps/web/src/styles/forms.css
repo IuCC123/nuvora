@@ -77,6 +77,49 @@
   background: var(--nv-color-canvas);
 }
 
+/* Floating label: sits in the input like a placeholder, then rises above the text on focus or once filled. */
+.field-floating {
+  position: relative;
+}
+
+.field-floating .input {
+  height: 56px;
+  padding: 22px 16px 6px;
+}
+
+.field-floating > label {
+  position: absolute;
+  top: 18px;
+  left: 17px;
+  right: 17px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  color: var(--nv-color-text-muted);
+  font-size: var(--nv-type-body-large-size);
+  line-height: 20px;
+  font-weight: var(--nv-font-weight-regular);
+  transform-origin: left top;
+  transition:
+    transform var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+/* Separate rules: a browser that doesn't know one of these selectors drops only that rule. */
+.field-floating:has(.input:focus, .input:not(:placeholder-shown)) > label {
+  transform: translateY(-10px) scale(0.75);
+  color: var(--nv-color-text-secondary);
+}
+
+.field-floating:has(.input:autofill) > label {
+  transform: translateY(-10px) scale(0.75);
+}
+
+.field-floating:has(.input:-webkit-autofill) > label {
+  transform: translateY(-10px) scale(0.75);
+}
+
 .select {
   appearance: none;
   padding-right: 40px;

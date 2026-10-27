@@ -4,27 +4,27 @@ import { MarkIcon } from "./Icon";
 import "../styles/auth.css";
 
 /**
- * Sign in and the welcome steps: a centered card on the canvas over a slow
- * drift of title cards. The cards carry no titles, because nothing of the
- * library may show before someone signs in.
+ * Sign in and the welcome steps: the wordmark in the corner and one frosted
+ * panel over a tilted wall of drifting title cards. The cards carry no
+ * titles, because nothing of the library may show before someone signs in.
  */
 export function AuthScreen({ children }: { children: ReactNode }) {
   return (
     <div className="auth">
       <PosterDrift />
-      <main className="auth-column">
+      <header className="auth-bar">
         <p className="auth-brand" aria-label="Nuvora">
           <MarkIcon />
           <span aria-hidden>nuvora</span>
         </p>
-        {children}
-      </main>
+      </header>
+      <main className="auth-column">{children}</main>
     </div>
   );
 }
 
-const COLUMNS = 10;
-const CARDS_PER_COLUMN = 6;
+const COLUMNS = 18;
+const CARDS_PER_COLUMN = 8;
 
 /** Each column holds its cards twice and moves by half its height, so the loop has no seam. */
 function PosterDrift() {

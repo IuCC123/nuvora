@@ -1,48 +1,61 @@
-/* Sign in and welcome: one card, centered, over a dim wall of drifting title cards. */
+/*
+ * Sign in and welcome: the wordmark in the corner, one frosted panel in the
+ * middle, and behind it a tilted wall of drifting title cards fading to black
+ * at the top and bottom, like a streaming service's front door.
+ */
 .auth {
   position: relative;
   min-height: 100dvh;
   display: grid;
+  grid-template-rows: auto 1fr;
   overflow: hidden;
   isolation: isolate;
 }
 
 .drift {
+  /* Sized to the window's height, so the wall covers a large screen as well as a laptop's. */
+  --drift-card: 14.5vh;
+  --drift-gap: 1.6vh;
   position: fixed;
   inset: 0;
   z-index: -1;
   overflow: hidden;
   pointer-events: none;
+  animation: auth-fade 1.2s var(--nv-motion-easing-standard) both;
 }
 
-/* The scrim keeps the card's surroundings quiet and lets the wall fade into the canvas at the edges. */
+/* Darker at the top for the wordmark and at the bottom for the edge, and the wall fades into the canvas at the sides. */
 .drift::after {
   content: "";
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(42% 60% at 50% 50%, color-mix(in srgb, var(--nv-color-canvas) 78%, transparent) 0%, transparent 100%),
-    radial-gradient(120% 90% at 50% 50%, transparent 40%, var(--nv-color-canvas) 100%);
+    linear-gradient(180deg, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.3) 28%, rgba(0, 0, 0, 0.35) 62%, rgba(0, 0, 0, 0.9) 100%),
+    radial-gradient(130% 100% at 50% 45%, transparent 35%, var(--nv-color-canvas) 100%);
 }
 
+/*
+ * A column moves through half its height, the length of one copy of its cards,
+ * so the window must sit inside the wall's top half to stay covered: the wall's
+ * point a quarter of the way down is pinned to the window's centre, and tilts there.
+ */
 .drift-wall {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 150vw;
   display: flex;
-  justify-content: center;
-  gap: 18px;
-  opacity: 0.3;
-  transform: translate(-50%, -50%) rotate(-8deg);
+  gap: var(--drift-gap);
+  opacity: 0.6;
+  transform-origin: 50% 25%;
+  transform: translate(-50%, -25%) perspective(170vh) rotateX(22deg) rotateZ(-10deg);
 }
 
 .drift-column {
   flex: none;
-  width: 168px;
+  width: var(--drift-card);
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--drift-gap);
   animation: drift-up var(--drift-duration) linear var(--drift-offset) infinite;
   will-change: transform;
 }
@@ -56,76 +69,148 @@
     transform: translateY(0);
   }
   to {
-    transform: translateY(calc(-50% - 9px));
+    transform: translateY(calc(-50% - var(--drift-gap) / 2));
   }
 }
 
 @keyframes drift-down {
   from {
-    transform: translateY(calc(-50% - 9px));
+    transform: translateY(calc(-50% - var(--drift-gap) / 2));
   }
   to {
     transform: translateY(0);
   }
 }
 
-.auth-column {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 24px;
-  padding: 32px 20px;
+@keyframes auth-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes auth-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+.auth-bar {
+  padding: 28px 48px;
 }
 
 .auth-brand {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 11px;
   font-family: var(--nv-font-family-display);
   font-stretch: 112%;
   font-weight: var(--nv-font-weight-bold);
-  font-size: var(--nv-type-wordmark-size);
-  line-height: var(--nv-type-wordmark-line);
+  font-size: 26px;
+  line-height: 32px;
   letter-spacing: 0.01em;
 }
 
 .auth-brand svg {
+  width: 21px;
+  height: 24px;
   color: var(--nv-color-accent);
+}
+
+/* The bottom padding matches the bar, so the panel sits in the middle of the window rather than of the space below the bar. */
+.auth-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 20px 112px;
 }
 
 .auth-card {
   box-sizing: border-box;
-  width: min(100%, 400px);
-  padding: 32px;
-  border-radius: var(--nv-radius-lg);
-  background: var(--nv-color-surface);
-  border: 1px solid var(--nv-color-hairline);
-  box-shadow: var(--nv-shadow-rest);
+  width: min(100%, 440px);
+  padding: 48px 44px 40px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--nv-color-canvas) 72%, transparent);
+  border: 1px solid var(--nv-color-overlay-hairline);
+  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(28px) saturate(150%);
+  -webkit-backdrop-filter: blur(28px) saturate(150%);
+  animation: auth-rise 560ms var(--nv-motion-easing-enter) both;
 }
 
 .auth-card-wide {
-  width: min(100%, 520px);
+  width: min(100%, 540px);
 }
 
 .auth-card h1 {
-  font-size: var(--nv-type-heading-size);
-  line-height: var(--nv-type-heading-line);
+  font-size: 32px;
+  line-height: 38px;
   font-weight: var(--nv-font-weight-bold);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   text-wrap: balance;
 }
 
 .auth-lede {
-  margin: 8px 0 26px;
+  margin: 8px 0 32px;
   color: var(--nv-color-text-secondary);
   font-size: var(--nv-type-body-large-size);
   line-height: var(--nv-type-body-large-line);
   text-wrap: pretty;
 }
 
+.auth .form {
+  gap: 14px;
+}
+
+/* Inputs are tinted glass, so the panel's colour comes through them. */
+.auth .input {
+  border-color: color-mix(in srgb, var(--nv-color-text-primary) 12%, transparent);
+  border-radius: var(--nv-radius-lg);
+  background: color-mix(in srgb, var(--nv-color-text-primary) 5%, transparent);
+  transition:
+    border-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.auth .input:hover:not([aria-invalid="true"]) {
+  border-color: color-mix(in srgb, var(--nv-color-text-primary) 24%, transparent);
+}
+
+.auth .input:focus-visible {
+  border-radius: var(--nv-radius-lg);
+  background: color-mix(in srgb, var(--nv-color-text-primary) 8%, transparent);
+}
+
+.auth .input[aria-invalid="true"] {
+  border-color: var(--nv-color-danger);
+}
+
+/* Keep the browser's autofill colour off the glass: the change waits days to start. */
+.auth .input:autofill {
+  -webkit-text-fill-color: var(--nv-color-text-primary);
+  transition: background-color 0s 600000s;
+}
+
+.auth .input:-webkit-autofill {
+  -webkit-text-fill-color: var(--nv-color-text-primary);
+  transition: background-color 0s 600000s;
+}
+
+.auth .form-error {
+  border-radius: var(--nv-radius-lg);
+  background: color-mix(in srgb, var(--nv-color-danger) 14%, transparent);
+}
+
+.auth .btn-block {
+  height: 52px;
+  margin-top: 10px;
+  border-radius: var(--nv-radius-lg);
+  font-size: var(--nv-type-body-large-size);
+}
+
 .auth-foot {
-  max-width: 400px;
+  margin-top: 28px;
   color: var(--nv-color-text-muted);
   font-size: var(--nv-type-small-size);
   line-height: var(--nv-type-small-line);
@@ -137,27 +222,57 @@
 .steps {
   display: flex;
   gap: 6px;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 
 .steps span {
   flex: 1;
   height: 3px;
   border-radius: var(--nv-radius-pill);
-  background: var(--nv-color-hairline);
+  background: color-mix(in srgb, var(--nv-color-text-primary) 12%, transparent);
 }
 
 .steps span[data-done="true"] {
   background: var(--nv-color-accent);
 }
 
-@media (max-width: 520px) {
-  .auth-card {
-    padding: 24px 20px;
-  }
-}
-
 .welcome-existing {
   margin: -10px 0 22px;
   color: var(--nv-color-text-secondary);
+}
+
+/* Phones: no panel, just the form on a darker wall, from the top. */
+@media (max-width: 520px) {
+  .auth-bar {
+    padding: 20px 24px;
+  }
+
+  .auth-brand {
+    font-size: 22px;
+    line-height: 28px;
+  }
+
+  .auth-brand svg {
+    width: 18px;
+    height: 20px;
+  }
+
+  .auth-column {
+    justify-content: flex-start;
+    padding: 40px 24px 48px;
+  }
+
+  .auth-card {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .drift-wall {
+    opacity: 0.28;
+  }
 }
