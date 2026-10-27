@@ -22,7 +22,9 @@ use std::path::PathBuf;
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use nuvora_library::{LibraryError, LibraryId, LibraryInfo, NewUser, UserChanges, UserId};
+use nuvora_library::{
+    DeleteError, ItemId, LibraryError, LibraryId, LibraryInfo, NewUser, UserChanges, UserId,
+};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -311,6 +313,33 @@ pub(super) async fn delete_library(
     // The scan's cleanup deletes the removed items' artwork files.
     state.library.request_scan();
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Deletes a movie from disk: its files and subtitles, and its folder when
+/// the rest of the folder is the movie's own. It leaves the library at once.
+#[utoipa::path(
+    delete,
+    path = "/api/admin/items/{id}",
+    params(("id" = i64, Path)),
+    responses(
+        (status = 204),
+        (status = 400, body = ErrorBody, description = "A file couldn't be deleted"),
+        (status = 404, body = ErrorBody),
+    ),
+)]
+pub(super) async fn delete_item(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, ApiError> {
+    match state.library.delete_movie(ItemId::from_raw(id)).await {
+        Ok(()) => Ok(StatusCode::NO_CONTENT),
+        Err(DeleteError::NotFound) => Err(ApiError::not_found()),
+        Err(DeleteError::Disk { path, error }) => Err(ApiError::refused(format!(
+            "Couldn't delete {}: {error}. Check that Nuvora may change files in your media folder.",
+            path.display()
+        ))),
+        Err(DeleteError::Query(e)) => Err(ApiError::internal(e)),
+    }
 }
 
 /// Scan now. Scans run over every library and coalesce, so this is the same
@@ -813,6 +842,85 @@ mod tests {
         reply.json()
     }
 
+    /// A movie in its own folder goes with the folder. A folder that also
+    /// holds another movie, or a file of someone's own, keeps everything
+    /// but the deleted movie's video.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_admin_deletes_a_movie_and_its_own_folder() {
+        let app = TestApp::new().await;
+        let admin = app.setup_admin().await;
+        app.clips(&[
+            "movies/Heat (1995)/Heat (1995).mp4",
+            "movies/Heat (1995)/Sample/heat-sample.mp4",
+            "movies/Loose/Ronin (1998).mp4",
+            "movies/Loose/Thief (1981).mp4",
+            "movies/Collateral (2004)/Collateral (2004).mp4",
+        ]);
+        let srt = "1\n00:00:00,000 --> 00:00:01,000\nHello\n";
+        std::fs::write(app.path("movies/Heat (1995)/Heat (1995).en.srt"), srt).unwrap();
+        std::fs::write(app.path("movies/Heat (1995)/poster.jpg"), b"jpg").unwrap();
+        std::fs::write(app.path("movies/Heat (1995)/Heat.nfo"), b"notes").unwrap();
+        std::fs::write(app.path("movies/Collateral (2004)/my notes.pdf"), b"mine").unwrap();
+        app.scan().await;
+        let id_of = async |title: &str| -> i64 {
+            let found = app
+                .get(&format!("/api/search?q={title}"), &admin)
+                .await
+                .json();
+            found["titles"][0]["id"]
+                .as_i64()
+                .unwrap_or_else(|| panic!("{title}: {found}"))
+        };
+        let (heat, ronin, collateral) = (
+            id_of("heat").await,
+            id_of("ronin").await,
+            id_of("collateral").await,
+        );
+
+        for id in [heat, ronin, collateral] {
+            let deleted = app
+                .call(
+                    "DELETE",
+                    &format!("/api/admin/items/{id}"),
+                    Some(&admin),
+                    None,
+                )
+                .await;
+            assert_eq!(deleted.status, StatusCode::NO_CONTENT);
+        }
+
+        assert!(!app.path("movies/Heat (1995)").exists());
+        assert!(!app.path("movies/Loose/Ronin (1998).mp4").exists());
+        assert!(app.path("movies/Loose/Thief (1981).mp4").exists());
+        assert!(
+            !app.path("movies/Collateral (2004)/Collateral (2004).mp4")
+                .exists()
+        );
+        assert!(app.path("movies/Collateral (2004)/my notes.pdf").exists());
+        let item = app.get(&format!("/api/items/{heat}"), &admin).await.json();
+        assert_eq!(item["versions"], json!([]), "{item}");
+        let again = app
+            .call(
+                "DELETE",
+                &format!("/api/admin/items/{heat}"),
+                Some(&admin),
+                None,
+            )
+            .await;
+        assert_eq!(again.status, StatusCode::NOT_FOUND);
+        for (title, listed) in [("heat", 0), ("ronin", 0), ("collateral", 0), ("thief", 1)] {
+            let found = app
+                .get(&format!("/api/search?q={title}"), &admin)
+                .await
+                .json();
+            assert_eq!(
+                found["titles"].as_array().unwrap().len(),
+                listed,
+                "{title}: {found}"
+            );
+        }
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn members_browse_but_get_403_on_admin_routes() {
         let app = TestApp::new().await;
@@ -831,6 +939,7 @@ mod tests {
             ("GET", "/api/admin/server"),
             ("POST", "/api/admin/libraries/1/scan"),
             ("DELETE", "/api/admin/users/1"),
+            ("DELETE", "/api/admin/items/1"),
         ] {
             let reply = app.call(method, uri, Some(&member), None).await;
             assert_eq!(reply.status, StatusCode::FORBIDDEN, "{method} {uri}");

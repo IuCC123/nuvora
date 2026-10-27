@@ -211,6 +211,8 @@ export interface AdminClient {
   updateLibrary(id: number, body: UpdateLibraryRequest): Promise<AdminLibrary>;
   /** Removes it and its items from the catalog; files on disk stay. */
   deleteLibrary(id: number): Promise<void>;
+  /** Deletes a movie's files from the server's disk, and its folder when the rest of it is the movie's own. 400 `validation` says which file couldn't go. */
+  deleteMovie(id: number): Promise<void>;
   scanLibrary(id: number): Promise<ScanStatus>;
   /** A folder's subfolders; `null` lists the filesystem roots. */
   fs(path: string | null, signal?: AbortSignalLike): Promise<FsListing>;
@@ -367,6 +369,7 @@ export function createClient(options: ClientOptions): NuvoraClient {
       createLibrary: (body) => post<AdminLibrary>("/api/admin/libraries", {}, body),
       updateLibrary: (id, body) => patch<AdminLibrary>("/api/admin/libraries/{id}", { id }, body),
       deleteLibrary: (id) => remove("/api/admin/libraries/{id}", { id }),
+      deleteMovie: (id) => remove("/api/admin/items/{id}", { id }),
       scanLibrary: (id) => post<ScanStatus>("/api/admin/libraries/{id}/scan", { id }),
       fs: (path, signal) => get<FsListing>("/api/admin/fs", {}, signal, path === null ? undefined : { path }),
       inspect: (path, signal) => get<FsInspect>("/api/admin/fs/inspect", {}, signal, { path }),

@@ -1,18 +1,21 @@
-import { useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useCanGoBack, useNavigate, useParams, useRouter } from "@tanstack/react-router";
 import {
   ApiError,
+  describeError,
   fileFacts,
   formatRuntime,
   versionChips,
   type Image,
   type MovieDetail,
   type Version,
+  queryKeys,
 } from "@nuvora/core";
-import { queries } from "../nuvora";
+import { client, queries } from "../nuvora";
 import { cachedCard } from "../lib/cachedCard";
-import { CheckIcon, PlayIcon, RestartIcon } from "../components/Icon";
+import { CheckIcon, PlayIcon, RestartIcon, TrashIcon } from "../components/Icon";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Notice } from "../components/Notice";
 import { CardArt } from "../components/CardArt";
 import { aboutRows, CastSection, DetailHero, HeroMeta, InfoSection, Overview, Starring, type InfoRow } from "../components/Details";
@@ -21,6 +24,7 @@ import { hasInteracted } from "../lib/interacted";
 import { languageName } from "../lib/languageName";
 import { playable, playState } from "../lib/playState";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { useUser } from "../lib/session";
 import { useWatchedToggle } from "../lib/useWatchedToggle";
 import { PosterMarks } from "../components/PosterCard";
 import { ErrorState, MissingMovie } from "./ErrorState";
@@ -135,6 +139,7 @@ function Actions({ movie }: { movie: MovieDetail }) {
           </Link>
         )}
         <WatchedToggle movie={movie} />
+        <DeleteMovie movie={movie} />
       </div>
     );
   }
@@ -146,6 +151,7 @@ function Actions({ movie }: { movie: MovieDetail }) {
           Play
         </button>
         <WatchedToggle movie={movie} />
+        <DeleteMovie movie={movie} />
       </div>
       <Notice id="play-notice" text={state.notice} />
     </>
@@ -166,6 +172,54 @@ function WatchedToggle({ movie }: { movie: MovieDetail }) {
     >
       <CheckIcon size={20} strokeWidth={2.4} />
     </button>
+  );
+}
+
+/** For admins: deletes the movie from the server's disk, once they confirm. */
+function DeleteMovie({ movie }: { movie: MovieDetail }) {
+  const admin = useUser()?.role === "admin";
+  const [confirming, setConfirming] = useState(false);
+  const qc = useQueryClient();
+  const router = useRouter();
+  const navigate = useNavigate();
+  const canGoBack = useCanGoBack();
+  const remove = useMutation({
+    mutationFn: () => client.admin.deleteMovie(movie.id),
+    onSuccess: () => {
+      for (const queryKey of [queryKeys.home, queryKeys.rows, queryKeys.library, queryKeys.libraries, ["search"]]) {
+        void qc.invalidateQueries({ queryKey });
+      }
+      qc.removeQueries({ queryKey: queryKeys.item(movie.id) });
+      if (canGoBack) router.history.back();
+      else void navigate({ to: "/", replace: true });
+    },
+  });
+  if (!admin) return null;
+  const files = movie.versions.length;
+  return (
+    <>
+      <button type="button" className="hero-round" aria-label="Delete movie" title="Delete movie" onClick={() => setConfirming(true)}>
+        <TrashIcon size={20} />
+      </button>
+      {confirming && (
+        <ConfirmDialog
+          title={`Delete ${movie.title}?`}
+          confirmLabel="Delete movie"
+          pending={remove.isPending}
+          error={remove.error ? describeError(remove.error) : null}
+          onConfirm={() => remove.mutate()}
+          onCancel={() => {
+            remove.reset();
+            setConfirming(false);
+          }}
+        >
+          <p>
+            {files > 1 ? `Its ${files} files are` : "Its file is"} deleted from your server, with its folder when nothing else of yours is in it. This
+            can't be undone.
+          </p>
+        </ConfirmDialog>
+      )}
+    </>
   );
 }
 

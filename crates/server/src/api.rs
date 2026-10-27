@@ -215,6 +215,7 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(admin::list_libraries, admin::create_library))
         .routes(routes!(admin::update_library, admin::delete_library))
         .routes(routes!(admin::scan_library))
+        .routes(routes!(admin::delete_item))
         .routes(routes!(post_scan))
         .routes(routes!(admin::list_dirs))
         .routes(routes!(admin::inspect_dir))
