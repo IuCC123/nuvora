@@ -2,10 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { queries } from "../nuvora";
 import { useUser } from "../lib/session";
-import { ActivityIcon, FolderIcon, HouseIcon, ServerIcon, SlidersIcon, UserIcon, UsersIcon } from "./Icon";
+import { ActivityIcon, DownloadIcon, FolderIcon, HouseIcon, ServerIcon, SlidersIcon, UserIcon, UsersIcon } from "./Icon";
 import { LibraryIcon } from "./LibraryIcon";
 
-/** Home, then one entry per library with its type's icon, each opening the library page. */
+/** Home, Downloads (admins), then one entry per library with its type's icon, each opening the library page. */
 export function NavRail() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   return pathname.startsWith("/settings") ? <SettingsRail pathname={pathname} /> : <LibraryRail pathname={pathname} />;
@@ -13,12 +13,19 @@ export function NavRail() {
 
 function LibraryRail({ pathname }: { pathname: string }) {
   const { data: libraries } = useQuery(queries.libraries());
+  const admin = useUser()?.role === "admin";
   return (
     <nav className="rail" aria-label="Main">
       <Link to="/" className="rail-item" aria-current={pathname === "/" ? "page" : undefined}>
         <HouseIcon />
         <span className="rail-label">Home</span>
       </Link>
+      {admin && (
+        <Link to="/downloads" className="rail-item" aria-current={pathname === "/downloads" ? "page" : undefined}>
+          <DownloadIcon />
+          <span className="rail-label">Downloads</span>
+        </Link>
+      )}
       <p className="rail-group" id="rail-libraries">
         Libraries
       </p>
@@ -48,6 +55,7 @@ const SECTIONS = [
   { to: "/settings/general", label: "General", icon: ServerIcon, admin: true },
   { to: "/settings/libraries", label: "Libraries", icon: FolderIcon, admin: true },
   { to: "/settings/transcoding", label: "Transcoding", icon: SlidersIcon, admin: true },
+  { to: "/settings/downloads", label: "Downloads", icon: DownloadIcon, admin: true },
   { to: "/settings/activity", label: "Activity", icon: ActivityIcon, admin: true },
   { to: "/settings/users", label: "Users", icon: UsersIcon, admin: true },
   { to: "/settings/account", label: "Account", icon: UserIcon, admin: false },

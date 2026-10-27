@@ -5,6 +5,7 @@ mod api;
 mod auth;
 mod config;
 mod discovery;
+mod downloads;
 mod net;
 mod party;
 mod transcode;
@@ -63,7 +64,9 @@ async fn main() -> Result<(), BoxError> {
 async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+            // The BitTorrent engine narrates every peer at info.
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("info,librqbit=warn")),
         )
         .init();
     let config = config::load(&args)?;
@@ -120,6 +123,12 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
         ))),
         transcoder: transcoder.clone(),
         parties: Arc::new(party::Parties::default()),
+        downloads: downloads::Downloads::start(
+            library.clone(),
+            &config.data_dir,
+            downloads::Engine::Internet,
+        )
+        .await,
         updater: updater.clone(),
         server: Arc::new(api::ServerSetup {
             id,

@@ -24,9 +24,9 @@
 //! | POST   | /api/admin/update           | Install the newest version ([`update`])  |
 //! | GET    | /api/openapi.json           | The spec                                 |
 //!
-//! Accounts, admin, watch, show and library page, subtitle, and transcoding
-//! settings and activity routes live in [`accounts`], [`admin`], [`watch`],
-//! [`browse`], [`subtitles`] and [`transcoding`]. Access is set
+//! Accounts, admin, watch, show and library page, subtitle, transcoding
+//! settings and activity, and download routes live in [`accounts`], [`admin`],
+//! [`watch`], [`browse`], [`subtitles`], [`transcoding`] and [`downloads`]. Access is set
 //! by the group a route is registered in ([`Access`]), which decides both the
 //! middleware and the spec's `security`, so the two cannot disagree.
 //!
@@ -38,6 +38,7 @@ mod accounts;
 pub use accounts::DEFAULT_SERVER_NAME;
 mod admin;
 mod browse;
+mod downloads;
 mod hls;
 mod home;
 mod metadata;
@@ -113,6 +114,7 @@ pub struct AppState {
     pub auth: Arc<crate::auth::Auth>,
     pub transcoder: Arc<crate::transcode::Transcoder>,
     pub parties: Arc<crate::party::Parties>,
+    pub downloads: Arc<crate::downloads::Downloads>,
     pub updater: Arc<crate::update::Updater>,
     pub server: Arc<ServerSetup>,
 }
@@ -220,7 +222,18 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(metadata::refresh_metadata))
         .routes(routes!(transcoding::get_tuning, transcoding::put_tuning))
         .routes(routes!(transcoding::get_activity))
-        .routes(routes!(update::get_update, update::install_update));
+        .routes(routes!(update::get_update, update::install_update))
+        .routes(routes!(downloads::list_downloads, downloads::add_download))
+        .routes(routes!(downloads::remove_download))
+        .routes(routes!(downloads::pause_download))
+        .routes(routes!(downloads::resume_download))
+        .routes(routes!(downloads::search_releases))
+        .routes(routes!(
+            downloads::get_download_settings,
+            downloads::put_download_settings
+        ))
+        .routes(routes!(downloads::add_indexer))
+        .routes(routes!(downloads::remove_indexer));
     document_access(member.get_openapi_mut(), Access::Member);
     document_access(admin.get_openapi_mut(), Access::Admin);
     if let Some(state) = state {
@@ -1416,6 +1429,12 @@ impl ApiError {
         let mut error = ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::Validation, message);
         error.body.field = Some(field.to_owned());
         error
+    }
+
+    /// A request the person can't make right now, for a reason in words for
+    /// them (clients show `validation` messages as they are).
+    fn refused(message: impl Into<String>) -> ApiError {
+        ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::Validation, message)
     }
 
     pub(crate) fn not_found() -> ApiError {

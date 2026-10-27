@@ -17,6 +17,7 @@ import { Home } from "./screens/Home";
 import { LibraryScreen } from "./screens/Library";
 import { MovieScreen } from "./screens/Movie";
 import { Search } from "./screens/Search";
+import { Downloads } from "./screens/Downloads";
 import { PartyLayer } from "./components/party/PartyLayer";
 import { EpisodePlayer, Player } from "./screens/Player";
 import { ShowScreen } from "./screens/Show";
@@ -25,6 +26,7 @@ import { playable, playState } from "./lib/playState";
 import { SignIn } from "./screens/SignIn";
 import { WelcomeAccount, WelcomeLibrary } from "./screens/Welcome";
 import { SettingsAccount } from "./screens/settings/Account";
+import { SettingsDownloads } from "./screens/settings/Downloads";
 import { SettingsActivity } from "./screens/settings/Activity";
 import { SettingsGeneral } from "./screens/settings/General";
 import { SettingsLibraries } from "./screens/settings/Libraries";
@@ -45,7 +47,8 @@ import { SettingsUsers } from "./screens/settings/Users";
  *   /show/$id?season=<n>        Show: seasons and episodes, season `n` open
  *   /library/$id?sort=&order=&filter=&res=&hdr=&group=  Library grid (view also kept per device)
  *   /episode/$id/play?file=&t=  Player for an episode; without `file` it resumes where the viewer stopped
- *   /settings/<section>         general, libraries, transcoding, activity, users (admins), account
+ *   /downloads?q=               Find a movie on the indexers and download it (admins)
+ *   /settings/<section>         general, libraries, transcoding, downloads, activity, users (admins), account
  */
 /** Every screen, with Watch Together's invitations and follow-along under them. */
 const root = createRootRoute({
@@ -188,6 +191,18 @@ const search = createRoute({
   component: Search,
 });
 
+const downloads = createRoute({
+  getParentRoute: () => shell,
+  path: "/downloads",
+  beforeLoad: requireAdmin,
+  validateSearch: (s: Record<string, unknown>): { q?: string } => (typeof s.q === "string" && s.q !== "" ? { q: s.q.slice(0, 200) } : {}),
+  loader: () => {
+    void queryClient.prefetchQuery(queries.downloadSettings());
+    void queryClient.prefetchQuery(queries.downloads());
+  },
+  component: Downloads,
+});
+
 const settings = createRoute({ getParentRoute: () => shell, path: "/settings", component: Outlet });
 
 const settingsIndex = createRoute({
@@ -220,6 +235,14 @@ const settingsTranscoding = createRoute({
   beforeLoad: requireAdmin,
   loader: () => void queryClient.prefetchQuery(queries.adminTuning()),
   component: SettingsTranscoding,
+});
+
+const settingsDownloads = createRoute({
+  getParentRoute: () => settings,
+  path: "/downloads",
+  beforeLoad: requireAdmin,
+  loader: () => void queryClient.prefetchQuery(queries.downloadSettings()),
+  component: SettingsDownloads,
 });
 
 const settingsActivity = createRoute({
@@ -295,11 +318,12 @@ export const router = createRouter({
     welcome,
     welcomeLibrary,
     signin,
-    shell.addChildren([home, movie, show, library, search, settings.addChildren([
+    shell.addChildren([home, movie, show, library, search, downloads, settings.addChildren([
       settingsIndex,
       settingsGeneral,
       settingsLibraries,
       settingsTranscoding,
+      settingsDownloads,
       settingsActivity,
       settingsUsers,
       settingsAccount,

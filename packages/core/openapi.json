@@ -55,6 +55,633 @@
         ]
       }
     },
+    "/api/admin/downloads": {
+      "get": {
+        "operationId": "list_downloads",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Download"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "add_download",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddDownloadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Download"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/downloads/indexers": {
+      "post": {
+        "operationId": "add_indexer",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddIndexerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/downloads/indexers/{id}": {
+      "delete": {
+        "operationId": "remove_indexer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/downloads/search": {
+      "get": {
+        "operationId": "search_releases",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "A movie's name, and its year if you know it. At most 200 characters.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseSearch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/downloads/settings": {
+      "get": {
+        "operationId": "get_download_settings",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "put_download_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDownloadSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/downloads/{id}": {
+      "delete": {
+        "operationId": "remove_download",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/downloads/{id}/pause": {
+      "post": {
+        "operationId": "pause_download",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/downloads/{id}/resume": {
+      "post": {
+        "operationId": "resume_download",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/admin/fs": {
       "get": {
         "operationId": "list_dirs",
@@ -3833,6 +4460,45 @@
           }
         }
       },
+      "AddDownloadRequest": {
+        "type": "object",
+        "required": [
+          "link"
+        ],
+        "properties": {
+          "link": {
+            "type": "string",
+            "description": "A `magnet:` link, or an `http(s)` link to a `.torrent` file (a\nsearch result's `link`)."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Shown until it lands; a magnet link's own name otherwise."
+          }
+        }
+      },
+      "AddIndexerRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "url",
+          "api_key"
+        ],
+        "properties": {
+          "api_key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "description": "The Torznab feed: Jackett's \"Copy Torznab Feed\", or a Prowlarr\nindexer's `http://<host>:9696/<id>/api`."
+          }
+        }
+      },
       "AdminLibrary": {
         "type": "object",
         "required": [
@@ -4282,6 +4948,162 @@
             }
           }
         }
+      },
+      "Download": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "movie",
+          "state",
+          "library_id",
+          "added_at",
+          "down_bps",
+          "up_bps",
+          "peers"
+        ],
+        "properties": {
+          "added_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix seconds."
+          },
+          "done_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Fetched (or, while `checking`, verified) so far. Absent before the\ntorrent's details arrive and after it is done.",
+            "minimum": 0
+          },
+          "down_bps": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bytes per second.",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it stopped, when `failed`."
+          },
+          "eta_s": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Seconds left at the current speed.",
+            "minimum": 0
+          },
+          "finished_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "library_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The library it goes into."
+          },
+          "movie": {
+            "type": "string",
+            "description": "The movie the name points at, and its year."
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The movie's folder, once `done`."
+          },
+          "peers": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Peers connected now.",
+            "minimum": 0
+          },
+          "state": {
+            "$ref": "#/components/schemas/DownloadState"
+          },
+          "title": {
+            "type": "string",
+            "description": "The release's name."
+          },
+          "total_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The size of the files being fetched (videos and subtitles only).",
+            "minimum": 0
+          },
+          "up_bps": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "DownloadSettings": {
+        "type": "object",
+        "required": [
+          "indexers"
+        ],
+        "properties": {
+          "indexers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IndexerInfo"
+            }
+          },
+          "library_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The library downloads go into. `null`: the first Movies library."
+          },
+          "unavailable": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why this server can't download, when it can't."
+          }
+        }
+      },
+      "DownloadState": {
+        "type": "string",
+        "enum": [
+          "starting",
+          "checking",
+          "downloading",
+          "paused",
+          "moving",
+          "done",
+          "failed"
+        ]
       },
       "EncoderStatus": {
         "type": "object",
@@ -5075,6 +5897,43 @@
           "label": {
             "type": "string",
             "description": "For the header: `\"A\"`, `\"1990s\"`, `\"October 2026\"`, `\"Unknown year\"`."
+          }
+        }
+      },
+      "IndexerFailure": {
+        "type": "object",
+        "required": [
+          "indexer",
+          "message"
+        ],
+        "properties": {
+          "indexer": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "IndexerInfo": {
+        "type": "object",
+        "description": "An indexer, without its API key: that never leaves the server.",
+        "required": [
+          "id",
+          "name",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
           }
         }
       },
@@ -6193,6 +7052,167 @@
         },
         "additionalProperties": false
       },
+      "ReleaseCodec": {
+        "type": "string",
+        "enum": [
+          "h264",
+          "hevc",
+          "av1"
+        ]
+      },
+      "ReleaseHdr": {
+        "type": "string",
+        "enum": [
+          "hdr",
+          "dolby_vision"
+        ]
+      },
+      "ReleaseResult": {
+        "type": "object",
+        "required": [
+          "title",
+          "movie",
+          "indexer",
+          "link"
+        ],
+        "properties": {
+          "codec": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReleaseCodec"
+              }
+            ]
+          },
+          "details_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The release's page on the tracker."
+          },
+          "hdr": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReleaseHdr"
+              }
+            ]
+          },
+          "indexer": {
+            "type": "string"
+          },
+          "leechers": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "link": {
+            "type": "string",
+            "description": "Pass to `POST /api/admin/downloads`."
+          },
+          "movie": {
+            "type": "string",
+            "description": "The movie the name points at, and its year."
+          },
+          "published": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Unix seconds."
+          },
+          "resolution": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "From the name: 2160, 1080, 720 or 480.",
+            "minimum": 0
+          },
+          "seeders": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "size_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReleaseSource"
+              }
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "The release's name, as the indexer has it."
+          },
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ReleaseSearch": {
+        "type": "object",
+        "required": [
+          "releases",
+          "failures"
+        ],
+        "properties": {
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IndexerFailure"
+            },
+            "description": "Indexers that didn't answer, and why."
+          },
+          "releases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReleaseResult"
+            },
+            "description": "Most seeders first."
+          }
+        }
+      },
+      "ReleaseSource": {
+        "type": "string",
+        "enum": [
+          "remux",
+          "bluray",
+          "web",
+          "hdtv",
+          "dvd",
+          "cam"
+        ]
+      },
       "Resolution": {
         "type": "string",
         "description": "A movie matches when any of its versions does. Ignored for TV libraries.",
@@ -7124,6 +8144,18 @@
           },
           "settings": {
             "$ref": "#/components/schemas/Tuning"
+          }
+        }
+      },
+      "UpdateDownloadSettings": {
+        "type": "object",
+        "properties": {
+          "library_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
           }
         }
       },

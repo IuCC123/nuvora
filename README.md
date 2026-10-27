@@ -50,6 +50,10 @@ Embedded tracks show up, and so do `.srt`, `.ass` and `.vtt` files sitting next 
 
 Invite someone and play the same thing on two screens at the same moment, in the same house or across town. Pause, skip ahead or move on to the next episode, and the other screen follows.
 
+### Downloads a movie without leaving the app
+
+Search for a movie on your indexers, pick a release, and Nuvora downloads it and files it into your Movies library on its own. See [Downloading movies](#downloading-movies).
+
 There are TV apps too: one for Fire TV, Android TV and Google TV, and one for Fire TVs with Vega OS.
 
 ## Set up your server
@@ -143,6 +147,16 @@ Media/
 ```
 
 Movies want a year in the name. Episodes want a number: `S02E01`, `2x01` and anime-style `Show - 01 [1080p].mkv` all work. Subtitle files next to a video are picked up along with their language (`.en.srt`, `.English.forced.srt`, or a `Subs/` folder).
+
+## Downloading movies
+
+Admins can find a movie and download it without leaving Nuvora. Open **Downloads** in the sidebar, search for the movie, and pick a release; it downloads inside the server and moves into your Movies library, in a `Title (Year)` folder, when it's done. You can also paste a magnet link into the search box.
+
+Nuvora searches [Torznab](https://torznab.github.io/spec-1.3-draft/) indexers, the feeds [Jackett](https://github.com/Jackett/Jackett) and [Prowlarr](https://prowlarr.com) provide. Run one of them, then add its feed and API key under **Settings › Downloads**. Download only what you have the right to.
+
+While a movie downloads, its files sit in a hidden `.nuvora-downloads` folder inside the library folder, so half-finished files never appear in the library. Only video and subtitle files are fetched. Nuvora stops sharing a torrent once it's finished. It accepts incoming peers on port 6881 (any free port when that's taken); in Docker, add `- "6881:6881"` under `ports` in `compose.yaml` to let them in.
+
+In Docker, downloads need a media folder Nuvora can write to: remove `:ro` from the media line in `compose.yaml`. Without that, Nuvora keeps your media read-only and says so when you start a download.
 
 ## Updating
 

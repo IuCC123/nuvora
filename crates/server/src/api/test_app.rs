@@ -16,6 +16,7 @@ use tower::ServiceExt;
 
 use super::{AppState, ServerSetup};
 use crate::config::HardwareEncoding;
+use crate::downloads::Engine;
 
 pub struct TestApp {
     dir: tempfile::TempDir,
@@ -56,17 +57,22 @@ impl TestApp {
 
     /// A server started with `--trusted-proxy` for each of `proxies`.
     pub async fn behind(proxies: &[&str]) -> TestApp {
-        TestApp::build(proxies, HardwareEncoding::Off).await
+        TestApp::build(proxies, HardwareEncoding::Off, Engine::Off).await
     }
 
     /// A server started with `--hardware-encoding <encoder>`. Only Macs have
     /// a graphics encoder to test.
     #[cfg(target_os = "macos")]
     pub async fn with_encoder(encoder: HardwareEncoding) -> TestApp {
-        TestApp::build(&[], encoder).await
+        TestApp::build(&[], encoder, Engine::Off).await
     }
 
-    async fn build(proxies: &[&str], encoder: HardwareEncoding) -> TestApp {
+    /// A server whose BitTorrent engine reaches only peers on this machine.
+    pub async fn with_downloads() -> TestApp {
+        TestApp::build(&[], HardwareEncoding::Off, Engine::Loopback).await
+    }
+
+    async fn build(proxies: &[&str], encoder: HardwareEncoding, engine: Engine) -> TestApp {
         let dir = tempfile::tempdir().unwrap();
         let movies = dir.path().join("movies");
         std::fs::create_dir_all(&movies).unwrap();
@@ -86,6 +92,9 @@ impl TestApp {
         })
         .await
         .unwrap();
+        let downloads =
+            crate::downloads::Downloads::start(library.clone(), &dir.path().join("data"), engine)
+                .await;
         let state = AppState {
             library,
             auth: Arc::new(crate::auth::Auth::new(crate::net::TrustedProxies::new(
@@ -99,6 +108,7 @@ impl TestApp {
             )
             .await,
             parties: Default::default(),
+            downloads,
             updater: crate::update::Updater::new(
                 None,
                 dir.path().join("nuvora"),

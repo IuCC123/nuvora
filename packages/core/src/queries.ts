@@ -24,6 +24,9 @@ import type {
   ServerInfo,
   TuningResponse,
   Activity,
+  Download,
+  DownloadSettings,
+  ReleaseSearch,
 } from "./client";
 import type { AbortSignalLike } from "./transport";
 
@@ -71,6 +74,9 @@ export const queryKeys = {
   adminMetadata: ["admin", "metadata"] as const,
   adminTuning: ["admin", "tuning"] as const,
   adminActivity: ["admin", "activity"] as const,
+  downloads: ["admin", "downloads"] as const,
+  downloadSettings: ["admin", "download-settings"] as const,
+  releases: (q: string) => ["admin", "releases", q] as const,
   adminUpdate: ["admin", "update"] as const,
   health: ["health"] as const,
   homeLayout: ["home-layout"] as const,
@@ -132,6 +138,10 @@ export interface Queries {
   adminTuning(): QueryDef<TuningResponse>;
   /** Live: poll it while the Activity page is open. */
   adminActivity(): QueryDef<Activity>;
+  downloads(): QueryDef<Download[]>;
+  downloadSettings(): QueryDef<DownloadSettings>;
+  /** Indexer results stay fresh for a few minutes: searching them again is slow. */
+  releases(q: string): QueryDef<ReleaseSearch>;
   homeLayout(): QueryDef<HomeLayout>;
   /** `q` as typed; callers skip blank queries. */
   search(q: string): QueryDef<SearchResponse>;
@@ -185,6 +195,9 @@ export function createQueries(client: NuvoraClient): Queries {
     adminMetadata: () => ({ queryKey: queryKeys.adminMetadata, queryFn: ({ signal }) => client.admin.metadata(signal), staleTime: ADMIN_FRESH }),
     adminTuning: () => ({ queryKey: queryKeys.adminTuning, queryFn: ({ signal }) => client.admin.tuning(signal), staleTime: ADMIN_FRESH }),
     adminActivity: () => ({ queryKey: queryKeys.adminActivity, queryFn: ({ signal }) => client.admin.activity(signal), staleTime: 0 }),
+    downloads: () => ({ queryKey: queryKeys.downloads, queryFn: ({ signal }) => client.admin.downloads(signal), staleTime: 0 }),
+    downloadSettings: () => ({ queryKey: queryKeys.downloadSettings, queryFn: ({ signal }) => client.admin.downloadSettings(signal), staleTime: ADMIN_FRESH }),
+    releases: (q) => ({ queryKey: queryKeys.releases(q), queryFn: ({ signal }) => client.admin.searchReleases(q, signal), staleTime: 5 * 60_000 }),
   };
 }
 

@@ -20,6 +20,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_downloads"];
+        put?: never;
+        post: operations["add_download"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/downloads/indexers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["add_indexer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/downloads/indexers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["remove_indexer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/downloads/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["search_releases"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/downloads/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_download_settings"];
+        put: operations["put_download_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/downloads/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["remove_download"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/downloads/{id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["pause_download"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/downloads/{id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["resume_download"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/fs": {
         parameters: {
             query?: never;
@@ -995,6 +1123,24 @@ export interface components {
             /** @description Oldest first. */
             streams: components["schemas"]["ActiveStream"][];
         };
+        AddDownloadRequest: {
+            /**
+             * @description A `magnet:` link, or an `http(s)` link to a `.torrent` file (a
+             *     search result's `link`).
+             */
+            link: string;
+            /** @description Shown until it lands; a magnet link's own name otherwise. */
+            title?: string | null;
+        };
+        AddIndexerRequest: {
+            api_key: string;
+            name: string;
+            /**
+             * @description The Torznab feed: Jackett's "Copy Torznab Feed", or a Prowlarr
+             *     indexer's `http://<host>:9696/<id>/api`.
+             */
+            url: string;
+        };
         AdminLibrary: {
             /** @description A preset icon name; `None` means the default for its kind. */
             icon?: string | null;
@@ -1145,6 +1291,73 @@ export interface components {
             containers: string[];
             video: components["schemas"]["VideoSupport"][];
         };
+        Download: {
+            /**
+             * Format: int64
+             * @description Unix seconds.
+             */
+            added_at: number;
+            /**
+             * Format: int64
+             * @description Fetched (or, while `checking`, verified) so far. Absent before the
+             *     torrent's details arrive and after it is done.
+             */
+            done_bytes?: number | null;
+            /**
+             * Format: int64
+             * @description Bytes per second.
+             */
+            down_bps: number;
+            /** @description Why it stopped, when `failed`. */
+            error?: string | null;
+            /**
+             * Format: int64
+             * @description Seconds left at the current speed.
+             */
+            eta_s?: number | null;
+            /** Format: int64 */
+            finished_at?: number | null;
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description The library it goes into.
+             */
+            library_id: number;
+            /** @description The movie the name points at, and its year. */
+            movie: string;
+            /** @description The movie's folder, once `done`. */
+            path?: string | null;
+            /**
+             * Format: int32
+             * @description Peers connected now.
+             */
+            peers: number;
+            state: components["schemas"]["DownloadState"];
+            /** @description The release's name. */
+            title: string;
+            /**
+             * Format: int64
+             * @description The size of the files being fetched (videos and subtitles only).
+             */
+            total_bytes?: number | null;
+            /** Format: int64 */
+            up_bps: number;
+            /** Format: int32 */
+            year?: number | null;
+        };
+        DownloadSettings: {
+            indexers: components["schemas"]["IndexerInfo"][];
+            /**
+             * Format: int64
+             * @description The library downloads go into. `null`: the first Movies library.
+             */
+            library_id?: number | null;
+            /** @description Why this server can't download, when it can't. */
+            unavailable?: string | null;
+        };
+        /** @enum {string} */
+        DownloadState: "starting" | "checking" | "downloading" | "paused" | "moving" | "done" | "failed";
         EncoderStatus: {
             /**
              * @description What converts video for streams that start now: `"x264 (processor)"`,
@@ -1407,6 +1620,17 @@ export interface components {
             key: string;
             /** @description For the header: `"A"`, `"1990s"`, `"October 2026"`, `"Unknown year"`. */
             label: string;
+        };
+        IndexerFailure: {
+            indexer: string;
+            message: string;
+        };
+        /** @description An indexer, without its API key: that never leaves the server. */
+        IndexerInfo: {
+            /** Format: int32 */
+            id: number;
+            name: string;
+            url: string;
         };
         InviteRequest: {
             /** Format: int64 */
@@ -1763,6 +1987,50 @@ export interface components {
             /** Format: int64 */
             position_ms: number;
         };
+        /** @enum {string} */
+        ReleaseCodec: "h264" | "hevc" | "av1";
+        /** @enum {string} */
+        ReleaseHdr: "hdr" | "dolby_vision";
+        ReleaseResult: {
+            codec?: null | components["schemas"]["ReleaseCodec"];
+            /** @description The release's page on the tracker. */
+            details_url?: string | null;
+            hdr?: null | components["schemas"]["ReleaseHdr"];
+            indexer: string;
+            /** Format: int32 */
+            leechers?: number | null;
+            /** @description Pass to `POST /api/admin/downloads`. */
+            link: string;
+            /** @description The movie the name points at, and its year. */
+            movie: string;
+            /**
+             * Format: int64
+             * @description Unix seconds.
+             */
+            published?: number | null;
+            /**
+             * Format: int32
+             * @description From the name: 2160, 1080, 720 or 480.
+             */
+            resolution?: number | null;
+            /** Format: int32 */
+            seeders?: number | null;
+            /** Format: int64 */
+            size_bytes?: number | null;
+            source?: null | components["schemas"]["ReleaseSource"];
+            /** @description The release's name, as the indexer has it. */
+            title: string;
+            /** Format: int32 */
+            year?: number | null;
+        };
+        ReleaseSearch: {
+            /** @description Indexers that didn't answer, and why. */
+            failures: components["schemas"]["IndexerFailure"][];
+            /** @description Most seeders first. */
+            releases: components["schemas"]["ReleaseResult"][];
+        };
+        /** @enum {string} */
+        ReleaseSource: "remux" | "bluray" | "web" | "hdtv" | "dvd" | "cam";
         /**
          * @description A movie matches when any of its versions does. Ignored for TV libraries.
          * @enum {string}
@@ -2160,6 +2428,10 @@ export interface components {
             encoder: components["schemas"]["EncoderStatus"];
             settings: components["schemas"]["Tuning"];
         };
+        UpdateDownloadSettings: {
+            /** Format: int64 */
+            library_id?: number | null;
+        };
         /**
          * @description Every field is optional. `paths` replaces the whole list; removing a folder
          *     removes its items from the catalog (never from disk). A different `kind`
@@ -2364,6 +2636,481 @@ export interface operations {
             };
             /** @description Not an admin */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_downloads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Download"][];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_download: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddDownloadRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Download"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_indexer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddIndexerRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadSettings"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_indexer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadSettings"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    search_releases: {
+        parameters: {
+            query: {
+                /** @description A movie's name, and its year if you know it. At most 200 characters. */
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseSearch"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_download_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadSettings"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_download_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDownloadSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadSettings"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_download: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pause_download: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    resume_download: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -88,6 +88,14 @@ export type SubtitleFormat = Schemas["SubtitleFormat"];
 export type SubtitleMode = Schemas["SubtitleMode"];
 export type FontAttachment = Schemas["FontAttachment"];
 export type PreviewInfo = Schemas["PreviewInfo"];
+export type Download = Schemas["Download"];
+export type DownloadState = Schemas["DownloadState"];
+export type AddDownloadRequest = Schemas["AddDownloadRequest"];
+export type ReleaseSearch = Schemas["ReleaseSearch"];
+export type ReleaseResult = Schemas["ReleaseResult"];
+export type ReleaseSource = Schemas["ReleaseSource"];
+export type DownloadSettings = Schemas["DownloadSettings"];
+export type AddIndexerRequest = Schemas["AddIndexerRequest"];
 
 export interface ClientOptions {
   /** Origin of the Nuvora server, e.g. `""` (same origin, web) or `"http://192.168.1.10:8640"` (TV). */
@@ -221,6 +229,23 @@ export interface AdminClient {
   update(refresh?: boolean, signal?: AbortSignalLike): Promise<UpdateStatus>;
   /** Downloads and installs the newest version; the server then restarts. */
   installUpdate(): Promise<UpdateStatus>;
+  /** Every download, newest first. Poll it while the page is open. */
+  downloads(signal?: AbortSignalLike): Promise<Download[]>;
+  /** 400 when the link isn't a magnet or `.torrent` link, there is no Movies library, or the server can't download. */
+  addDownload(body: AddDownloadRequest): Promise<Download>;
+  pauseDownload(id: number): Promise<void>;
+  /** Also starts a failed download again. */
+  resumeDownload(id: number): Promise<void>;
+  /** Cancels and deletes what was fetched; a finished one only leaves the list. */
+  removeDownload(id: number): Promise<void>;
+  /** Movie releases from every indexer, most seeders first. */
+  searchReleases(q: string, signal?: AbortSignalLike): Promise<ReleaseSearch>;
+  downloadSettings(signal?: AbortSignalLike): Promise<DownloadSettings>;
+  /** `null` goes back to the first Movies library. */
+  setDownloadLibrary(libraryId: number | null): Promise<DownloadSettings>;
+  /** The server asks the indexer first; 400 `validation` names `url` or `api_key` when it doesn't answer. */
+  addIndexer(body: AddIndexerRequest): Promise<DownloadSettings>;
+  removeIndexer(id: number): Promise<DownloadSettings>;
 }
 
 type Params = Record<string, string | number>;
@@ -343,6 +368,17 @@ export function createClient(options: ClientOptions): NuvoraClient {
       activity: (signal) => get<Activity>("/api/admin/activity", {}, signal),
       update: (refresh, signal) => get<UpdateStatus>("/api/admin/update", {}, signal, refresh ? { refresh: "true" } : undefined),
       installUpdate: () => post<UpdateStatus>("/api/admin/update"),
+      downloads: (signal) => get<Download[]>("/api/admin/downloads", {}, signal),
+      addDownload: (body) => post<Download>("/api/admin/downloads", {}, body),
+      pauseDownload: (id) => post<void>("/api/admin/downloads/{id}/pause", { id }),
+      resumeDownload: (id) => post<void>("/api/admin/downloads/{id}/resume", { id }),
+      removeDownload: (id) => remove("/api/admin/downloads/{id}", { id }),
+      searchReleases: (q, signal) => get<ReleaseSearch>("/api/admin/downloads/search", {}, signal, { q }),
+      downloadSettings: (signal) => get<DownloadSettings>("/api/admin/downloads/settings", {}, signal),
+      setDownloadLibrary: (libraryId) =>
+        call<DownloadSettings>("PUT", "/api/admin/downloads/settings", {}, undefined, undefined, { library_id: libraryId }),
+      addIndexer: (body) => post<DownloadSettings>("/api/admin/downloads/indexers", {}, body),
+      removeIndexer: (id) => call<DownloadSettings>("DELETE", "/api/admin/downloads/indexers/{id}", { id }),
     },
     imageUrl: (image, size) => options.baseUrl + fill("/api/images/{id}/{size}", { id: image.id, size }),
     subtitleUrl: (fileId, streamIndex, format) =>
