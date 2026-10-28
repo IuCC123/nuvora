@@ -160,10 +160,29 @@ impl Segments {
     }
 }
 
-/// Source times of every keyframe of stream `video`, ascending. Reads the
-/// whole file's packet headers (no decoding): a fraction of a second for an
-/// episode on a local disk.
+/// Source times of every keyframe of stream `video`, the file's first
+/// video stream, ascending. From the file's own index when it has one that
+/// lists them all (Matroska, see [`crate::matroska`]), else
+/// [`scan_keyframes`].
 pub async fn keyframes(tools: &MediaTools, path: &Path, video: u32) -> Result<Vec<f64>, HlsError> {
+    let file = path.to_owned();
+    // A file that can't be read fails the scan too, with ffprobe's reason.
+    if let Ok(Ok(Some(times))) =
+        tokio::task::spawn_blocking(move || crate::matroska::video_keyframes(&file)).await
+    {
+        return Ok(times);
+    }
+    scan_keyframes(tools, path, video).await
+}
+
+/// Source times of every keyframe of stream `video`, ascending, from every
+/// packet header in the file (no decoding): a fraction of a second for an
+/// episode on a local disk, minutes for a remux on a network share.
+pub(crate) async fn scan_keyframes(
+    tools: &MediaTools,
+    path: &Path,
+    video: u32,
+) -> Result<Vec<f64>, HlsError> {
     let mut command = Command::new(&tools.ffprobe);
     command
         .args(["-v", "error", "-select_streams"])
@@ -346,6 +365,12 @@ impl Run<'_> {
                     "-af",
                     &filters,
                 ]);
+                // From 64 kbit/s a channel the fast coder sounds as good and
+                // runs 2.5 to 5 times faster: segments of copied video wait
+                // on their sound, so seeks and starts come sooner.
+                if bitrate >= 64 * u32::from(channels) {
+                    push(&["-aac_coder", "fast"]);
+                }
             }
         }
         push(&[

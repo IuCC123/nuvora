@@ -530,7 +530,7 @@ impl Session {
             if Instant::now() >= deadline {
                 return Err(TranscodeError::Timeout);
             }
-            tokio::time::sleep(Duration::from_millis(80)).await;
+            tokio::time::sleep(Duration::from_millis(20)).await;
         }
     }
 

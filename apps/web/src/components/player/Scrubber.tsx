@@ -13,6 +13,8 @@ interface ScrubberProps {
 }
 
 const PAGE_SECONDS = 60;
+/** How long the video plays before preview sheets download. */
+const SHEETS_AFTER_MS = 5_000;
 /** CSS px; previews are made 320 px wide, sharp enough at this size. */
 const PREVIEW_WIDTH = 224;
 
@@ -43,10 +45,32 @@ export function Scrubber({ video, duration, buffered, previews, onSeek, onDragCh
     return () => cancelAnimationFrame(frame);
   }, [video, duration, known, drag]);
 
-  // Fetch every sheet up front, so the first hover over any part of the video is instant.
+  // Every sheet, so the first hover over any part of the video is instant; but only once the video has played a
+  // few seconds, one sheet at a time, so they never hold up its start.
   useEffect(() => {
-    for (const sheet of previews?.sheets ?? []) new Image().src = sheet;
-  }, [previews]);
+    if (!video || !previews) return;
+    let next = 0;
+    let timer = 0;
+    let stopped = false;
+    const fetchNext = () => {
+      const sheet = previews.sheets[next++];
+      if (stopped || !sheet) return;
+      const image = new Image();
+      image.fetchPriority = "low";
+      image.onload = image.onerror = fetchNext;
+      image.src = sheet;
+    };
+    const start = () => {
+      timer = window.setTimeout(fetchNext, SHEETS_AFTER_MS);
+    };
+    if (!video.paused && video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) start();
+    else video.addEventListener("playing", start, { once: true });
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+      video.removeEventListener("playing", start);
+    };
+  }, [video, previews]);
 
   const fractionAt = (clientX: number) => {
     const rect = root.current!.getBoundingClientRect();
