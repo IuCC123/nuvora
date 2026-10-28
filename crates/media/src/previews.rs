@@ -5,6 +5,11 @@
 //! decoding every frame; a preview shows the keyframe at or before its time,
 //! which is close enough to aim a jump. HDR frames are not tone-mapped (this
 //! FFmpeg has no `zscale`), so their previews look washed out.
+//!
+//! A video is read through once, except a very big one: each of its previews
+//! is a jump to its keyframe instead. A 4K remux is 80 GB, too much to read
+//! in the half hour a render is allowed over a network share, while the jumps
+//! read a few GB.
 
 use std::path::Path;
 use std::process::Stdio;
@@ -24,6 +29,10 @@ const COLUMNS: u32 = 10;
 const ROWS: u32 = 10;
 /// A two-hour film takes a minute or two; this only catches a stuck decoder.
 const TIMEOUT: Duration = Duration::from_secs(30 * 60);
+/// Past this size a video's previews are taken one jump at a time.
+const SEEK_ABOVE_BYTES: u64 = 10 << 30;
+/// Previews taken at once when jumping.
+const JUMPS_AT_ONCE: u64 = 2;
 
 /// Where the previews of one video are: sheet `n` holds previews
 /// `n * columns * rows ..`, left to right, then top to bottom. Preview `i`
@@ -84,7 +93,53 @@ impl MediaTools {
         duration_ms: u64,
         out_dir: &Path,
     ) -> Result<PreviewSheets, PreviewError> {
+        let size = tokio::fs::metadata(input).await?.len();
+        self.render_previews_by(size > SEEK_ABOVE_BYTES, input, duration_ms, out_dir)
+            .await
+    }
+
+    async fn render_previews_by(
+        &self,
+        jumping: bool,
+        input: &Path,
+        duration_ms: u64,
+        out_dir: &Path,
+    ) -> Result<PreviewSheets, PreviewError> {
         let interval_ms = preview_interval_ms(duration_ms);
+        if jumping {
+            self.jump_through(input, duration_ms, interval_ms, out_dir)
+                .await?;
+        } else {
+            self.read_through(input, interval_ms, out_dir).await?;
+        }
+        let sheets = (0..)
+            .take_while(|n| out_dir.join(format!("{n}.jpg")).is_file())
+            .count() as u32;
+        if sheets == 0 {
+            return Err(PreviewError::Empty);
+        }
+        let (sheet_width, sheet_height) = image::image_dimensions(out_dir.join("0.jpg"))
+            .map_err(|e| PreviewError::Ffmpeg(format!("unreadable sheet: {e}")))?;
+        let count = (duration_ms / u64::from(interval_ms) + 1)
+            .min(u64::from(sheets * COLUMNS * ROWS)) as u32;
+        Ok(PreviewSheets {
+            interval_ms,
+            width: sheet_width / COLUMNS,
+            height: sheet_height / ROWS,
+            columns: COLUMNS,
+            rows: ROWS,
+            count,
+            sheets,
+        })
+    }
+
+    /// One pass over the whole video, tiled by FFmpeg.
+    async fn read_through(
+        &self,
+        input: &Path,
+        interval_ms: u32,
+        out_dir: &Path,
+    ) -> Result<(), PreviewError> {
         // `eof_action=pass` keeps the last frame, or a clip shorter than one
         // interval has none. Square pixels before scaling, so anamorphic video
         // keeps its shape.
@@ -129,26 +184,117 @@ impl MediaTools {
                 String::from_utf8_lossy(&output.stderr).trim().to_owned(),
             ));
         }
-        let sheets = (0..)
-            .take_while(|n| out_dir.join(format!("{n}.jpg")).is_file())
-            .count() as u32;
-        if sheets == 0 {
-            return Err(PreviewError::Empty);
-        }
-        let (sheet_width, sheet_height) = image::image_dimensions(out_dir.join("0.jpg"))
-            .map_err(|e| PreviewError::Ffmpeg(format!("unreadable sheet: {e}")))?;
-        let count = (duration_ms / u64::from(interval_ms) + 1)
-            .min(u64::from(sheets * COLUMNS * ROWS)) as u32;
-        Ok(PreviewSheets {
-            interval_ms,
-            width: sheet_width / COLUMNS,
-            height: sheet_height / ROWS,
-            columns: COLUMNS,
-            rows: ROWS,
-            count,
-            sheets,
-        })
+        Ok(())
     }
+
+    /// A jump to each preview's keyframe, tiled here. A preview with no
+    /// frame (past the video's last keyframe) stays black.
+    async fn jump_through(
+        &self,
+        input: &Path,
+        duration_ms: u64,
+        interval_ms: u32,
+        out_dir: &Path,
+    ) -> Result<(), PreviewError> {
+        let count = duration_ms / u64::from(interval_ms) + 1;
+        let per_sheet = u64::from(COLUMNS * ROWS);
+        let deadline = tokio::time::Instant::now() + TIMEOUT;
+        let mut sheet: Option<image::RgbImage> = None;
+        let mut first = 0;
+        while first < count {
+            let batch = first..(first + JUMPS_AT_ONCE).min(count);
+            // Started together, so they run side by side.
+            let children = batch
+                .clone()
+                .map(|i| self.spawn_keyframe(input, i * u64::from(interval_ms)))
+                .collect::<Result<Vec<_>, _>>()?;
+            let frames = tokio::time::timeout_at(deadline, async {
+                let mut frames = Vec::with_capacity(children.len());
+                for child in children {
+                    frames.push(keyframe(child).await);
+                }
+                frames
+            })
+            .await
+            .map_err(|_| PreviewError::TimedOut(TIMEOUT))?;
+            for (i, frame) in batch.zip(frames) {
+                let cell = (i % per_sheet) as u32;
+                if let Some(frame) = frame? {
+                    let canvas = sheet.get_or_insert_with(|| {
+                        image::RgbImage::new(WIDTH * COLUMNS, frame.height() * ROWS)
+                    });
+                    let height = canvas.height() / ROWS;
+                    image::imageops::replace(
+                        canvas,
+                        &frame,
+                        i64::from(cell % COLUMNS * WIDTH),
+                        i64::from(cell / COLUMNS * height),
+                    );
+                }
+                if (u64::from(cell) + 1 == per_sheet || i + 1 == count)
+                    && let Some(full) = sheet.take()
+                {
+                    let path = out_dir.join(format!("{}.jpg", i / per_sheet));
+                    tokio::task::spawn_blocking(move || save_jpeg(&full, &path))
+                        .await
+                        .map_err(|e| PreviewError::Ffmpeg(e.to_string()))??;
+                }
+            }
+            first += JUMPS_AT_ONCE;
+        }
+        Ok(())
+    }
+
+    /// FFmpeg writing the keyframe at or before `at_ms`, scaled to a
+    /// preview, as PNG on stdout.
+    fn spawn_keyframe(&self, input: &Path, at_ms: u64) -> std::io::Result<tokio::process::Child> {
+        Command::new(&self.ffmpeg)
+            .args(["-v", "error", "-nostdin", "-threads", "1"])
+            .args(["-skip_frame", "nokey", "-noaccurate_seek", "-ss"])
+            .arg(format!("{:.3}", at_ms as f64 / 1000.0))
+            .arg("-i")
+            .arg(input)
+            .args([
+                "-map",
+                "0:V:0",
+                "-an",
+                "-sn",
+                "-dn",
+                "-frames:v",
+                "1",
+                "-vf",
+            ])
+            .arg(format!("scale=iw*sar:ih,scale={WIDTH}:-2,setsar=1"))
+            .args(["-f", "image2pipe", "-c:v", "png", "-"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+    }
+}
+
+/// The frame a [`MediaTools::spawn_keyframe`] run writes; `None` when it found none.
+async fn keyframe(child: tokio::process::Child) -> Result<Option<image::RgbImage>, PreviewError> {
+    let output = child.wait_with_output().await?;
+    if !output.status.success() {
+        return Err(PreviewError::Ffmpeg(
+            String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+        ));
+    }
+    if output.stdout.is_empty() {
+        return Ok(None);
+    }
+    image::load_from_memory_with_format(&output.stdout, image::ImageFormat::Png)
+        .map(|frame| Some(frame.to_rgb8()))
+        .map_err(|e| PreviewError::Ffmpeg(format!("unreadable frame: {e}")))
+}
+
+fn save_jpeg(sheet: &image::RgbImage, path: &Path) -> Result<(), PreviewError> {
+    let file = std::io::BufWriter::new(std::fs::File::create(path)?);
+    image::codecs::jpeg::JpegEncoder::new_with_quality(file, 80)
+        .encode_image(sheet)
+        .map_err(|e| PreviewError::Ffmpeg(format!("can't write a sheet: {e}")))
 }
 
 #[cfg(test)]
@@ -259,5 +405,39 @@ mod tests {
             "the last sheet is padded to full size"
         );
         assert!(!out.join("2.jpg").exists());
+    }
+
+    #[tokio::test]
+    async fn jumping_to_each_preview_gives_the_same_sheets_as_reading_through() {
+        let dir = tempfile::tempdir().unwrap();
+        let video = video(dir.path(), "640x360", 250, 24);
+        let tools = MediaTools::locate(None, None).await.unwrap();
+        let mut made = Vec::new();
+        for jumping in [false, true] {
+            let out = dir.path().join(format!("jumping-{jumping}"));
+            std::fs::create_dir(&out).unwrap();
+            let sheets = tools
+                .render_previews_by(jumping, &video, 250_000, &out)
+                .await
+                .unwrap();
+            made.push((sheets, image::open(out.join("0.jpg")).unwrap().to_rgb8()));
+        }
+        let [(read, read_sheet), (jumped, jumped_sheet)] = <[_; 2]>::try_from(made).ok().unwrap();
+        assert_eq!(read, jumped);
+        // JPEG from two encoders differs a little everywhere; another frame
+        // would differ a lot in its cell.
+        let cell_difference = |cell: u32| {
+            let (x0, y0) = (cell % COLUMNS * read.width, cell / COLUMNS * read.height);
+            let mut sum = 0u64;
+            for y in y0..y0 + read.height {
+                for x in x0..x0 + read.width {
+                    let (a, b) = (read_sheet.get_pixel(x, y), jumped_sheet.get_pixel(x, y));
+                    sum += (0..3).map(|c| u64::from(a[c].abs_diff(b[c]))).sum::<u64>();
+                }
+            }
+            sum / u64::from(read.width * read.height * 3)
+        };
+        let worst = (0..COLUMNS * ROWS).map(cell_difference).max().unwrap();
+        assert!(worst < 8, "a preview differs by {worst} on average");
     }
 }

@@ -15,7 +15,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use anyhow::Context;
-use librqbit::storage::{BoxStorageFactory, StorageFactory, StorageFactoryExt, TorrentStorage};
+use librqbit::storage::{BoxStorageFactory, StorageFactory, TorrentStorage};
 use librqbit::{FileInfos, ManagedTorrentShared, TorrentMetadata};
 use librqbit_core::lengths::{Lengths, ValidPieceIndex};
 
@@ -29,24 +29,37 @@ pub struct WholePieces<U> {
     pub underlying: U,
 }
 
+impl<U: StorageFactory + Clone> WholePieces<U> {
+    /// For the engine. Boxed here, not with librqbit's `boxed()`, whose box
+    /// hides that the files are on disk.
+    pub fn into_box(self) -> BoxStorageFactory {
+        Box::new(self)
+    }
+}
+
 impl<U: StorageFactory + Clone> StorageFactory for WholePieces<U> {
-    type Storage = WholePiecesStorage<U::Storage>;
+    type Storage = Box<dyn TorrentStorage>;
 
     fn create(
         &self,
         shared: &ManagedTorrentShared,
         metadata: &TorrentMetadata,
     ) -> anyhow::Result<Self::Storage> {
-        Ok(WholePiecesStorage {
+        Ok(Box::new(WholePiecesStorage {
             lengths: *metadata.info.lengths(),
             files: metadata.file_infos.clone(),
             held: Mutex::default(),
             underlying: self.underlying.create(shared, metadata)?,
-        })
+        }))
+    }
+
+    /// Files on disk all the same, so the engine can remember their pieces.
+    fn is_type_id(&self, type_id: std::any::TypeId) -> bool {
+        self.underlying.is_type_id(type_id)
     }
 
     fn clone_box(&self) -> BoxStorageFactory {
-        self.clone().boxed()
+        self.clone().into_box()
     }
 }
 

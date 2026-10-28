@@ -11,8 +11,9 @@
 //!
 //! The indexers, the target library and the list of downloads are saved as
 //! one JSON value in the catalog's `setting` table. A restart adds every
-//! unfinished download again; the engine re-checks what is already on disk
-//! and carries on from there.
+//! unfinished download again. The engine remembers which pieces it verified
+//! (`<data>/downloads/pieces/`), so it checks a sample of them and carries on,
+//! instead of reading back everything already on disk.
 
 pub mod torznab;
 
@@ -25,8 +26,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use librqbit::dht::DhtPersistenceConfig;
 use librqbit::{
     AddTorrent, AddTorrentOptions, AddTorrentResponse, ConnectionOptions, DhtSessionConfig,
-    ListenerOptions, ManagedTorrent, PeerConnectionOptions, Session, SessionOptions, TorrentStats,
-    TorrentStatsState,
+    ListenerOptions, ManagedTorrent, PeerConnectionOptions, Session, SessionOptions,
+    SessionPersistenceConfig, TorrentStats, TorrentStatsState,
 };
 use nuvora_library::{Library, LibraryId, LibraryInfo, LibraryKind};
 use nuvora_media::{EpisodeName, PathClass, ReleaseName, classify_path};
@@ -757,12 +758,28 @@ impl Downloads {
 }
 
 async fn start_engine(dir: &Path, engine: Engine) -> Result<Arc<Session>, String> {
+    let pieces = dir.join("pieces");
+    // The engine's list of torrents goes, its record of their pieces stays:
+    // Nuvora adds its downloads again itself, and a stream's torrent isn't
+    // wanted back.
+    if let Err(e) = std::fs::remove_file(pieces.join("session.json"))
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        tracing::warn!("cannot clear the engine's torrent list: {e}");
+    }
+    let remembering = |options: SessionOptions| SessionOptions {
+        persistence: Some(SessionPersistenceConfig::Json {
+            folder: Some(pieces.clone()),
+        }),
+        fastresume: true,
+        ..options
+    };
     match engine {
         Engine::Off => return Err("it is turned off".to_owned()),
         Engine::Internet => {}
         #[cfg(test)]
         Engine::Loopback => {
-            return Session::new_with_opts(dir.to_owned(), loopback_options())
+            return Session::new_with_opts(dir.to_owned(), remembering(loopback_options()))
                 .await
                 .map_err(|e| format!("{e:#}"));
         }
@@ -802,7 +819,7 @@ async fn start_engine(dir: &Path, engine: Engine) -> Result<Arc<Session>, String
     ];
     let mut failed = String::new();
     for addr in attempts {
-        match Session::new_with_opts(dir.to_owned(), options(addr)).await {
+        match Session::new_with_opts(dir.to_owned(), remembering(options(addr))).await {
             Ok(session) => return Ok(session),
             Err(e) => {
                 tracing::info!("BitTorrent can't listen on {addr} ({e:#}); trying the next");
@@ -829,11 +846,10 @@ pub fn loopback_options() -> SessionOptions {
 
 /// Files on disk, written a whole piece at a time (see [`crate::whole_pieces`]).
 fn storage() -> librqbit::storage::BoxStorageFactory {
-    use librqbit::storage::StorageFactoryExt;
     crate::whole_pieces::WholePieces {
         underlying: librqbit::storage::filesystem::FilesystemStorageFactory::default(),
     }
-    .boxed()
+    .into_box()
 }
 
 fn state(phase: &Phase, stage: Option<&Stage>) -> State {
@@ -1226,6 +1242,56 @@ mod tests {
         let error = move_into_library(&staging, dir.path(), "Nothing").unwrap_err();
         assert_eq!(error.to_string(), "it holds no video");
         assert!(staging.join("readme.txt").exists());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_restart_remembers_verified_pieces_and_brings_back_no_torrent() {
+        let dir = tempfile::tempdir().unwrap();
+        let files = dir.path().join("files");
+        touch(&files.join("Movie/movie.mkv"), &[7; 300_000]);
+        let engine_dir = dir.path().join("engine");
+        std::fs::create_dir_all(&engine_dir).unwrap();
+
+        let engine = start_engine(&engine_dir, Engine::Loopback).await.unwrap();
+        let options = librqbit::CreateTorrentOptions {
+            name: None,
+            trackers: vec![],
+            piece_length: None,
+        };
+        let (created, torrent) = engine
+            .create_and_serve_torrent(&files.join("Movie"), options)
+            .await
+            .unwrap();
+        torrent.wait_until_initialized().await.unwrap();
+        let bytes = created.as_bytes().unwrap();
+        let record = engine_dir
+            .join("pieces")
+            .join(format!("{:?}.bitv", torrent.info_hash()));
+        engine.stop().await;
+        drop((torrent, engine));
+
+        let engine = start_engine(&engine_dir, Engine::Loopback).await.unwrap();
+        assert_eq!(
+            engine.with_torrents(|t| t.count()),
+            0,
+            "nothing comes back by itself"
+        );
+        assert!(record.exists(), "the verified pieces are remembered");
+        let options = AddTorrentOptions {
+            overwrite: true,
+            output_folder: Some(files.join("Movie").to_string_lossy().into_owned()),
+            ..Default::default()
+        };
+        let added = engine
+            .add_torrent(AddTorrent::from_bytes(bytes), Some(options))
+            .await
+            .unwrap();
+        let AddTorrentResponse::Added(_, torrent) = added else {
+            panic!("added again as new");
+        };
+        torrent.wait_until_initialized().await.unwrap();
+        let stats = torrent.stats();
+        assert!(stats.finished, "{stats:?}");
     }
 
     #[test]
