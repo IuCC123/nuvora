@@ -33,7 +33,7 @@ With options:              $INSTALL_CMD -s -- --media ~/Media
   --listen ADDR   address to publish the port on (default 0.0.0.0, every network;
                   127.0.0.1 when a reverse proxy on this machine is the only way in)
   --dir DIR       where Nuvora keeps its settings and data (default ~/nuvora)
-  --version TAG   image version to run, e.g. 0.7.2 (default: the newest)
+  --version TAG   image version to run, e.g. 0.7.3 (default: the newest)
   --build         build the image from this checkout instead of downloading it
   --yes           never ask; use the saved or default answers
   --uninstall     stop and remove Nuvora (asks before deleting its data)
@@ -722,7 +722,7 @@ main() {
       --port) [ $# -ge 2 ] || die "--port needs a number"; PORT="$2"; shift 2 ;;
       --listen) [ $# -ge 2 ] || die "--listen needs an IPv4 address"; LISTEN="$2"; shift 2 ;;
       --dir) [ $# -ge 2 ] || die "--dir needs a path"; DIR="$2"; DIR_GIVEN=1; shift 2 ;;
-      --version) [ $# -ge 2 ] || die "--version needs a tag, like 0.7.2"; VERSION="$2"; shift 2 ;;
+      --version) [ $# -ge 2 ] || die "--version needs a tag, like 0.7.3"; VERSION="$2"; shift 2 ;;
       --build) BUILD=1; shift ;;
       --yes | -y) ASSUME_YES=1; shift ;;
       --uninstall) UNINSTALL=1; shift ;;
