@@ -23,6 +23,7 @@ import { titleCardVars } from "../components/TitleCard";
 import { hasInteracted } from "../lib/interacted";
 import { languageName } from "../lib/languageName";
 import { playable, playState } from "../lib/playState";
+import { preloadPlayer } from "../components/player/preload";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useUser } from "../lib/session";
 import { useWatchedToggle } from "../lib/useWatchedToggle";
@@ -102,6 +103,7 @@ function progressOf(movie: MovieDetail): number | null {
 
 function Actions({ movie }: { movie: MovieDetail }) {
   const state = playState(movie.versions);
+  useEffect(() => preloadPlayer(movie.versions), [movie.versions]);
   const play = useRef<HTMLAnchorElement>(null);
   // The poster that opened this page is gone, so focus would fall to <body>; give it to Play instead.
   // A page someone loaded directly has no opener, so focus stays put rather than ringing Play unasked.
