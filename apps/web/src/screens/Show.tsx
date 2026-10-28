@@ -23,6 +23,7 @@ import { CardArt } from "../components/CardArt";
 import { aboutRows, CastSection, DetailHero, HeroMeta, InfoSection, Overview, ShelfArrows, Starring, walkStrip, type InfoRow } from "../components/Details";
 import { titleCardVars } from "../components/TitleCard";
 import { cachedCard } from "../lib/cachedCard";
+import { preloadPlayer } from "../components/player/preload";
 import { hasInteracted } from "../lib/interacted";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useWatchedToggle } from "../lib/useWatchedToggle";
@@ -248,6 +249,9 @@ function EpisodeList({
   strip: RefObject<HTMLOListElement | null>;
   placeholderCount: number;
 }) {
+  useEffect(() => {
+    if (episodes) preloadPlayer(episodes.flatMap((e) => e.versions));
+  }, [episodes]);
   if (!episodes) {
     return (
       <ol ref={strip} className="shelf-strip episodes" aria-busy="true" aria-label="Loading episodes">
