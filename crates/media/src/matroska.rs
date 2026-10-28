@@ -116,7 +116,8 @@ fn read_index(file: &mut File) -> io::Result<Option<Index>> {
                 match id {
                     SEEK_HEAD => cues_at = cues_at.or(seek_position(&body, CUES)),
                     INFO => {
-                        if let Some((_, s)) = children(&body).find(|(id, _)| *id == TIMESTAMP_SCALE) {
+                        if let Some((_, s)) = children(&body).find(|(id, _)| *id == TIMESTAMP_SCALE)
+                        {
                             scale = uint(s);
                         }
                     }
@@ -186,7 +187,9 @@ fn cue_points(cues: &[u8], track: u64) -> Vec<CuePoint> {
                 .filter(|(id, _)| *id == CUE_TRACK_POSITIONS)
                 .find_map(|(_, positions)| {
                     let on = children(positions).find(|(id, _)| *id == CUE_TRACK)?.1;
-                    let cluster = children(positions).find(|(id, _)| *id == CUE_CLUSTER_POSITION)?.1;
+                    let cluster = children(positions)
+                        .find(|(id, _)| *id == CUE_CLUSTER_POSITION)?
+                        .1;
                     (uint(on) == track).then(|| uint(cluster))
                 })?;
             Some(CuePoint { time, cluster })

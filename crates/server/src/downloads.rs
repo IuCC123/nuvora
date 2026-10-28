@@ -789,6 +789,7 @@ async fn start_engine(dir: &Path, engine: Engine) -> Result<Arc<Session>, String
         }),
         peer_limit: Some(PEER_LIMIT),
         runtime_worker_threads: Some(DISK_THREADS),
+        default_storage_factory: Some(storage()),
         ..Default::default()
     };
     // `[::]` takes IPv6 and IPv4 peers on one socket; a machine without IPv6
@@ -821,8 +822,18 @@ pub fn loopback_options() -> SessionOptions {
             listen_addr: (Ipv4Addr::LOCALHOST, 0).into(),
             ..Default::default()
         }),
+        default_storage_factory: Some(storage()),
         ..Default::default()
     }
+}
+
+/// Files on disk, written a whole piece at a time (see [`crate::whole_pieces`]).
+fn storage() -> librqbit::storage::BoxStorageFactory {
+    use librqbit::storage::StorageFactoryExt;
+    crate::whole_pieces::WholePieces {
+        underlying: librqbit::storage::filesystem::FilesystemStorageFactory::default(),
+    }
+    .boxed()
 }
 
 fn state(phase: &Phase, stage: Option<&Stage>) -> State {

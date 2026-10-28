@@ -13,6 +13,7 @@ mod transcode;
 mod tuning;
 mod update;
 mod web;
+mod whole_pieces;
 
 use std::num::NonZeroUsize;
 use std::sync::Arc;

@@ -728,7 +728,14 @@ mod tests {
         // The library keeps its folder's real path (`/private/var` on a Mac).
         let shows = std::fs::canonicalize(app.path("shows")).unwrap();
         assert_eq!(finished["path"], shows.join("Show Name").to_str().unwrap());
-        assert!(shows.join("Show Name/Show.Name.S01E02.mkv").exists());
+        // Pieces span both episodes, which start mid-piece: each arrives whole.
+        for episode in ["Show.Name.S01E01.mkv", "Show.Name.S01E02.mkv"] {
+            assert_eq!(
+                std::fs::read(shows.join("Show Name").join(episode)).unwrap(),
+                std::fs::read(app.path(&format!("seed/{pack}/{episode}"))).unwrap(),
+                "{episode}"
+            );
+        }
         assert!(!app.path("movies/Show Name").exists());
 
         app.scan().await;

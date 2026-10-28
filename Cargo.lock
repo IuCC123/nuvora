@@ -2378,6 +2378,7 @@ dependencies = [
 name = "nuvora-server"
 version = "0.7.2"
 dependencies = [
+ "anyhow",
  "argon2",
  "axum",
  "blake3",
@@ -2385,6 +2386,7 @@ dependencies = [
  "clap",
  "directories",
  "librqbit",
+ "librqbit-core",
  "mdns-sd",
  "mime",
  "nix",
