@@ -170,7 +170,7 @@ You can also update by hand: run the installer again, which keeps your answers a
 docker compose pull && docker compose up -d
 ```
 
-Accounts, progress and settings carry over. To stay on one version, set `NUVORA_IMAGE=ghcr.io/iucc123/nuvora:0.7.3` and `NUVORA_UPDATES=false` in `.env`, or pass `--version 0.7.3` to the installer.
+Accounts, progress and settings carry over. To stay on one version, set `NUVORA_IMAGE=ghcr.io/iucc123/nuvora:0.7.4` and `NUVORA_UPDATES=false` in `.env`, or pass `--version 0.7.4` to the installer.
 
 To remove Nuvora, run `curl -fsSL https://getnuvora.online/install.sh | bash -s -- --uninstall`. It stops and removes Nuvora and asks before deleting its data.
 
