@@ -321,7 +321,7 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
     onFailed();
   };
   const hlsInfo = useHls(video, source?.kind === "hls" ? source.url : undefined, startAt, fail);
-  useTooSlow(source?.kind === "hls" ? video : null, hlsInfo, onTooSlow);
+  useTooSlow(source?.kind === "hls" ? video : null, hlsInfo, onTooSlow, startAt ?? 0);
   useRewrap(video, source?.kind === "rewrap" ? source.url : undefined, startAt, fail);
   const party = usePartyPlayer(src ? video : null, catalog, startAt);
   // Only where the player feeds the buffer: `<video src>` never holds the seconds a hold waits for.
@@ -839,10 +839,12 @@ function useHeldFor(value: boolean, ms: number) {
 /**
  * Calls `onTooSlow` once when a stream can't keep up and less than 20 s is buffered: two segments came in
  * slower than they play (`fill` under 0.9), the one arriving is on course to take more than twice its
- * length, or playback stalled twice within 90 s. Seeks don't count. A 52 Mbit/s original over a
- * 15 Mbit/s link shows within about 8 s, where waiting for whole segments would take a minute.
+ * length, a segment hasn't started arriving after 15 s with under 2 s left (the server can't make it
+ * in time, like 4K converted on a small server), or playback stalled twice within 90 s. Seeks don't
+ * count. A 52 Mbit/s original over a 15 Mbit/s link shows within about 8 s, where waiting for whole
+ * segments would take a minute. `start` is where playback began, for a stream that never got going.
  */
-function useTooSlow(video: HTMLVideoElement | null, info: RefObject<HlsInfo>, onTooSlow: ((at: number) => void) | undefined) {
+function useTooSlow(video: HTMLVideoElement | null, info: RefObject<HlsInfo>, onTooSlow: ((at: number) => void) | undefined, start: number) {
   const latest = useRef(onTooSlow);
   latest.current = onTooSlow;
   const watching = !!onTooSlow;
@@ -854,7 +856,7 @@ function useTooSlow(video: HTMLVideoElement | null, info: RefObject<HlsInfo>, on
     const report = () => {
       if (reported) return;
       reported = true;
-      latest.current?.(video.currentTime);
+      latest.current?.(video.readyState > HTMLMediaElement.HAVE_NOTHING ? video.currentTime : start);
     };
     const onPlaying = () => {
       started = true;
@@ -866,9 +868,11 @@ function useTooSlow(video: HTMLVideoElement | null, info: RefObject<HlsInfo>, on
       if (stalls.length >= 2) report();
     };
     const timer = window.setInterval(() => {
-      if (bufferedEnd(video) - video.currentTime >= 20) return;
+      const ahead = bufferedEnd(video) - video.currentTime;
+      if (ahead >= 20) return;
       const { fragments, fill, fragment } = info.current;
       if (fragments >= 2 && fill !== null && fill < 0.9) report();
+      if (fragment && fragment.loaded === 0 && ahead < 2 && performance.now() - fragment.requested > 15_000) report();
       if (fragment && fragment.duration > 0 && fragment.total > 0 && fragment.loaded > 0) {
         const elapsed = (performance.now() - fragment.requested) / 1000;
         const projected = elapsed * (fragment.total / fragment.loaded);
@@ -882,5 +886,5 @@ function useTooSlow(video: HTMLVideoElement | null, info: RefObject<HlsInfo>, on
       video.removeEventListener("playing", onPlaying);
       video.removeEventListener("waiting", onWaiting);
     };
-  }, [video, info, watching]);
+  }, [video, info, watching, start]);
 }
