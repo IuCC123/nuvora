@@ -139,7 +139,11 @@ export function SubtitleMenu({ subtitles, style, onStyle, onOpenChange }: Subtit
                     <TrackOption key={result.id} name={`${id}-track`} checked={online?.id === result.id} onPick={(pointer) => pickOnline(result, pointer)}>
                       <span className="subs-track-main">
                         <span className="subs-track-name">{result.label}</span>
-                        {result.same_release && <span className="subs-tag subs-tag-match">Timed for this file</span>}
+                        {result.same_release ? (
+                          <span className="subs-tag subs-tag-match">Timed for this file</span>
+                        ) : (
+                          result.same_source && <span className="subs-tag">Same source</span>
+                        )}
                         {result.hearing_impaired && <span className="subs-tag">SDH</span>}
                       </span>
                       {result.release && (

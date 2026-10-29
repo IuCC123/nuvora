@@ -38,9 +38,12 @@ pub struct OnlineSubtitle {
     /// Where it came from, as the service names it.
     pub source: String,
     pub downloads: Option<u64>,
-    /// It names the same release as the file (source, resolution and
-    /// group), so it is timed for it.
+    /// Made for the same release as the file (its source and group), so
+    /// timed for it.
     pub same_release: bool,
+    /// Made from the same source as the file (a Blu-ray for a Blu-ray rip),
+    /// which is nearly always timed the same.
+    pub same_source: bool,
     url: String,
 }
 
@@ -169,7 +172,7 @@ impl Library {
             _ => {
                 let text = resp.error_for_status()?.text().await?;
                 if text.trim_start().starts_with("WEBVTT") {
-                    Ok(text)
+                    Ok(without_adverts(&text))
                 } else {
                     Err(OnlineSubtitleError::Service(
                         "the file wasn't WebVTT".into(),
@@ -383,19 +386,24 @@ struct WyzieResult {
 /// Machine translations out; the same release first, then hearing-impaired
 /// last, then the most downloaded.
 fn rank(results: Vec<WyzieResult>, file_name: &str) -> Vec<OnlineSubtitle> {
-    let file = release_marks(file_name);
+    let file = Release::read(file_name);
     let mut found: Vec<OnlineSubtitle> = results
         .into_iter()
         .filter(|r| !r.ai)
         .map(|r| {
-            let names: Vec<&str> = r
+            let names: Vec<Release> = r
                 .release
                 .iter()
                 .chain(&r.releases)
                 .chain(&r.file_name)
-                .map(String::as_str)
+                .map(|n| Release::read(n))
                 .collect();
-            let same_release = !file.is_empty() && names.iter().any(|n| release_marks(n) == file);
+            let same_source =
+                file.source.is_some() && names.iter().any(|n| n.source == file.source);
+            let same_release = file.group.is_some()
+                && names
+                    .iter()
+                    .any(|n| n.source == file.source && n.group == file.group);
             OnlineSubtitle {
                 id: match &r.id {
                     serde_json::Value::String(s) => s.clone(),
@@ -411,6 +419,7 @@ fn rank(results: Vec<WyzieResult>, file_name: &str) -> Vec<OnlineSubtitle> {
                 source: r.source,
                 downloads: r.download_count,
                 same_release,
+                same_source,
                 url: r.url,
             }
         })
@@ -418,6 +427,7 @@ fn rank(results: Vec<WyzieResult>, file_name: &str) -> Vec<OnlineSubtitle> {
     found.sort_by_key(|s| {
         (
             !s.same_release,
+            !s.same_source,
             s.hearing_impaired,
             std::cmp::Reverse(s.downloads.unwrap_or(0)),
         )
@@ -427,43 +437,51 @@ fn rank(results: Vec<WyzieResult>, file_name: &str) -> Vec<OnlineSubtitle> {
     found
 }
 
-/// What decides a subtitle's timing in a release name: where it was ripped
-/// from (cuts differ), the resolution, and the group. Empty when the name
-/// says none of it.
-fn release_marks(name: &str) -> Vec<String> {
-    let lower = name.to_ascii_lowercase();
-    let stem = lower
-        .rsplit_once('.')
-        .filter(|(_, ext)| ext.len() <= 4)
-        .map_or(lower.as_str(), |(s, _)| s);
-    let words: Vec<&str> = stem
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|w| !w.is_empty())
+/// What decides a subtitle's timing in a release name: where it was
+/// ripped from (a Blu-ray and a streaming service can cut differently) and
+/// the group. The resolution doesn't: 720p and 2160p of one Blu-ray share
+/// every timestamp.
+#[derive(Debug, PartialEq, Eq)]
+struct Release {
+    source: Option<&'static str>,
+    group: Option<String>,
+}
+
+impl Release {
+    fn read(name: &str) -> Release {
+        let lower = name.to_ascii_lowercase();
+        let stem = lower
+            .rsplit_once('.')
+            .filter(|(_, ext)| ext.len() <= 4 && !ext.chars().all(|c| c.is_ascii_digit()))
+            .map_or(lower.as_str(), |(s, _)| s);
+        let source = stem
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .find_map(|w| match w {
+                "bluray" | "bdrip" | "brrip" | "remux" | "bdremux" | "uhd" | "bd" => Some("bluray"),
+                "webdl" | "webrip" | "web" => Some("web"),
+                "hdtv" => Some("hdtv"),
+                "dvdrip" | "dvd" => Some("dvd"),
+                _ => None,
+            });
+        // The group is the last word after a hyphen: `...x264-SPARKS`.
+        let group = stem
+            .rsplit_once('-')
+            .map(|(_, g)| g.trim())
+            .filter(|g| !g.is_empty() && g.chars().all(|c| c.is_ascii_alphanumeric()))
+            .map(str::to_owned);
+        Release { source, group }
+    }
+}
+
+/// The service's own notes (free plan: "You're on the free plan…") taken
+/// out, leaving only the film's lines.
+fn without_adverts(vtt: &str) -> String {
+    let vtt = vtt.replace("\r\n", "\n");
+    let blocks: Vec<&str> = vtt
+        .split("\n\n")
+        .filter(|block| !block.to_ascii_lowercase().contains("wyzie.io"))
         .collect();
-    let mut marks = Vec::new();
-    if let Some(source) = words.iter().find_map(|w| match *w {
-        "bluray" | "bdrip" | "brrip" | "remux" | "bdremux" => Some("bluray"),
-        "webdl" | "webrip" | "web" => Some("web"),
-        "hdtv" => Some("hdtv"),
-        "dvdrip" | "dvd" => Some("dvd"),
-        _ => None,
-    }) {
-        marks.push(source.to_owned());
-    }
-    if let Some(resolution) = words
-        .iter()
-        .find(|w| matches!(**w, "2160p" | "1080p" | "720p" | "480p"))
-    {
-        marks.push((*resolution).to_owned());
-    }
-    // The group is the last word after a hyphen: `...x264-SPARKS`.
-    if let Some((_, group)) = stem.rsplit_once('-')
-        && !group.is_empty()
-        && group.chars().all(|c| c.is_ascii_alphanumeric())
-    {
-        marks.push(group.to_owned());
-    }
-    marks
+    blocks.join("\n\n")
 }
 
 /// Whether the service takes `key`: a search for a film everyone has
@@ -537,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    fn the_same_release_comes_first_then_downloads_and_machine_translations_go() {
+    fn the_same_release_then_the_same_source_come_first_and_machine_translations_go() {
         let file = "Interstellar.2014.PROPER.2160p.BluRay.REMUX.HEVC.DTS-HD.MA.5.1-FGT.mkv";
         let found = rank(
             vec![
@@ -550,21 +568,21 @@ mod tests {
                 ),
                 result(
                     "same",
-                    "Interstellar 2014 2160p BluRay REMUX HEVC-FGT",
+                    "Interstellar 2014 1080p BluRay x264-FGT",
                     false,
                     300,
                     false,
                 ),
                 result(
                     "deaf",
-                    "Interstellar.2014.1080p.BluRay.x264-SPARKS",
+                    "Interstellar.2014.720p.BluRay.x264-DAA",
                     true,
                     50_000,
                     false,
                 ),
                 result(
                     "bluray",
-                    "Interstellar.2014.1080p.BluRay.x264-SPARKS",
+                    "Interstellar.2014.720p.BluRay.x264-DAA",
                     false,
                     40_000,
                     false,
@@ -581,33 +599,51 @@ mod tests {
         );
         let order: Vec<_> = found
             .iter()
-            .map(|s| (s.id.as_str(), s.same_release))
+            .map(|s| (s.id.as_str(), s.same_release, s.same_source))
             .collect();
         assert_eq!(
             order,
             [
-                ("same", true),
-                ("popular", false),
-                ("bluray", false),
-                ("deaf", false)
+                ("same", true, true),
+                ("bluray", false, true),
+                ("deaf", false, true),
+                ("popular", false, false)
             ]
         );
     }
 
     #[test]
-    fn release_names_reduce_to_source_resolution_and_group() {
+    fn release_names_reduce_to_their_source_and_group() {
+        let read = |name: &str| {
+            let r = Release::read(name);
+            (r.source, r.group)
+        };
         assert_eq!(
-            release_marks("Heat.1995.1080p.BluRay.x264-AMIABLE.mkv"),
-            ["bluray", "1080p", "amiable"]
+            read("Heat.1995.1080p.BluRay.x264-AMIABLE.mkv"),
+            (Some("bluray"), Some("amiable".into()))
         );
         assert_eq!(
-            release_marks("Heat 1995 1080p WEB-DL DD5.1 H264-FLUX"),
-            ["web", "1080p", "flux"]
+            read("Heat 1995 1080p WEB-DL DD5.1 H264-FLUX"),
+            (Some("web"), Some("flux".into()))
         );
         assert_eq!(
-            release_marks("[Kanavid] Serial Experiments Lain - 05 [BD][1080p][AAC].mp4"),
-            ["1080p"]
+            read("Interstellar.2014.UHD.BluRay.2160p.DTS-HD.MA.5.1.HEVC.REMUX-FraMeSToR"),
+            (Some("bluray"), Some("framestor".into()))
         );
-        assert!(release_marks("movie").is_empty());
+        assert_eq!(
+            read("[Kanavid] Serial Experiments Lain - 05 [BD][1080p][AAC].mp4"),
+            (Some("bluray"), None)
+        );
+        assert_eq!(read("movie"), (None, None));
+    }
+
+    #[test]
+    fn the_services_own_notes_are_taken_out() {
+        let vtt = "WEBVTT\r\n\r\n00:00:00.000 --> 00:00:06.000\r\nYou're on the free plan. Unlock every source → store.wyzie.io\r\n\r\n\
+                   00:01:14.908 --> 00:01:17.094\r\nWell, my dad was a farmer.\r\n";
+        assert_eq!(
+            without_adverts(vtt),
+            "WEBVTT\n\n00:01:14.908 --> 00:01:17.094\nWell, my dad was a farmer.\n"
+        );
     }
 }

@@ -2194,6 +2194,11 @@ export interface components {
             release?: string | null;
             /** @description Made for the same release as this file, so timed for it. */
             same_release: boolean;
+            /**
+             * @description Made from the same source (a Blu-ray for a Blu-ray rip), which is
+             *     nearly always timed the same.
+             */
+            same_source: boolean;
             source: string;
         };
         /** @description Subtitles found online for a file, best first. */

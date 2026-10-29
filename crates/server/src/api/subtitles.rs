@@ -293,6 +293,9 @@ pub struct OnlineSubtitleResult {
     pub downloads: Option<u64>,
     /// Made for the same release as this file, so timed for it.
     pub same_release: bool,
+    /// Made from the same source (a Blu-ray for a Blu-ray rip), which is
+    /// nearly always timed the same.
+    pub same_source: bool,
 }
 
 #[derive(Deserialize, IntoParams)]
@@ -341,6 +344,7 @@ pub(super) async fn search_online_subtitles(
                 source: s.source,
                 downloads: s.downloads,
                 same_release: s.same_release,
+                same_source: s.same_source,
             })
             .collect(),
     }))

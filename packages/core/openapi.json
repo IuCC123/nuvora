@@ -8233,7 +8233,8 @@
           "label",
           "hearing_impaired",
           "source",
-          "same_release"
+          "same_release",
+          "same_source"
         ],
         "properties": {
           "downloads": {
@@ -8268,6 +8269,10 @@
           "same_release": {
             "type": "boolean",
             "description": "Made for the same release as this file, so timed for it."
+          },
+          "same_source": {
+            "type": "boolean",
+            "description": "Made from the same source (a Blu-ray for a Blu-ray rip), which is\nnearly always timed the same."
           },
           "source": {
             "type": "string"
