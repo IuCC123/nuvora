@@ -151,8 +151,10 @@
   z-index: 5;
   display: flex;
   flex-direction: column;
-  width: 320px;
+  width: 360px;
+  max-width: calc(100vw - 32px);
   max-height: calc(100vh - 180px);
+  overflow: hidden;
   padding: 6px;
   border: 1px solid var(--nv-color-hairline);
   border-radius: var(--nv-radius-lg);
@@ -184,8 +186,11 @@
   border: 0;
 }
 
+/* The list scrolls between the heading and the look controls, which stay in view.
+   Flex items don't shrink below their content unless told to: both need min-height 0. */
 .subs-tracks {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
 }
@@ -202,8 +207,132 @@
 
 .subs-track-list {
   clear: both;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.subs-group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--nv-color-hairline);
+}
+
+.subs-group-heading {
+  padding: 6px 10px 4px;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.subs-group-note {
+  padding: 4px 10px 8px;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+}
+
+.subs-tag-match {
+  border-color: color-mix(in srgb, var(--nv-color-accent) 55%, transparent);
+  color: var(--nv-color-accent);
+}
+
+.subs-more,
+.subs-reset {
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--nv-radius-md);
+  background: none;
+  color: var(--nv-color-text-secondary);
+  font: inherit;
+  font-size: var(--nv-type-small-size);
+  cursor: pointer;
+}
+
+.subs-more:hover,
+.subs-reset:hover {
+  color: var(--nv-color-text-primary);
+  background: var(--nv-color-hairline);
+}
+
+.subs-more:focus-visible,
+.subs-reset:focus-visible,
+.subs-step:focus-visible,
+.subs-images summary:focus-visible {
+  outline: 2px solid var(--nv-color-focus-ring);
+  outline-offset: -2px;
+}
+
+.subs-images {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--nv-color-hairline);
+}
+
+.subs-images summary {
+  padding: 8px 10px;
+  border-radius: var(--nv-radius-md);
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  cursor: pointer;
+}
+
+.subs-images summary:hover {
+  background: var(--nv-color-hairline);
+}
+
+.subs-image-list {
+  margin: 0;
+  padding: 0 10px 8px 26px;
+  color: var(--nv-color-text-muted);
+  font-size: var(--nv-type-small-size);
+  line-height: 1.7;
+}
+
+.subs-timing {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.subs-timing-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.subs-step {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--nv-color-overlay-border);
+  border-radius: var(--nv-radius-md);
+  background: none;
+  color: var(--nv-color-text-primary);
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.subs-step:hover:not(:disabled) {
+  background: var(--nv-color-hairline);
+}
+
+.subs-step:disabled {
+  color: var(--nv-color-text-muted);
+  cursor: default;
+}
+
+.subs-delay {
+  min-width: 64px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .subs-radio {

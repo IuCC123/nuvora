@@ -31,6 +31,7 @@ import { SettingsDownloads } from "./screens/settings/Downloads";
 import { SettingsActivity } from "./screens/settings/Activity";
 import { SettingsGeneral } from "./screens/settings/General";
 import { SettingsLibraries } from "./screens/settings/Libraries";
+import { SettingsSubtitles } from "./screens/settings/Subtitles";
 import { SettingsTranscoding } from "./screens/settings/Transcoding";
 import { SettingsUsers } from "./screens/settings/Users";
 
@@ -50,7 +51,7 @@ import { SettingsUsers } from "./screens/settings/Users";
  *   /episode/$id/play?file=&t=  Player for an episode; without `file` it resumes where the viewer stopped
  *   /downloads?q=               Find a movie on the indexers and download it (admins)
  *   /watch/$id?t=<s>            Player for a release playing while it downloads (admins), from second `t`
- *   /settings/<section>         general, libraries, transcoding, downloads, activity, users (admins), account
+ *   /settings/<section>         general, libraries, transcoding, subtitles, downloads, activity, users (admins), account
  */
 /** Every screen, with Watch Together's invitations and follow-along under them. */
 const root = createRootRoute({
@@ -239,6 +240,13 @@ const settingsTranscoding = createRoute({
   component: SettingsTranscoding,
 });
 
+const settingsSubtitles = createRoute({
+  getParentRoute: () => settings,
+  path: "/subtitles",
+  beforeLoad: requireAdmin,
+  component: SettingsSubtitles,
+});
+
 const settingsDownloads = createRoute({
   getParentRoute: () => settings,
   path: "/downloads",
@@ -343,6 +351,7 @@ export const router = createRouter({
       settingsGeneral,
       settingsLibraries,
       settingsTranscoding,
+      settingsSubtitles,
       settingsDownloads,
       settingsActivity,
       settingsUsers,

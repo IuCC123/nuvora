@@ -100,6 +100,10 @@ export type UpdateDownloadSettings = Schemas["UpdateDownloadSettings"];
 export type ReleaseSource = Schemas["ReleaseSource"];
 export type DownloadSettings = Schemas["DownloadSettings"];
 export type UpdateDownloadNetwork = Schemas["UpdateDownloadNetwork"];
+export type OnlineSubtitles = Schemas["OnlineSubtitles"];
+export type OnlineSubtitleResult = Schemas["OnlineSubtitleResult"];
+export type SubtitleSettings = Schemas["SubtitleSettings"];
+export type UpdateSubtitleSettings = Schemas["UpdateSubtitleSettings"];
 export type AddIndexerRequest = Schemas["AddIndexerRequest"];
 export type TorrentStream = Schemas["TorrentStream"];
 export type TorrentStreamState = Schemas["TorrentStreamState"];
@@ -175,6 +179,8 @@ export interface NuvoraClient {
   markUnwatched(id: number): Promise<void>;
   /** A file's embedded fonts, which its styled subtitle tracks may name. Empty for most files. */
   fonts(fileId: number, signal?: AbortSignalLike): Promise<FontAttachment[]>;
+  /** Subtitles found online for a file in `language` (ISO 639-1), best first, or why there are none. */
+  onlineSubtitles(fileId: number, language: string, signal?: AbortSignalLike): Promise<OnlineSubtitles>;
   /** A file's seek previews; `null` while the server is still making them (asking hurries them along). */
   previews(fileId: number, signal?: AbortSignalLike): Promise<PreviewInfo | null>;
   /** A heavy file's 1080p streaming copy: ready, being made, or not needed (asking hurries it along). */
@@ -190,6 +196,8 @@ export interface NuvoraClient {
    * for styled tracks, ASS. Immutable: safe to cache forever.
    */
   subtitleUrl(fileId: number, streamIndex: number, format: "vtt" | "ass"): string;
+  /** Absolute URL of an online subtitle (`OnlineSubtitleResult.id`) as WebVTT. Immutable once fetched. */
+  onlineSubtitleUrl(fileId: number, id: string): string;
   /** Absolute URL for a server-relative URL the API returned (e.g. `playback.url`). */
   resolve(url: string): string;
 }
@@ -264,6 +272,9 @@ export interface AdminClient {
   removeIndexer(id: number): Promise<DownloadSettings>;
   /** How the torrent client connects, from the next restart (`restart_needed`). 400 `validation` names `proxy`. A proxy without a password keeps the saved one for the same user, host and port. */
   setDownloadNetwork(body: UpdateDownloadNetwork): Promise<DownloadSettings>;
+  subtitleSettings(signal?: AbortSignalLike): Promise<SubtitleSettings>;
+  /** 400 `validation` names `online_key` when the subtitle service doesn't take the key. */
+  setSubtitleSettings(body: UpdateSubtitleSettings): Promise<SubtitleSettings>;
   /** Starts playing a release while it downloads, or returns the stream already playing it. */
   openStream(body: OpenStreamRequest): Promise<TorrentStream>;
   /** Progress, and once `ready` how this device plays it. Poll it: a stream nobody asks about for two minutes stops. */
@@ -359,6 +370,8 @@ export function createClient(options: ClientOptions): NuvoraClient {
     markWatched: (id) => put("/api/items/{id}/watched", { id }),
     markUnwatched: (id) => remove("/api/items/{id}/watched", { id }),
     fonts: (fileId, signal) => get<FontAttachment[]>("/api/files/{id}/fonts", { id: fileId }, signal),
+    onlineSubtitles: (fileId, language, signal) =>
+      get<OnlineSubtitles>("/api/files/{id}/subtitles/online", { id: fileId }, signal, { language }),
     previews: (fileId, signal) =>
       get<PreviewInfo>("/api/files/{id}/previews", { id: fileId }, signal).catch((e: unknown) => {
         if (e instanceof ApiError && e.status === 404) return null;
@@ -412,6 +425,8 @@ export function createClient(options: ClientOptions): NuvoraClient {
       addIndexer: (body) => post<DownloadSettings>("/api/admin/downloads/indexers", {}, body),
       removeIndexer: (id) => call<DownloadSettings>("DELETE", "/api/admin/downloads/indexers/{id}", { id }),
       setDownloadNetwork: (body) => call<DownloadSettings>("PUT", "/api/admin/downloads/network", {}, undefined, undefined, body),
+      subtitleSettings: (signal) => get<SubtitleSettings>("/api/admin/subtitles", {}, signal),
+      setSubtitleSettings: (body) => call<SubtitleSettings>("PUT", "/api/admin/subtitles", {}, undefined, undefined, body),
       openStream: (body) => post<TorrentStream>("/api/admin/streams", {}, body),
       stream: (id, signal) => get<TorrentStream>("/api/admin/streams/{id}", { id }, signal),
       stopStream: (id) => remove("/api/admin/streams/{id}", { id }),
@@ -422,6 +437,7 @@ export function createClient(options: ClientOptions): NuvoraClient {
     imageUrl: (image, size) => options.baseUrl + fill("/api/images/{id}/{size}", { id: image.id, size }),
     subtitleUrl: (fileId, streamIndex, format) =>
       options.baseUrl + fill("/api/files/{id}/subtitles/{stream_index}", { id: fileId, stream_index: streamIndex }) + queryString({ format }),
+    onlineSubtitleUrl: (fileId, id) => options.baseUrl + fill("/api/files/{id}/subtitles/online/{subtitle}", { id: fileId, subtitle: id }),
     resolve: (url) => (url.startsWith("/") ? options.baseUrl + url : url),
   };
 }

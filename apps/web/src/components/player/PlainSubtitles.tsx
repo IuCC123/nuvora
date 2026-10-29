@@ -6,6 +6,8 @@ interface PlainSubtitlesProps {
   video: HTMLVideoElement;
   cues: readonly Cue[];
   style: SubtitleStyle;
+  /** Seconds each line shows later than its file says. */
+  delay: number;
 }
 
 /**
@@ -13,8 +15,8 @@ interface PlainSubtitlesProps {
  * reads the video's clock every frame while playing and on every seek, so a
  * cue lands on its frame at any playback rate.
  */
-export function PlainSubtitles({ video, cues, style }: PlainSubtitlesProps) {
-  const showing = useShowingCues(video, cues);
+export function PlainSubtitles({ video, cues, style, delay }: PlainSubtitlesProps) {
+  const showing = useShowingCues(video, cues, delay);
   const top = showing.filter((c) => c.placement === "top");
   const bottom = showing.filter((c) => c.placement === "bottom");
   return (
@@ -40,12 +42,12 @@ export function PlainSubtitles({ video, cues, style }: PlainSubtitlesProps) {
   );
 }
 
-function useShowingCues(video: HTMLVideoElement, cues: readonly Cue[]): Cue[] {
-  const [showing, setShowing] = useState<Cue[]>(() => activeCues(cues, video.currentTime));
+function useShowingCues(video: HTMLVideoElement, cues: readonly Cue[], delay: number): Cue[] {
+  const [showing, setShowing] = useState<Cue[]>(() => activeCues(cues, video.currentTime - delay));
   useEffect(() => {
     let frame = 0;
     const update = () => {
-      const next = activeCues(cues, video.currentTime);
+      const next = activeCues(cues, video.currentTime - delay);
       setShowing((prev) => (prev.length === next.length && prev.every((c, i) => c === next[i]) ? prev : next));
     };
     const loop = () => {
@@ -64,6 +66,6 @@ function useShowingCues(video: HTMLVideoElement, cues: readonly Cue[]): Cue[] {
       cancelAnimationFrame(frame);
       for (const e of events) video.removeEventListener(e, start);
     };
-  }, [video, cues]);
+  }, [video, cues, delay]);
   return showing;
 }

@@ -88,6 +88,7 @@ export function FullscreenIcon({ exit, ...p }: IconProps & { exit: boolean }) {
 }
 
 const Captions = icon(Ph.ClosedCaptioningIcon, { size: 22 });
+export const CaptionsIcon = icon(Ph.ClosedCaptioningIcon);
 /** Closed captions: solid while subtitles are on. */
 export function SubtitlesIcon({ on, ...p }: IconProps & { on: boolean }) {
   return <Captions weight={on ? "fill" : undefined} {...p} />;

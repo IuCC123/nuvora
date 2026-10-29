@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { queries } from "../nuvora";
 import { useUser } from "../lib/session";
-import { ActivityIcon, DownloadIcon, FolderIcon, HouseIcon, ServerIcon, SlidersIcon, UserIcon, UsersIcon } from "./Icon";
+import { ActivityIcon, CaptionsIcon, DownloadIcon, FolderIcon, HouseIcon, ServerIcon, SlidersIcon, UserIcon, UsersIcon } from "./Icon";
 import { LibraryIcon } from "./LibraryIcon";
 
 /** Home, Downloads (admins), then one entry per library with its type's icon, each opening the library page. */
@@ -55,6 +55,7 @@ const SECTIONS = [
   { to: "/settings/general", label: "General", icon: ServerIcon, admin: true },
   { to: "/settings/libraries", label: "Libraries", icon: FolderIcon, admin: true },
   { to: "/settings/transcoding", label: "Transcoding", icon: SlidersIcon, admin: true },
+  { to: "/settings/subtitles", label: "Subtitles", icon: CaptionsIcon, admin: true },
   { to: "/settings/downloads", label: "Downloads", icon: DownloadIcon, admin: true },
   { to: "/settings/activity", label: "Activity", icon: ActivityIcon, admin: true },
   { to: "/settings/users", label: "Users", icon: UsersIcon, admin: true },

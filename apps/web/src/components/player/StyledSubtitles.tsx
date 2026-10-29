@@ -6,6 +6,8 @@ interface StyledSubtitlesProps {
   track: SubtitleTrack;
   content: string;
   fonts: string[];
+  /** Seconds each line shows later than its file says. */
+  delay: number;
   onReady: (track: SubtitleTrack) => void;
   onFailed: (track: SubtitleTrack) => void;
 }
@@ -19,8 +21,12 @@ const READY_TIMEOUT_MS = 15_000;
  * renderer moves it to its worker (`transferControlToOffscreen`), which a
  * canvas allows only once.
  */
-export function StyledSubtitles({ video, track, content, fonts, onReady, onFailed }: StyledSubtitlesProps) {
+export function StyledSubtitles({ video, track, content, fonts, delay, onReady, onFailed }: StyledSubtitlesProps) {
   const host = useRef<HTMLDivElement>(null);
+  const renderer = useRef<{ setDelay: (seconds: number) => void } | null>(null);
+  const latestDelay = useRef(delay);
+  latestDelay.current = delay;
+  useEffect(() => renderer.current?.setDelay(delay), [delay]);
   useEffect(() => {
     const canvas = document.createElement("canvas");
     host.current?.append(canvas);
@@ -36,9 +42,11 @@ export function StyledSubtitles({ video, track, content, fonts, onReady, onFaile
     import("../../lib/styledRenderer")
       .then(({ createStyledRenderer }) => {
         if (settled) return;
-        const renderer = createStyledRenderer(video, canvas, content, fonts);
-        destroy = renderer.destroy;
-        return renderer.ready.then(() => settle(true));
+        const made = createStyledRenderer(video, canvas, content, fonts);
+        made.setDelay(latestDelay.current);
+        renderer.current = made;
+        destroy = made.destroy;
+        return made.ready.then(() => settle(true));
       })
       .catch((error: unknown) => {
         console.warn("Styled subtitles failed; showing the track as plain text.", error);
@@ -46,6 +54,7 @@ export function StyledSubtitles({ video, track, content, fonts, onReady, onFaile
       });
     return () => {
       settled = true;
+      renderer.current = null;
       window.clearTimeout(timer);
       destroy();
       canvas.remove();

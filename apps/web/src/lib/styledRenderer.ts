@@ -13,6 +13,8 @@ import fallbackFont from "jassub/dist/default.woff2?url";
 export interface StyledRenderer {
   /** Resolves once the track is parsed and the first frame can draw. */
   ready: Promise<void>;
+  /** Shows each line `seconds` later (earlier when negative). */
+  setDelay: (seconds: number) => void;
   destroy: () => void;
 }
 
@@ -36,5 +38,10 @@ export function createStyledRenderer(video: HTMLVideoElement, canvas: HTMLCanvas
       void jassub.manualRender({ mediaTime: video.currentTime, width: video.videoWidth, height: video.videoHeight, expectedDisplayTime: performance.now() });
     }
   });
-  return { ready, destroy: () => void jassub.destroy().catch(() => {}) };
+  return {
+    ready,
+    // JASSUB adds its offset to the video's time, so a delay is a negative offset.
+    setDelay: (seconds) => void (jassub.timeOffset = -seconds),
+    destroy: () => void jassub.destroy().catch(() => {}),
+  };
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useCanGoBack, useNavigate, useParams, useRouter, useRouterState, useSearch } from "@tanstack/react-router";
-import { audioLanguage, formatClock, subtitleLabel, type EpisodeDetail, type EpisodeRef, type StreamingCopy, type SubtitleTrack, type Version } from "@nuvora/core";
+import { audioLanguage, formatClock, subtitleLabel, type EpisodeDetail, type EpisodeRef, type StreamingCopy, type OnlineSubtitleResult, type SubtitleTrack, type Version } from "@nuvora/core";
 import { client, queries, servedClient } from "../nuvora";
 import { ArrowLeftIcon, Back10Icon, Forward10Icon, FullscreenIcon, PauseIcon, PipIcon, PlayIcon, SpinIcon, SubtitlesIcon, VolumeIcon } from "../components/Icon";
 import { Notice, type NoticeText } from "../components/Notice";
@@ -441,9 +441,10 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
         }
       }
     },
-    subtitles(track: SubtitleTrack | null) {
-      if (track) flash("subtitles-on", subtitleLabel(track, languageName).name);
-      else flash("subtitles-off", "Subtitles off");
+    subtitles(track: SubtitleTrack | OnlineSubtitleResult | null) {
+      if (!track) flash("subtitles-off", "Subtitles off");
+      else if ("same_release" in track) flash("subtitles-on", `${track.label} · online`);
+      else flash("subtitles-on", subtitleLabel(track, languageName).name);
     },
     pip() {
       if (!video) return;
@@ -562,13 +563,16 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
 
       <div className="player-scrim" data-edge="top" aria-hidden />
       {src && !notice && <div className="player-scrim" data-edge="bottom" aria-hidden />}
-      {video && subtitles.render.kind === "plain" && <PlainSubtitles video={video} cues={subtitles.render.cues} style={subtitleStyle} />}
+      {video && subtitles.render.kind === "plain" && (
+        <PlainSubtitles video={video} cues={subtitles.render.cues} style={subtitleStyle} delay={subtitles.delay} />
+      )}
       {video && subtitles.render.kind === "styled" && (
         <StyledSubtitles
           video={video}
           track={subtitles.render.track}
           content={subtitles.render.content}
           fonts={subtitles.render.fonts}
+          delay={subtitles.delay}
           onReady={subtitles.styledReady}
           onFailed={subtitles.styledFailed}
         />
