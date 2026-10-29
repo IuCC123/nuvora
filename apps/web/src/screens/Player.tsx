@@ -303,9 +303,14 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
     if (video && video.currentTime > 0) onPosition(Math.floor(video.currentTime * 1000));
     onFailed();
   };
-  useHls(video, source?.kind === "hls" ? source.url : undefined, startAt, fail);
+  const hlsInfo = useHls(video, source?.kind === "hls" ? source.url : undefined, startAt, fail);
   useRewrap(video, source?.kind === "rewrap" ? source.url : undefined, startAt, fail);
   const party = usePartyPlayer(src ? video : null, catalog, startAt);
+  // Only where the player feeds the buffer: `<video src>` never holds the seconds a hold waits for.
+  const rebuffer = useRebuffer(src ? video : null, !party.inParty && source?.kind !== "direct");
+  // The figures show once a load or a stall lasts long enough to notice, so a quick seek never flashes them.
+  const loading = useHeldFor(!!src && !notice && party.countdown === null && (!ready || media.starved || rebuffer.holding), SPINNER_DELAY_MS);
+  const loadStats = useLoadStats(src ? video : null, source?.kind === "hls" ? hlsInfo : null, about?.bitrate ?? null, loading);
   useReleaseStream(video);
   const subtitles = useSubtitles(catalog?.fileId ?? null, subtitleTracks, audioLanguage, subtitleScope);
   // Previews a new video doesn't have yet are made within a minute or so.

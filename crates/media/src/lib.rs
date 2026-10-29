@@ -11,6 +11,7 @@ mod artwork;
 mod encoder;
 mod hls;
 mod matroska;
+mod mp4;
 mod name;
 mod playback;
 mod previews;

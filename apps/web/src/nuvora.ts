@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { ApiError, createClient, createQueries, type FetchLike } from "@nuvora/core";
-import { probeDeviceProfile } from "./platform/deviceProfile";
+import { probeDeviceProfile, streamsEverything } from "./platform/deviceProfile";
 
 const browserFetch: FetchLike = (url, init) => fetch(url, init as RequestInit);
 
@@ -15,7 +15,8 @@ export function onUnauthorized(handler: () => void) {
   unauthorized = handler;
 }
 
-const device = probeDeviceProfile();
+const probed = probeDeviceProfile();
+const device = streamsEverything(location.hostname) ? { ...probed, containers: [] } : probed;
 
 /** App-wide singletons. The only place the web app wires platform APIs into @nuvora/core. */
 export const client = createClient({

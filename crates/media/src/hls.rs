@@ -160,10 +160,13 @@ impl Segments {
     }
 }
 
+/// How much of an MP4's start is scanned to check its index against.
+const MP4_CHECK_SECONDS: f64 = 30.0;
+
 /// Source times of every keyframe of stream `video`, the file's first
 /// video stream, ascending. From the file's own index when it has one that
-/// lists them all (Matroska, see [`crate::matroska`]), else
-/// [`scan_keyframes`].
+/// lists them all (Matroska, see [`crate::matroska`]; MP4 and QuickTime, see
+/// [`crate::mp4`]), else [`scan_keyframes`].
 pub async fn keyframes(tools: &MediaTools, path: &Path, video: u32) -> Result<Vec<f64>, HlsError> {
     let file = path.to_owned();
     // A file that can't be read fails the scan too, with ffprobe's reason.
@@ -172,23 +175,42 @@ pub async fn keyframes(tools: &MediaTools, path: &Path, video: u32) -> Result<Ve
     {
         return Ok(times);
     }
-    scan_keyframes(tools, path, video).await
+    let file = path.to_owned();
+    if let Ok(Ok(Some(times))) =
+        tokio::task::spawn_blocking(move || crate::mp4::video_keyframes(&file)).await
+    {
+        // Its times are worked out here: they must be the ones FFmpeg reads.
+        let start = scan_keyframes(tools, path, video, Some(MP4_CHECK_SECONDS)).await;
+        let checked = |times: &[f64]| -> Vec<f64> {
+            let until = MP4_CHECK_SECONDS - 2.0;
+            times.iter().copied().take_while(|t| *t < until).collect()
+        };
+        if start.is_ok_and(|start| checked(&times) == checked(&start)) {
+            return Ok(times);
+        }
+    }
+    scan_keyframes(tools, path, video, None).await
 }
 
 /// Source times of every keyframe of stream `video`, ascending, from every
-/// packet header in the file (no decoding): a fraction of a second for an
-/// episode on a local disk, minutes for a remux on a network share.
+/// packet header in the file (no decoding), or its first `seconds`: a
+/// fraction of a second for an episode on a local disk, minutes for a remux
+/// on a network share.
 pub(crate) async fn scan_keyframes(
     tools: &MediaTools,
     path: &Path,
     video: u32,
+    seconds: Option<f64>,
 ) -> Result<Vec<f64>, HlsError> {
     let mut command = Command::new(&tools.ffprobe);
     command
         .args(["-v", "error", "-select_streams"])
         .arg(video.to_string())
-        .args(["-show_entries", "packet=pts_time,flags", "-of", "csv=p=0"])
-        .arg(path);
+        .args(["-show_entries", "packet=pts_time,flags", "-of", "csv=p=0"]);
+    if let Some(seconds) = seconds {
+        command.arg("-read_intervals").arg(format!("%+{seconds}"));
+    }
+    command.arg(path);
     let output = run("ffprobe", command, tools.probe_timeout * 4).await?;
     let mut times: Vec<f64> = String::from_utf8_lossy(&output.stdout)
         .lines()

@@ -383,7 +383,9 @@ mod tests {
         let path = movie(dir.path(), "mkv");
         let indexed = video_keyframes(&path).unwrap().unwrap();
         let tools = MediaTools::locate(None, None).await.unwrap();
-        let scanned = crate::hls::scan_keyframes(&tools, &path, 0).await.unwrap();
+        let scanned = crate::hls::scan_keyframes(&tools, &path, 0, None)
+            .await
+            .unwrap();
         assert_eq!(indexed, scanned);
         assert_eq!(indexed, [0.0, 1.5, 2.0, 4.25, 7.0, 7.5, 9.0]);
     }

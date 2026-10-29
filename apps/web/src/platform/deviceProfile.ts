@@ -59,6 +59,27 @@ export function opensNatively(mime: string): boolean {
   return true;
 }
 
+/**
+ * Whether every file should stream through the server (`hls`), its video copied
+ * as it is wherever this browser decodes it, rather than play directly. True for
+ * a server reached over the internet: `<video src>` keeps only a few seconds
+ * ahead (2.5 s, measured on a 4 Mbit/s episode), so any dip in the connection
+ * stalls the picture, while hls.js keeps a minute or two. On the local network
+ * the browser opens files itself, which seeks instantly and costs the server
+ * nothing. Needs Media Source Extensions, for hls.js.
+ */
+export function streamsEverything(host: string): boolean {
+  if (!mediaSourceClass()) return false;
+  return !onLocalNetwork(host.replace(/^\[|\]$/g, "").toLowerCase());
+}
+
+function onLocalNetwork(host: string): boolean {
+  if (host === "localhost" || host.endsWith(".local") || host.endsWith(".lan") || host.endsWith(".home.arpa")) return true;
+  if (/^(127|10)\./.test(host) || /^192\.168\./.test(host) || /^169\.254\./.test(host)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
+  return host === "::1" || /^f[cd][0-9a-f]{2}:/.test(host) || /^fe80:/.test(host);
+}
+
 /** Whether this browser can rewrap a Matroska or WebM file it can't open itself. */
 export function canRewrap(): boolean {
   return mediaSourceClass() !== undefined;
