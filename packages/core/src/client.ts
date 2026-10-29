@@ -88,6 +88,8 @@ export type SubtitleFormat = Schemas["SubtitleFormat"];
 export type SubtitleMode = Schemas["SubtitleMode"];
 export type FontAttachment = Schemas["FontAttachment"];
 export type PreviewInfo = Schemas["PreviewInfo"];
+export type StreamingCopy = Schemas["Copy"];
+export type CopyJob = Schemas["CopyJob"];
 export type Download = Schemas["Download"];
 export type DownloadState = Schemas["DownloadState"];
 export type AddDownloadRequest = Schemas["AddDownloadRequest"];
@@ -174,6 +176,8 @@ export interface NuvoraClient {
   fonts(fileId: number, signal?: AbortSignalLike): Promise<FontAttachment[]>;
   /** A file's seek previews; `null` while the server is still making them (asking hurries them along). */
   previews(fileId: number, signal?: AbortSignalLike): Promise<PreviewInfo | null>;
+  /** A heavy file's 1080p streaming copy: ready, being made, or not needed (asking hurries it along). */
+  streamingCopy(fileId: number, signal?: AbortSignalLike): Promise<StreamingCopy>;
   /** Admin role only; anyone else gets 403. */
   admin: AdminClient;
   /** Watch Together. Live updates arrive on the `/api/live` WebSocket. */
@@ -355,6 +359,7 @@ export function createClient(options: ClientOptions): NuvoraClient {
         if (e instanceof ApiError && e.status === 404) return null;
         throw e;
       }),
+    streamingCopy: (fileId, signal) => get<StreamingCopy>("/api/files/{id}/copy", { id: fileId }, signal),
     party: {
       people: (signal) => get<PartyPerson[]>("/api/people", {}, signal),
       status: (signal) => get<PartyStatus>("/api/party", {}, signal),

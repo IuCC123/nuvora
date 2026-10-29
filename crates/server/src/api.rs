@@ -39,6 +39,7 @@ mod accounts;
 pub use accounts::DEFAULT_SERVER_NAME;
 mod admin;
 mod browse;
+mod copies;
 mod downloads;
 mod hls;
 mod home;
@@ -115,6 +116,7 @@ pub struct AppState {
     pub library: Library,
     pub auth: Arc<crate::auth::Auth>,
     pub transcoder: Arc<crate::transcode::Transcoder>,
+    pub copies: Arc<crate::copies::Copies>,
     pub parties: Arc<crate::party::Parties>,
     pub downloads: Arc<crate::downloads::Downloads>,
     pub streams: Arc<crate::streams::Streams>,
@@ -203,6 +205,10 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(hls::get_playlist))
         .routes(routes!(hls::get_init))
         .routes(routes!(hls::get_segment))
+        .routes(routes!(copies::get_copy))
+        .routes(routes!(copies::get_copy_playlist))
+        .routes(routes!(copies::get_copy_init))
+        .routes(routes!(copies::get_copy_segment))
         .routes(routes!(previews::get_previews))
         .routes(routes!(previews::get_sheet))
         .routes(routes!(subtitles::get_subtitle))

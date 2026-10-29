@@ -15,6 +15,7 @@ import type {
   NuvoraClient,
   PosterCard,
   PreviewInfo,
+  StreamingCopy,
   RowKind,
   RowPage,
   ScanStatus,
@@ -86,6 +87,7 @@ export const queryKeys = {
   homeLayout: ["home-layout"] as const,
   search: (q: string) => ["search", q] as const,
   previews: (fileId: number) => ["previews", fileId] as const,
+  streamingCopy: (fileId: number) => ["streaming-copy", fileId] as const,
 };
 
 /**
@@ -155,6 +157,8 @@ export interface Queries {
   search(q: string): QueryDef<SearchResponse>;
   /** Seek previews never change once made; `null` until they are, so poll while it is. */
   previews(fileId: number): QueryDef<PreviewInfo | null>;
+  /** A heavy file's 1080p copy; its progress moves, so it is never fresh for long. */
+  streamingCopy(fileId: number): QueryDef<StreamingCopy>;
 }
 
 /** Long enough that the screen's mount reuses its loader's request, short enough that a revisit shows other admins' changes. */
@@ -193,6 +197,7 @@ export function createQueries(client: NuvoraClient): Queries {
     }),
     scanStatus: () => ({ queryKey: queryKeys.scan, queryFn: ({ signal }) => client.scanStatus(signal), staleTime: 0 }),
     previews: (fileId) => ({ queryKey: queryKeys.previews(fileId), queryFn: ({ signal }) => client.previews(fileId, signal), staleTime: Infinity }),
+    streamingCopy: (fileId) => ({ queryKey: queryKeys.streamingCopy(fileId), queryFn: ({ signal }) => client.streamingCopy(fileId, signal), staleTime: 10_000 }),
     authState: () => ({ queryKey: queryKeys.auth, queryFn: ({ signal }) => client.authState(signal), staleTime: 60_000 }),
     adminLibraries: () => ({ queryKey: queryKeys.adminLibraries, queryFn: ({ signal }) => client.admin.libraries(signal), staleTime: ADMIN_FRESH }),
     adminFs: (path) => ({ queryKey: queryKeys.adminFs(path), queryFn: ({ signal }) => client.admin.fs(path, signal), staleTime: 30_000 }),

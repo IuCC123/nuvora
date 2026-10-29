@@ -30,8 +30,8 @@ use std::time::Duration;
 use tokio::process::Command;
 
 use crate::{
-    AudioOutput, EncodeOptions, MediaInfo, MediaTools, StreamPlan, VideoCodec, VideoEncoder,
-    VideoPlan,
+    AudioOutput, EncodeOptions, HdrFormat, MediaInfo, MediaTools, StreamPlan, VideoCodec,
+    VideoEncoder, VideoPlan,
 };
 
 /// Default length of a converted segment.
@@ -328,9 +328,12 @@ impl Run<'_> {
                 let forced: Vec<String> = (self.first..self.segments.len())
                     .map(|i| format!("{:.3}", self.segments.start(i)))
                     .collect();
-                converted = self
-                    .encoder
-                    .output_args(max_height, &forced.join(","), self.options);
+                converted = self.encoder.output_args(
+                    max_height,
+                    &forced.join(","),
+                    self.options,
+                    video.is_some_and(|v| v.hdr != HdrFormat::Sdr),
+                );
             }
         }
         a.extend(converted);

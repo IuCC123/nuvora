@@ -310,6 +310,12 @@ impl Transcoder {
         };
     }
 
+    /// Someone is streaming through the server: the processor and the
+    /// disks are theirs.
+    pub fn streaming(&self) -> bool {
+        !self.sessions.lock().unwrap().is_empty()
+    }
+
     /// Every open stream, oldest first.
     pub async fn activity(&self) -> Vec<StreamActivity> {
         let sessions: Vec<(SessionKey, Arc<Session>)> = self

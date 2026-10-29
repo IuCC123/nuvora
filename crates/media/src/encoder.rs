@@ -70,12 +70,14 @@ impl VideoEncoder {
 
     /// The video encode: scaled to at most `max_height` lines (and the
     /// options' own ceiling), with keyframes at the `forced` times
-    /// (comma-separated seconds) and nowhere else.
+    /// (comma-separated seconds) and nowhere else. An `hdr` source is tone
+    /// mapped to SDR when the options say so.
     pub(crate) fn output_args(
         &self,
         max_height: u32,
         forced: &str,
         options: &EncodeOptions,
+        hdr: bool,
     ) -> Vec<OsString> {
         let max_height = options.video_height(max_height);
         let mut filters = Vec::new();
@@ -84,6 +86,11 @@ impl VideoEncoder {
             filters.push("yadif=mode=send_frame:deint=interlaced".to_owned());
         }
         filters.push(format!("scale=-2:min(ih\\,{max_height})"));
+        let tonemap = hdr && options.tonemap;
+        if tonemap {
+            // After scaling, so the costly float maths runs on 1080p, not 4K.
+            filters.push(TONEMAP.to_owned());
+        }
         filters.push(match self {
             VideoEncoder::Vaapi { .. } => "format=nv12,hwupload".to_owned(),
             _ => "format=yuv420p".to_owned(),
@@ -191,6 +198,15 @@ impl VideoEncoder {
         if options.threads > 0 {
             args.extend(["-threads".into(), options.threads.to_string()]);
         }
+        if tonemap {
+            for (flag, value) in [
+                ("-colorspace", "bt709"),
+                ("-color_primaries", "bt709"),
+                ("-color_trc", "bt709"),
+            ] {
+                args.extend([flag.into(), value.into()]);
+            }
+        }
         let mut args: Vec<OsString> = args.into_iter().map(OsString::from).collect();
         args.extend(["-force_key_frames".into(), OsString::from(forced)]);
         args
@@ -232,6 +248,8 @@ pub struct EncodeOptions {
     pub night_mode: bool,
     /// FFmpeg's `-loglevel` for stream runs, written to the session's log.
     pub log_level: &'static str,
+    /// Tone map HDR video to SDR. Needs FFmpeg's `zscale` (zimg).
+    pub tonemap: bool,
 }
 
 impl EncodeOptions {
@@ -275,9 +293,13 @@ impl Default for EncodeOptions {
             downmix_stereo: false,
             night_mode: false,
             log_level: "error",
+            tonemap: false,
         }
     }
 }
+
+/// HDR10 or HLG to BT.709 SDR: to linear light, Hable's curve, back to video levels.
+const TONEMAP: &str = "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv";
 
 /// Target and ceiling (Mbit/s for the ceiling). The target is for the
 /// encoders that take a bitrate instead of a quality; the ceiling holds every
@@ -328,7 +350,7 @@ impl MediaTools {
                 "-i",
                 "testsrc2=size=1280x720:rate=24:duration=2",
             ])
-            .args(encoder.output_args(720, "0.000,1.000", options))
+            .args(encoder.output_args(720, "0.000,1.000", options, false))
             .args(["-f", "null", "-"])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -366,7 +388,12 @@ mod tests {
                 "-i",
                 "testsrc2=size=1280x720:rate=24:duration=20",
             ])
-            .args(encoder.output_args(720, "0.000,6.000,12.000,18.000", &EncodeOptions::default()))
+            .args(encoder.output_args(
+                720,
+                "0.000,6.000,12.000,18.000",
+                &EncodeOptions::default(),
+                false,
+            ))
             .arg(&out)
             .status()
             .await

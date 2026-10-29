@@ -103,18 +103,27 @@ impl TestApp {
         )
         .await
         .unwrap();
+        let transcoder = crate::transcode::Transcoder::start(
+            tools.clone(),
+            &dir.path().join("data"),
+            crate::tuning::Tuning::default(),
+            Some(encoder),
+        )
+        .await;
+        let copies = crate::copies::Copies::start(
+            tools.clone(),
+            library.clone(),
+            transcoder.clone(),
+            &dir.path().join("data"),
+        )
+        .await;
         let state = AppState {
             library,
+            copies,
             auth: Arc::new(crate::auth::Auth::new(crate::net::TrustedProxies::new(
                 proxies.iter().map(|p| p.parse().unwrap()).collect(),
             ))),
-            transcoder: crate::transcode::Transcoder::start(
-                tools.clone(),
-                &dir.path().join("data"),
-                crate::tuning::Tuning::default(),
-                Some(encoder),
-            )
-            .await,
+            transcoder,
             parties: Default::default(),
             downloads,
             streams,

@@ -108,6 +108,8 @@ export type {
   FontAttachment,
   AppSession,
   PreviewInfo,
+  StreamingCopy,
+  CopyJob,
   SubtitleFormat,
   SubtitleMode,
   SubtitleTrack,

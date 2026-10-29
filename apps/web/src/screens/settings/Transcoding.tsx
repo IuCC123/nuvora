@@ -371,6 +371,12 @@ function TuningForm({ current }: { current: TuningResponse }) {
           ))}
         </SelectField>
         <SwitchField
+          label="Make streaming copies"
+          hint="A 1080p copy of every 4K video (and anything above 40 Mbit/s), made in the background and played by default, so heavy videos stream without stopping. The original stays one click away in the player. Each copy takes about 1 GB per hour of video on the server's disk."
+          checked={draft.streaming_copies}
+          onChange={(v) => set("streaming_copies", v)}
+        />
+        <SwitchField
           label="Make seek previews"
           hint="The pictures above the scrubber. Off, nothing new is made; videos keep the ones they have."
           checked={draft.seek_previews}

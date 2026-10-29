@@ -11,6 +11,7 @@ import {
   queryKeys,
   type Activity,
   type ActiveStream,
+  type CopyJob,
   type PreviewQueue,
   type ScanStatus,
   type StreamState,
@@ -25,7 +26,7 @@ const POLL_MS = 1000;
 export function SettingsActivity() {
   const activity = useQuery({ ...queries.adminActivity(), refetchInterval: POLL_MS });
   return (
-    <SettingsPage title="Activity" lede="What the server is working on right now: conversions, scans and seek previews. Updates every second.">
+    <SettingsPage title="Activity" lede="What the server is working on right now: conversions, scans, streaming copies and seek previews. Updates every second.">
       {activity.isPending ? (
         <div className="server-facts-skeleton" aria-busy="true" aria-label="Loading activity" />
       ) : activity.isError && !activity.data ? (
@@ -63,6 +64,7 @@ function ActivityView({ activity }: { activity: Activity }) {
         )}
       </section>
       <ScanSection scan={activity.scan} />
+      <CopySection copies={activity.copies} />
       <PreviewSection previews={activity.previews} />
     </>
   );
@@ -265,6 +267,46 @@ const PHASE: Record<Extract<ScanStatus, { state: "running" }>["phase"], string> 
   artwork: "Making artwork",
   cleaning_up: "Tidying up",
 };
+
+function CopySection({ copies }: { copies: CopyJob[] }) {
+  const making = copies.find((c) => c.state === "making");
+  const queued = copies.filter((c) => c.state === "queued").length;
+  const failed = copies.filter((c) => c.state === "failed");
+  return (
+    <section className="settings-section" aria-labelledby="activity-copies">
+      <div>
+        <h2 id="activity-copies">Streaming copies</h2>
+        <p className="settings-section-note">1080p copies of 4K and very high bitrate videos, made one at a time.</p>
+      </div>
+      <div className="activity-task">
+        {making?.state === "making" ? (
+          <>
+            <p>
+              Making <strong className="activity-file">{making.title}</strong>: {Math.floor(making.progress * 100)}%
+              {making.paused
+                ? ", paused while someone streams through the server"
+                : making.speed != null && ` at ${making.speed.toFixed(2)}× real time`}
+              {!making.paused && making.eta_s != null && `, ready in ${formatDuration(making.eta_s * 1000)}`}
+              {queued > 0 && ` · ${queued} waiting`}
+            </p>
+            <Bar value={making.progress} label={`Making a streaming copy of ${making.title}`} />
+          </>
+        ) : copies.some((c) => c.state === "off") ? (
+          <p>
+            Off. Turn them on in <Link to="/settings/transcoding">Transcoding</Link>.
+          </p>
+        ) : (
+          <p>{queued > 0 ? `${queued} waiting.` : "Every heavy video has one."}</p>
+        )}
+        {failed.map((c) => (
+          <p key={c.file_id} className="settings-note">
+            {c.title}: {c.state === "failed" ? c.reason : ""}
+          </p>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function PreviewSection({ previews }: { previews: PreviewQueue }) {
   return (

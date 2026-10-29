@@ -77,6 +77,10 @@ pub struct Tuning {
     pub max_conversions: u32,
     pub ffmpeg_log_level: FfmpegLogLevel,
 
+    /// Make a 1080p copy of every video too heavy to stream as it is (4K,
+    /// or above 40 Mbit/s), in the background, and play it by default.
+    pub streaming_copies: bool,
+
     // Library
     /// Scan every library this often, 0 (never; only at startup and when
     /// asked) to 168 hours.
@@ -115,6 +119,7 @@ impl Default for Tuning {
             streams_per_user: 3,
             max_conversions: 0,
             ffmpeg_log_level: FfmpegLogLevel::Error,
+            streaming_copies: true,
             scan_every_hours: 0,
             seek_previews: true,
         }
@@ -241,6 +246,7 @@ impl Tuning {
                 FfmpegLogLevel::Info => "info",
                 FfmpegLogLevel::Verbose => "verbose",
             },
+            tonemap: false,
         }
     }
 

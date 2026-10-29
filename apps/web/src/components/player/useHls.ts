@@ -1,4 +1,16 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
+
+/** What hls.js is fetching, for the loading panel. Mutated in place; read it on a timer. */
+export interface HlsInfo {
+  /** The segment being fetched now. `loaded` grows as its bytes arrive; `total` is 0 until the server answers. */
+  fragment: { number: number; count: number; duration: number; loaded: number; total: number; requested: number } | null;
+  /** hls.js's running estimate of the connection, bit/s. */
+  bandwidth: number | null;
+  /** Average bit/s of the segments fetched so far. */
+  bitrate: number | null;
+  /** Seconds of video per second of fetching, over recent segments, the server's wait included. Below 1, playback outruns the stream. */
+  fill: number | null;
+}
 
 /**
  * Plays a server HLS stream (`playback.kind === "hls"`) in `video`. hls.js
@@ -10,10 +22,11 @@ import { useEffect, useRef } from "react";
  * `startAt` (seconds) is read once: the server starts converting there, and
  * the player opens there.
  */
-export function useHls(video: HTMLVideoElement | null, url: string | undefined, startAt: number | undefined, onFailed: () => void) {
+export function useHls(video: HTMLVideoElement | null, url: string | undefined, startAt: number | undefined, onFailed: () => void): RefObject<HlsInfo> {
   const failed = useRef(onFailed);
   failed.current = onFailed;
   const start = useRef(startAt);
+  const info = useRef<HlsInfo>({ fragment: null, bandwidth: null, bitrate: null, fill: null });
 
   useEffect(() => {
     if (!video || !url) return;
@@ -48,10 +61,46 @@ export function useHls(video: HTMLVideoElement | null, url: string | undefined, 
         };
         const hls = new Hls({
           startPosition: at ?? -1,
-          maxBufferLength: 30,
-          maxMaxBufferLength: 120,
-          backBufferLength: 90,
+          // A minute ahead rides out a slow patch; the back buffer stays short,
+          // since it counts against the browser's memory for a high-bitrate stream.
+          maxBufferLength: 60,
+          maxMaxBufferLength: 300,
+          backBufferLength: 30,
+          // The next segment is asked for while the current one appends.
+          startFragPrefetch: true,
           fragLoadPolicy: { default: patient },
+        });
+        let bytes = 0;
+        let seconds = 0;
+        hls.on(Hls.Events.FRAG_LOADING, (_event, { frag }) => {
+          const stats = frag.stats;
+          info.current.fragment = {
+            number: frag.sn === "initSegment" ? -1 : frag.sn,
+            count: hls.levels[0]?.details?.fragments.length ?? 0,
+            duration: frag.duration,
+            get loaded() {
+              return stats.loaded;
+            },
+            get total() {
+              return stats.total;
+            },
+            requested: performance.now(),
+          };
+        });
+        hls.on(Hls.Events.FRAG_LOADED, (_event, { frag }) => {
+          if (frag.sn !== "initSegment" && frag.duration > 0) {
+            bytes += frag.stats.loaded;
+            seconds += frag.duration;
+            info.current.bitrate = (bytes * 8) / seconds;
+            const took = (frag.stats.loading.end - frag.stats.loading.start) / 1000;
+            if (took > 0) {
+              const fill = frag.duration / took;
+              const old = info.current.fill;
+              info.current.fill = old === null ? fill : old + (fill - old) * 0.4;
+            }
+          }
+          if (frag.sn !== "initSegment") info.current.bandwidth = Number.isFinite(hls.bandwidthEstimate) ? hls.bandwidthEstimate : null;
+          info.current.fragment = null;
         });
         let recovered = false;
         hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -74,6 +123,7 @@ export function useHls(video: HTMLVideoElement | null, url: string | undefined, 
       destroy?.();
     };
   }, [video, url]);
+  return info;
 }
 
 /** 128 random bits as hex. `crypto.randomUUID` needs a secure context, which a LAN address isn't. */

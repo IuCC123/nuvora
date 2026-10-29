@@ -2954,6 +2954,263 @@
         }
       }
     },
+    "/api/files/{id}/copy": {
+      "get": {
+        "summary": "Where the file's streaming copy stands. Asking moves it to the front of\nthe queue.",
+        "operationId": "get_copy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Copy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/files/{id}/copy/init.mp4": {
+      "get": {
+        "summary": "The copy's fMP4 init segment.",
+        "operationId": "get_copy_init",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/files/{id}/copy/main.m3u8": {
+      "get": {
+        "summary": "The finished copy's playlist, VOD, segment URIs relative.",
+        "operationId": "get_copy_playlist",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "description": "Where playback starts, in seconds (`EXT-X-START`).",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/vnd.apple.mpegurl": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/files/{id}/copy/{segment}": {
+      "get": {
+        "summary": "Media segment `{n}.m4s` of the copy.",
+        "operationId": "get_copy_segment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "segment",
+            "in": "path",
+            "description": "`{n}.m4s`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/files/{id}/fonts": {
       "get": {
         "summary": "The file's font attachments, in stream order. Empty for files without any\n(every MP4). The ETag is the file's fingerprint.",
@@ -5292,9 +5549,17 @@
         "required": [
           "streams",
           "scan",
-          "previews"
+          "previews",
+          "copies"
         ],
         "properties": {
+          "copies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CopyJob"
+            },
+            "description": "Streaming copies being made or waiting, the one being made first."
+          },
           "previews": {
             "$ref": "#/components/schemas/PreviewQueue"
           },
@@ -5644,6 +5909,192 @@
             "description": "The actor or voice actor."
           }
         }
+      },
+      "Copy": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CopyState"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The copy's playlist once it is ready: HLS, H.264 and AAC."
+              }
+            }
+          }
+        ]
+      },
+      "CopyJob": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CopyState"
+          },
+          {
+            "type": "object",
+            "required": [
+              "file_id",
+              "title"
+            ],
+            "properties": {
+              "file_id": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "A heavy video's 1080p streaming copy."
+      },
+      "CopyState": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Light enough to stream as it is: no copy is made.",
+            "required": [
+              "state"
+            ],
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "not_needed"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Copies are switched off in the admin panel.",
+            "required": [
+              "state"
+            ],
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "off"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Waiting for the videos ahead of it.",
+            "required": [
+              "position",
+              "state"
+            ],
+            "properties": {
+              "position": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "queued"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "progress",
+              "paused",
+              "state"
+            ],
+            "properties": {
+              "eta_s": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64",
+                "description": "Seconds until done at the current speed.",
+                "minimum": 0
+              },
+              "paused": {
+                "type": "boolean",
+                "description": "Held while someone streams through the server."
+              },
+              "progress": {
+                "type": "number",
+                "format": "double",
+                "description": "0 to 1."
+              },
+              "speed": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double",
+                "description": "Seconds of video made per second; `None` until measured."
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "making"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "height",
+              "bitrate",
+              "state"
+            ],
+            "properties": {
+              "bitrate": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Average bit/s over the whole copy.",
+                "minimum": 0
+              },
+              "height": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "ready"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "reason",
+              "state"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "failed"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Where a video's copy stands."
       },
       "CreateLibraryRequest": {
         "type": "object",
@@ -9204,6 +9655,11 @@
             "description": "AAC bitrate for mono and stereo, kbit/s: 64 to 512.",
             "default": 192,
             "minimum": 0
+          },
+          "streaming_copies": {
+            "type": "boolean",
+            "description": "Make a 1080p copy of every video too heavy to stream as it is (4K,\nor above 40 Mbit/s), in the background, and play it by default.",
+            "default": true
           },
           "streams_per_user": {
             "type": "integer",

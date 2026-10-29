@@ -3,8 +3,10 @@ import { formatClock, previewFrame, type PreviewInfo } from "@nuvora/core";
 
 interface ScrubberProps {
   video: HTMLVideoElement | null;
-  /** Seconds; `NaN` until metadata loads. */
+  /** Seconds; `NaN` until metadata loads (or the catalog says). */
   duration: number;
+  /** Before the first frame: where playback will open, shown in place of the video's own 0. */
+  pendingTime?: number;
   buffered: readonly (readonly [number, number])[];
   /** Seek previews, shown above the time under the pointer once the server has made them. */
   previews: PreviewInfo | null;
@@ -25,7 +27,7 @@ const PREVIEW_WIDTH = 224;
  * seeks live and lands exactly on release.
  * The arrow keys reach the player's own 10 s skip; Home, End and Page keys are handled here.
  */
-export function Scrubber({ video, duration, buffered, previews, onSeek, onDragChange }: ScrubberProps) {
+export function Scrubber({ video, duration, pendingTime, buffered, previews, onSeek, onDragChange }: ScrubberProps) {
   const root = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<number | null>(null);
   const [drag, setDrag] = useState<number | null>(null);
@@ -38,12 +40,12 @@ export function Scrubber({ video, duration, buffered, previews, onSeek, onDragCh
     }
     let frame = 0;
     const follow = () => {
-      if (video && known) root.current?.style.setProperty("--played", String(Math.min(1, video.currentTime / duration)));
+      if (video && known) root.current?.style.setProperty("--played", String(Math.min(1, (pendingTime ?? video.currentTime) / duration)));
       frame = requestAnimationFrame(follow);
     };
     follow();
     return () => cancelAnimationFrame(frame);
-  }, [video, duration, known, drag]);
+  }, [video, duration, known, drag, pendingTime]);
 
   // Every sheet, so the first hover over any part of the video is instant; but only once the video has played a
   // few seconds, one sheet at a time, so they never hold up its start.
@@ -112,7 +114,7 @@ export function Scrubber({ video, duration, buffered, previews, onSeek, onDragCh
   }
 
   const tip = drag ?? hover;
-  const now = video?.currentTime ?? 0;
+  const now = pendingTime ?? video?.currentTime ?? 0;
   const frame = tip !== null && known && previews ? previewFrame(previews, tip * duration) : null;
   const scale = frame ? PREVIEW_WIDTH / frame.width : 1;
   return (

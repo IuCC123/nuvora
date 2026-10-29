@@ -645,3 +645,140 @@
   white-space: nowrap;
   cursor: default;
 }
+
+/* Loading and buffering: what the player waits for, in figures, where the spinner was. */
+.loading-panel {
+  width: min(380px, calc(100vw - 2 * var(--player-pad, 24px)));
+  padding: 16px 18px;
+  border: 1px solid var(--nv-color-overlay-hairline);
+  border-radius: var(--nv-radius-lg);
+  background: var(--nv-color-overlay-panel);
+  backdrop-filter: blur(12px);
+  color: var(--nv-color-text-primary);
+  font-variant-numeric: tabular-nums;
+  animation: loading-in var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+@keyframes loading-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.loading-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.loading-spinner {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--nv-color-overlay-border);
+  border-top-color: var(--nv-color-accent);
+  border-radius: 50%;
+  animation: player-spin 0.9s linear infinite;
+}
+
+.loading-title {
+  font-size: var(--nv-type-body-large-size);
+  line-height: var(--nv-type-body-large-line);
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.loading-eta {
+  margin-left: auto;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+}
+
+.loading-bar {
+  position: relative;
+  height: 3px;
+  margin: 12px 0 14px;
+  overflow: hidden;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-color-overlay-hairline);
+}
+
+.loading-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--nv-color-accent);
+  transition: width 250ms linear;
+}
+
+.loading-bar[data-indeterminate="true"] > span {
+  width: 30%;
+  animation: loading-sweep 1.4s var(--nv-motion-easing-standard) infinite;
+}
+
+@keyframes loading-sweep {
+  from {
+    left: -30%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+.loading-figures {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-size: var(--nv-type-caption-size);
+  line-height: var(--nv-type-caption-line);
+}
+
+.loading-row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 10px;
+}
+
+.loading-row dt {
+  color: var(--nv-color-text-muted);
+}
+
+.loading-row dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--nv-color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loading-hint {
+  margin-top: 12px;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-caption-size);
+  line-height: var(--nv-type-caption-line);
+  text-wrap: pretty;
+}
+
+.loading-hint[data-tone="warn"] {
+  color: var(--nv-color-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-panel,
+  .loading-bar[data-indeterminate="true"] > span {
+    animation: none;
+  }
+}
+
+/* The quality switch: which version plays, in a word. */
+.player-btn.player-quality {
+  width: auto;
+  min-width: 44px;
+  padding: 0 10px;
+  border-radius: var(--nv-radius-pill);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  font-weight: var(--nv-font-weight-semibold);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}

@@ -45,7 +45,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.30", default-features = false, features = ["resource", "signal"] }
+nix = { version = "0.30", default-features = false, features = ["fs", "resource", "signal"] }
 
 [dev-dependencies]
 tempfile = "3"

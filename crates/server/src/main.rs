@@ -4,6 +4,7 @@
 mod api;
 mod auth;
 mod config;
+mod copies;
 mod discovery;
 mod downloads;
 mod net;
@@ -150,8 +151,16 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
         &config.data_dir,
     )
     .await?;
+    let copies = copies::Copies::start(
+        tools.clone(),
+        library.clone(),
+        transcoder.clone(),
+        &config.data_dir,
+    )
+    .await;
     let state = api::AppState {
         library: library.clone(),
+        copies,
         auth: Arc::new(auth::Auth::new(net::TrustedProxies::new(
             config.trusted_proxies,
         ))),

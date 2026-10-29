@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useCanGoBack, useNavigate, useParams, useRouter, useRouterState, useSearch } from "@tanstack/react-router";
-import { audioLanguage, formatClock, subtitleLabel, type EpisodeDetail, type EpisodeRef, type SubtitleTrack, type Version } from "@nuvora/core";
+import { audioLanguage, formatClock, subtitleLabel, type EpisodeDetail, type EpisodeRef, type StreamingCopy, type SubtitleTrack, type Version } from "@nuvora/core";
 import { client, queries, servedClient } from "../nuvora";
 import { ArrowLeftIcon, Back10Icon, Forward10Icon, FullscreenIcon, PauseIcon, PipIcon, PlayIcon, SpinIcon, SubtitlesIcon, VolumeIcon } from "../components/Icon";
 import { Notice, type NoticeText } from "../components/Notice";
 import { NextEpisodeButton } from "../components/player/NextEpisodeButton";
+import { LoadingPanel, durationText, useLoadStats } from "../components/player/LoadingPanel";
 import { PlaybackMode, playbackMode, type Mode } from "../components/player/PlaybackMode";
 import { PlainSubtitles } from "../components/player/PlainSubtitles";
 import { PlayerTitle } from "../components/player/PlayerTitle";
@@ -16,6 +17,7 @@ import { UpNext } from "../components/player/UpNext";
 import { initials } from "@nuvora/core";
 import { usePartyPlayer } from "../components/party/usePartyPlayer";
 import { useHls } from "../components/player/useHls";
+import { useRebuffer } from "../components/player/useRebuffer";
 import { useRewrap } from "../components/player/useRewrap";
 import { useSubtitles } from "../components/player/useSubtitles";
 import { Volume } from "../components/player/Volume";
@@ -26,6 +28,7 @@ import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useMediaState } from "../lib/useMediaState";
 import { useProgressReporting, type ProgressTarget } from "../lib/useProgressReporting";
 import { loadVolume, saveVolume } from "../lib/volumeMemory";
+import { loadQuality, saveQuality, type Quality } from "../lib/qualityMemory";
 import { opensNatively } from "../platform/deviceProfile";
 import "../styles/player.css";
 import "../styles/subtitles.css";
@@ -105,8 +108,32 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
   const notice = failed ? playerFailed : movie && !version ? fileGone : decided?.kind === "blocked" ? decided.notice : undefined;
   const fromServer = served?.file === file;
   const playback = notice ? undefined : fromServer ? served.playback : version?.playback;
-  const source = sourceFor(playback);
-  const mode = playback ? playbackMode(playback, source?.kind === "rewrap") : undefined;
+
+  // A 4K or very high bitrate file plays from the server's 1080p copy once there is one, unless the viewer chose the original.
+  const heavy = !!version && isHeavy(version);
+  const [quality, setQuality] = useState<Quality>(loadQuality);
+  const [copyBroken, setCopyBroken] = useState(false);
+  const [switchedAt, setSwitchedAt] = useState<number | undefined>(undefined);
+  const { data: copy, isPending: copyPending } = useQuery({
+    ...queries.streamingCopy(file),
+    enabled: heavy && !notice,
+    refetchInterval: (q) => (q.state.data?.state === "making" || q.state.data?.state === "queued" ? 30_000 : false),
+  });
+  const copyReady = copy?.state === "ready" && !!copy.url && !copyBroken && !fromServer;
+  const playsCopy = copyReady && quality === "copy";
+  // Until the server says whether there is a copy, nothing starts: no original to throw away a second later.
+  const deciding = heavy && !notice && copyPending;
+  const source = deciding ? undefined : playsCopy ? { kind: "hls" as const, url: client.resolve(copy.url!) } : sourceFor(playback);
+  const mode = playsCopy ? COPY_MODE : playback ? playbackMode(playback, source?.kind === "rewrap") : undefined;
+  const switchQuality = useCallback(
+    (to: Quality, at: number) => {
+      setSwitchedAt(at);
+      keepPlace(Math.floor(at * 1000));
+      setQuality(to);
+      saveQuality(to);
+    },
+    [keepPlace],
+  );
 
   // A file that won't play directly here after all gets the server's stream, from where it stopped.
   const fallBack = useCallback(() => {
@@ -130,7 +157,7 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
 
   return (
     <PlayerView
-      key={`${id}:${file}:${fromServer ? "server" : "file"}`}
+      key={`${id}:${file}:${fromServer ? "server" : playsCopy ? "copy" : "file"}`}
       catalog={{ itemId: id, fileId: file }}
       title={episode?.show_title ?? movie?.title}
       year={movie?.kind === "movie" ? movie.year : undefined}
@@ -138,19 +165,80 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
       onNext={playNext}
       source={source}
       mode={mode}
-      startAt={startAt}
+      startAt={switchedAt ?? startAt}
+      durationHint={durationMs != null ? durationMs / 1000 : undefined}
+      about={{
+        source: playsCopy ? "1080p copy · H.264" : version ? (heavy ? `Original · ${version.summary}` : version.summary) : null,
+        bitrate: playsCopy && copy.state === "ready" ? copy.bitrate : (version?.media?.bitrate ?? null),
+        hint: heavy && !playsCopy ? copyHint(copy, copyReady) : null,
+      }}
+      quality={
+        copyReady && copy.state === "ready"
+          ? {
+              current: quality,
+              copyLabel: `1080p copy · ${(copy.bitrate / 1e6).toFixed(1)} Mbit/s`,
+              originalLabel: `Original · ${version?.summary ?? ""}`,
+              onSwitch: switchQuality,
+            }
+          : undefined
+      }
       subtitleTracks={version?.media?.subtitles ?? NO_TRACKS}
       audioLanguage={version?.media ? audioLanguage(version.media.audio) : null}
       subtitleScope={episode ? `show:${episode.show_id}` : `movie:${id}`}
       notice={notice}
       onBack={back}
-      onFailed={fallBack}
+      onFailed={playsCopy ? () => setCopyBroken(true) : fallBack}
       onPosition={keepPlace}
     />
   );
 }
 
 const NO_TRACKS: SubtitleTrack[] = [];
+
+const COPY_MODE: Mode = {
+  label: "1080p copy",
+  detail: "A lighter copy the server made of this video, so it streams without stopping. Switch to the original with the quality button.",
+};
+
+/** Mirrors the server's rule for which videos get a streaming copy: taller than 1080p, or above 40 Mbit/s. */
+function isHeavy(version: Version): boolean {
+  const media = version.media;
+  if (!media) return false;
+  return media.video.some((v) => v.height > 1080) || (media.bitrate ?? 0) > 40_000_000;
+}
+
+/** Under the loading figures while the original plays: the copy to switch to, or how far it has got. */
+function copyHint(copy: StreamingCopy | undefined, ready: boolean): string | null {
+  switch (copy?.state) {
+    case "ready":
+      return ready ? "The 1080p copy streams smoothly: switch with the quality button." : null;
+    case "making":
+      return copy.paused
+        ? `A 1080p copy that streams smoothly is ${Math.floor(copy.progress * 100)}% made. It carries on whenever nobody is streaming through the server.`
+        : `A 1080p copy that streams smoothly is ${Math.floor(copy.progress * 100)}% made${copy.eta_s != null ? `, ready in about ${durationText(copy.eta_s)}` : ""}.`;
+    case "queued":
+      return "A 1080p copy that streams smoothly is waiting its turn on the server.";
+    default:
+      return null;
+  }
+}
+
+/** The quality switch: the server's 1080p copy or the original file. */
+interface QualityChoice {
+  current: Quality;
+  copyLabel: string;
+  originalLabel: string;
+  /** `at`: where playback is, in seconds, so the other version opens there. */
+  onSwitch: (to: Quality, at: number) => void;
+}
+
+/** What the loading panel says about the video itself. */
+interface About {
+  source: string | null;
+  /** Bit/s. */
+  bitrate: number | null;
+  hint: string | null;
+}
 
 /** The file as it is (opened by the browser, or rewrapped here), or streamed through the server as HLS. */
 export type Source = { kind: "direct" | "rewrap" | "hls"; url: string };
@@ -175,6 +263,10 @@ interface PlayerViewProps {
   mode: Mode | undefined;
   /** Seconds. Read once: the URL keeps moving with playback after that. */
   startAt: number | undefined;
+  /** Seconds, from the catalog: shown until the video reports its own. */
+  durationHint?: number;
+  about?: About;
+  quality?: QualityChoice;
   subtitleTracks: readonly SubtitleTrack[];
   audioLanguage: string | null;
   /** What a subtitle choice is remembered for: the show for an episode, else the movie. */
@@ -191,19 +283,18 @@ interface PlayerViewProps {
 
 type PulseKind = "play" | "pause" | "back" | "forward" | "volume" | "subtitles-on" | "subtitles-off";
 
-export function PlayerView({ catalog, streamId, title, year, episode, onNext, source, mode, startAt: initialStart, subtitleTracks, audioLanguage, subtitleScope, notice, waiting, streamNote, onBack, onFailed, onPosition }: PlayerViewProps) {
+export function PlayerView({ catalog, streamId, title, year, episode, onNext, source, mode, startAt: initialStart, durationHint, about, quality, subtitleTracks, audioLanguage, subtitleScope, notice, waiting, streamNote, onBack, onFailed, onPosition }: PlayerViewProps) {
   const [startAt] = useState(initialStart);
   const src = source?.url;
   const root = useRef<HTMLDivElement>(null);
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   const media = useMediaState(video);
-  const [ready, setReady] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [showDuration, setShowDuration] = useState(false);
   const [pulse, setPulse] = useState<{ kind: PulseKind; n: number; label?: string } | null>(null);
   const [held, setHeld] = useState({ focus: false, hover: false, drag: false, menu: false });
   const { awake, wake, sleep } = useAwake(AUTO_HIDE_MS);
-  const buffering = useHeldFor(media.starved && !!src, SPINNER_DELAY_MS);
+  const [ready, setReady] = useState(false);
   const lastPointer = useRef("mouse");
   const progressTarget: ProgressTarget | null = catalog ? { kind: "file", ...catalog } : streamId ? { kind: "stream", id: streamId } : null;
   useProgressReporting(src ? video : null, progressTarget, onPosition);
@@ -276,7 +367,11 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
         }
         return;
       }
-      if (video.paused) {
+      if (rebuffer.holding) {
+        // Held for buffer, it looks like playing: a press means pause, and it stays paused.
+        rebuffer.cancel();
+        flash("pause");
+      } else if (video.paused) {
         video.play().catch(() => {});
         flash("play");
       } else {
@@ -380,8 +475,12 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
-  const remaining = Math.max(0, media.duration - media.time);
-  const playing = !media.paused;
+  // Before the first frame, the place it opens at and the catalog's length, not 0:00 of nothing.
+  const shownTime = ready ? media.time : (startAt ?? 0);
+  const shownDuration = known ? media.duration : (durationHint ?? Number.NaN);
+  const lengthKnown = Number.isFinite(shownDuration) && shownDuration > 0;
+  const remaining = Math.max(0, shownDuration - shownTime);
+  const playing = !media.paused || rebuffer.holding;
   const level = media.muted || media.volume === 0 ? "muted" : media.volume < 0.5 ? "low" : "high";
   const pipSupported = document.pictureInPictureEnabled;
   const canFullscreen = document.fullscreenEnabled || !!videoFullscreen;
@@ -475,10 +574,16 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
       )}
 
       <div className="player-center" aria-hidden>
-        {buffering && !notice && party.countdown === null && (
-          <span className="player-spinner">
-            <SpinIcon size={44} strokeWidth={2} />
-          </span>
+        {loading && (
+          <LoadingPanel
+            phase={ready ? "rebuffer" : "start"}
+            stats={loadStats}
+            goal={rebuffer.goal}
+            source={about?.source ?? null}
+            mode={mode?.label ?? null}
+            bitrate={loadStats?.fragment || source?.kind === "hls" ? (hlsInfo.current.bitrate ?? about?.bitrate ?? null) : (about?.bitrate ?? null)}
+            hint={streamNote ?? about?.hint ?? null}
+          />
         )}
         {pulse && (
           <span key={pulse.n} className="player-pulse" data-kind={pulse.kind}>
@@ -513,7 +618,6 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
           {streamNote && <p className="player-stream-note">{streamNote}</p>}
         </div>
       )}
-      {streamNote && src && buffering && !notice && <p className="player-stream-note player-buffer-note">{streamNote}</p>}
 
       {notice && (
         <div className="player-notice">
@@ -552,16 +656,16 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
         {src && !notice && (
           <div ref={bar} className="player-bottom" onPointerEnter={(e) => e.pointerType === "mouse" && hold("hover", true)} onPointerLeave={() => hold("hover", false)}>
             <div className="player-timeline">
-              <span className="player-time">{formatClock(media.time * 1000)}</span>
-              <Scrubber video={video} duration={media.duration} buffered={media.buffered} previews={previews ?? null} onSeek={actions.seek} onDragChange={(d) => hold("drag", d)} />
+              <span className="player-time">{formatClock(shownTime * 1000)}</span>
+              <Scrubber video={video} duration={shownDuration} pendingTime={ready ? undefined : shownTime} buffered={media.buffered} previews={previews ?? null} onSeek={actions.seek} onDragChange={(d) => hold("drag", d)} />
               <button
                 type="button"
                 className="player-time player-time-end"
-                aria-label={known ? (showDuration ? `Duration ${formatClock(media.duration * 1000)}. Show time remaining` : `${formatClock(remaining * 1000)} remaining. Show duration`) : "Duration"}
+                aria-label={lengthKnown ? (showDuration ? `Duration ${formatClock(shownDuration * 1000)}. Show time remaining` : `${formatClock(remaining * 1000)} remaining. Show duration`) : "Duration"}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => setShowDuration((s) => !s)}
               >
-                {!known ? "0:00" : showDuration ? formatClock(media.duration * 1000) : `−${formatClock(Math.ceil(remaining) * 1000)}`}
+                {!lengthKnown ? "–:––" : showDuration ? formatClock(shownDuration * 1000) : `−${formatClock(Math.ceil(remaining) * 1000)}`}
               </button>
             </div>
             <div className="player-controls">
@@ -581,6 +685,18 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
                 {episode?.next && <NextEpisodeButton next={episode.next} onPlay={onNext} />}
               </div>
               <div className="player-controls-end">
+                {quality && (
+                  <button
+                    type="button"
+                    className="player-btn player-quality"
+                    aria-label={quality.current === "copy" ? `Playing the ${quality.copyLabel}. Switch to the ${quality.originalLabel}` : `Playing the ${quality.originalLabel}. Switch to the ${quality.copyLabel}`}
+                    data-tip={quality.current === "copy" ? `Switch to ${quality.originalLabel}` : `Switch to ${quality.copyLabel}`}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => quality.onSwitch(quality.current === "copy" ? "original" : "copy", video?.currentTime ?? shownTime)}
+                  >
+                    {quality.current === "copy" ? "1080p" : "Original"}
+                  </button>
+                )}
                 {subtitles.tracks.length > 0 && (
                   <SubtitleMenu subtitles={subtitles} style={subtitleStyle} onStyle={changeSubtitleStyle} onOpenChange={holdForMenu} />
                 )}

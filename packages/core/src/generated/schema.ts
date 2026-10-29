@@ -605,6 +605,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/files/{id}/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where the file's streaming copy stands. Asking moves it to the front of
+         *     the queue.
+         */
+        get: operations["get_copy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/{id}/copy/init.mp4": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The copy's fMP4 init segment. */
+        get: operations["get_copy_init"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/{id}/copy/main.m3u8": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The finished copy's playlist, VOD, segment URIs relative. */
+        get: operations["get_copy_playlist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/{id}/copy/{segment}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Media segment `{n}.m4s` of the copy. */
+        get: operations["get_copy_segment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/files/{id}/fonts": {
         parameters: {
             query?: never;
@@ -1274,6 +1345,8 @@ export interface components {
             video_output?: null | components["schemas"]["VideoOutput"];
         };
         Activity: {
+            /** @description Streaming copies being made or waiting, the one being made first. */
+            copies: components["schemas"]["CopyJob"][];
             previews: components["schemas"]["PreviewQueue"];
             scan: components["schemas"]["ScanStatus"];
             /** @description Oldest first. */
@@ -1392,6 +1465,63 @@ export interface components {
             language?: string | null;
             /** @description The actor or voice actor. */
             name: string;
+        };
+        Copy: components["schemas"]["CopyState"] & {
+            /** @description The copy's playlist once it is ready: HLS, H.264 and AAC. */
+            url?: string | null;
+        };
+        /** @description A heavy video's 1080p streaming copy. */
+        CopyJob: components["schemas"]["CopyState"] & {
+            /** Format: int64 */
+            file_id: number;
+            title: string;
+        };
+        /** @description Where a video's copy stands. */
+        CopyState: {
+            /** @enum {string} */
+            state: "not_needed";
+        } | {
+            /** @enum {string} */
+            state: "off";
+        } | {
+            /** Format: int32 */
+            position: number;
+            /** @enum {string} */
+            state: "queued";
+        } | {
+            /**
+             * Format: int64
+             * @description Seconds until done at the current speed.
+             */
+            eta_s?: number | null;
+            /** @description Held while someone streams through the server. */
+            paused: boolean;
+            /**
+             * Format: double
+             * @description 0 to 1.
+             */
+            progress: number;
+            /**
+             * Format: double
+             * @description Seconds of video made per second; `None` until measured.
+             */
+            speed?: number | null;
+            /** @enum {string} */
+            state: "making";
+        } | {
+            /**
+             * Format: int64
+             * @description Average bit/s over the whole copy.
+             */
+            bitrate: number;
+            /** Format: int32 */
+            height: number;
+            /** @enum {string} */
+            state: "ready";
+        } | {
+            reason: string;
+            /** @enum {string} */
+            state: "failed";
         };
         /**
          * @description `paths` are absolute folders that exist on the server; at least one, and
@@ -2627,6 +2757,12 @@ export interface components {
              * @default 192
              */
             stereo_kbps: number;
+            /**
+             * @description Make a 1080p copy of every video too heavy to stream as it is (4K,
+             *     or above 40 Mbit/s), in the background, and play it by default.
+             * @default true
+             */
+            streaming_copies: boolean;
             /**
              * Format: int32
              * @description Streams one person may have open, 1 to 10; one more stops their oldest.
@@ -5070,6 +5206,163 @@ export interface operations {
                 };
             };
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_copy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Copy"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_copy_init: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": number[];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_copy_playlist: {
+        parameters: {
+            query?: {
+                /** @description Where playback starts, in seconds (`EXT-X-START`). */
+                start?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.apple.mpegurl": string;
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_copy_segment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                /** @description `{n}.m4s` */
+                segment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": number[];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

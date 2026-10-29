@@ -352,6 +352,26 @@ impl Library {
             .await?)
     }
 
+    /// Readable videos taller than `height` lines or above `bitrate` bit/s,
+    /// newest first: the ones too heavy to stream as they are.
+    pub async fn heavy_files(&self, height: u32, bitrate: u64) -> Result<Vec<FileId>, QueryError> {
+        Ok(self
+            .inner
+            .db
+            .read(move |c| {
+                c.prepare_cached(
+                    "SELECT f.id FROM media_file f \
+                     WHERE f.probe_error IS NULL AND f.duration_ms > 0 \
+                     AND EXISTS (SELECT 1 FROM media_stream s WHERE s.file_id = f.id AND s.kind = 'video' \
+                                 AND (s.height > ?1 OR f.bitrate > ?2)) \
+                     ORDER BY f.added_at DESC, f.id DESC",
+                )?
+                .query_map(rusqlite::params![height, bitrate as i64], |r| r.get::<_, i64>(0).map(FileId))?
+                .collect()
+            })
+            .await?)
+    }
+
     /// The seek previews of `file`, or `None` while they are still to be made
     /// (or it can't have any). Asking moves the file to the front of the queue.
     pub async fn previews(&self, file: FileId) -> Result<Option<Previews>, QueryError> {

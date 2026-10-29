@@ -71,6 +71,7 @@ pub(super) async fn put_tuning(
         .map_err(ApiError::internal)?;
     state.library.set_previews_enabled(body.seek_previews);
     state.transcoder.retune(body).await;
+    state.copies.retune();
     Ok(Json(tuning_response(&state)))
 }
 
@@ -95,6 +96,17 @@ pub struct Activity {
     pub streams: Vec<ActiveStream>,
     pub scan: ScanStatusResponse,
     pub previews: PreviewQueue,
+    /// Streaming copies being made or waiting, the one being made first.
+    pub copies: Vec<CopyJob>,
+}
+
+/// A heavy video's 1080p streaming copy.
+#[derive(Serialize, ToSchema)]
+pub struct CopyJob {
+    pub file_id: i64,
+    pub title: String,
+    #[serde(flatten)]
+    pub state: crate::copies::CopyState,
 }
 
 /// One HLS stream. Times are in seconds of the video (0 is its first frame).
@@ -201,7 +213,22 @@ pub(super) async fn get_activity(
         streams.push(active_stream(&state, stream).await?);
     }
     let previews = state.library.preview_activity();
+    let mut copies = Vec::new();
+    for (file, copy) in state.copies.activity() {
+        let title = state
+            .library
+            .file_title(file)
+            .await
+            .map_err(ApiError::internal)?
+            .unwrap_or_else(|| "A video".to_owned());
+        copies.push(CopyJob {
+            file_id: file.raw(),
+            title,
+            state: copy,
+        });
+    }
     Ok(Json(Activity {
+        copies,
         streams,
         scan: scan_status_wire(state.library.scan_status()),
         previews: PreviewQueue {
