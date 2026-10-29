@@ -15,8 +15,8 @@ use serde_json::{Value, json};
 use tower::ServiceExt;
 
 use super::{AppState, ServerSetup};
-use crate::config::HardwareEncoding;
-use crate::downloads::Engine;
+use nuvora_torrent::downloads::Engine;
+use nuvora_transcode::HardwareEncoding;
 
 pub struct TestApp {
     dir: tempfile::TempDir,
@@ -92,10 +92,13 @@ impl TestApp {
         })
         .await
         .unwrap();
-        let downloads =
-            crate::downloads::Downloads::start(library.clone(), &dir.path().join("data"), engine)
-                .await;
-        let streams = crate::streams::Streams::start(
+        let downloads = nuvora_torrent::downloads::Downloads::start(
+            library.clone(),
+            &dir.path().join("data"),
+            engine,
+        )
+        .await;
+        let streams = nuvora_torrent::streams::Streams::start(
             library.clone(),
             downloads.engine(),
             tools.clone(),
@@ -103,14 +106,14 @@ impl TestApp {
         )
         .await
         .unwrap();
-        let transcoder = crate::transcode::Transcoder::start(
+        let transcoder = nuvora_transcode::transcode::Transcoder::start(
             tools.clone(),
             &dir.path().join("data"),
-            crate::tuning::Tuning::default(),
+            nuvora_transcode::tuning::Tuning::default(),
             Some(encoder),
         )
         .await;
-        let copies = crate::copies::Copies::start(
+        let copies = nuvora_transcode::copies::Copies::start(
             tools.clone(),
             library.clone(),
             transcoder.clone(),
@@ -309,7 +312,7 @@ impl TestApp {
         let http = listener.local_addr().unwrap();
         let session = librqbit::Session::new_with_opts(
             self.path(&format!("seeder-{}", http.port())),
-            crate::downloads::loopback_options(),
+            nuvora_torrent::downloads::loopback_options(),
         )
         .await
         .unwrap();

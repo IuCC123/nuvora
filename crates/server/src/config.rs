@@ -27,6 +27,7 @@
 //! paths = ["/Volumes/Media/Movies"]
 //! ```
 
+use nuvora_transcode::HardwareEncoding;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 
@@ -78,8 +79,8 @@ pub struct ServeArgs {
     /// Convert video on the graphics chip: `auto` uses the first one that
     /// works here, `off` always uses the processor. Unset, the admin panel
     /// decides (`auto` until changed there).
-    #[arg(long, env = "NUVORA_HARDWARE_ENCODING", value_enum)]
-    pub hardware_encoding: Option<HardwareEncoding>,
+    #[arg(long, env = "NUVORA_HARDWARE_ENCODING", value_parser = parse_hardware_encoding)]
+    pub hardware_encoding: Option<EncoderArg>,
     /// Look for new versions on GitHub, so admins can update from Settings
     /// (default: true). Off, the server never contacts GitHub.
     #[arg(long, env = "NUVORA_UPDATES")]
@@ -90,27 +91,16 @@ pub struct ServeArgs {
     pub update_feed: Option<String>,
 }
 
-/// Which encoder converts video; see `nuvora_media::VideoEncoder`.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    Eq,
-    Deserialize,
-    serde::Serialize,
-    utoipa::ToSchema,
-    clap::ValueEnum,
-)]
-#[serde(rename_all = "lowercase")]
-pub enum HardwareEncoding {
-    #[default]
-    Auto,
-    Off,
-    Videotoolbox,
-    Nvenc,
-    Vaapi,
+/// `--hardware-encoding` or `NUVORA_HARDWARE_ENCODING`. Empty means unset,
+/// so Compose can pass an unset variable through and the admin panel decides.
+#[derive(Debug, Clone, Copy)]
+pub struct EncoderArg(Option<HardwareEncoding>);
+
+fn parse_hardware_encoding(value: &str) -> Result<EncoderArg, String> {
+    if value.trim().is_empty() {
+        return Ok(EncoderArg(None));
+    }
+    value.parse().map(|encoding| EncoderArg(Some(encoding)))
 }
 
 /// Validated configuration.
@@ -267,7 +257,10 @@ pub fn load(args: &ServeArgs) -> Result<Config, ConfigError> {
             .map(|p| p.parse())
             .collect::<Result<_, _>>()?,
         discovery: args.discovery.or(file.discovery).unwrap_or(true),
-        hardware_encoding: args.hardware_encoding.or(file.hardware_encoding),
+        hardware_encoding: args
+            .hardware_encoding
+            .and_then(|arg| arg.0)
+            .or(file.hardware_encoding),
         updates: args.updates.or(file.updates).unwrap_or(true),
         update_feed: args.update_feed.clone(),
     })
@@ -323,6 +316,15 @@ mod tests {
             Some(HardwareEncoding::Off),
             "the flag wins"
         );
+        let mut cli = crate::Cli::try_parse_from(["nuvora", "--hardware-encoding", ""]).unwrap();
+        cli.serve.config = Some(toml.clone());
+        cli.serve.data_dir = Some(dir.path().into());
+        assert_eq!(
+            load(&cli.serve).unwrap().hardware_encoding,
+            Some(HardwareEncoding::Videotoolbox),
+            "empty is unset, as Compose passes an unset variable"
+        );
+        assert!(crate::Cli::try_parse_from(["nuvora", "--hardware-encoding", "gpu"]).is_err());
         std::fs::write(&toml, "hardware_encoding = \"gpu\"\n").unwrap();
         assert!(
             load(&args(Some(toml), vec![])).is_err(),

@@ -1,5 +1,5 @@
 //! Streams for devices that can't play a file as-is: HLS with fMP4
-//! segments, remuxed and converted on the fly by [`crate::transcode`]. The
+//! segments, remuxed and converted on the fly by [`nuvora_transcode::transcode`]. The
 //! item's `playback.url` names the plan; the player adds a `session` id of
 //! its own, one per playback, so its seeks restart only its own run.
 //!
@@ -21,7 +21,7 @@ use utoipa::IntoParams;
 
 use super::{ApiError, AppState, ErrorBody};
 use crate::auth::SignedIn;
-use crate::transcode::{Session, SessionKey, TranscodeError};
+use nuvora_transcode::transcode::{Session, SessionKey, TranscodeError};
 
 #[derive(Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -438,7 +438,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[tokio::test(flavor = "multi_thread")]
     async fn videotoolbox_converts_into_the_same_six_second_segments() {
-        let app = TestApp::with_encoder(crate::config::HardwareEncoding::Videotoolbox).await;
+        let app = TestApp::with_encoder(nuvora_transcode::HardwareEncoding::Videotoolbox).await;
         let admin = app.setup_admin().await;
         let dir = app.path("movies/Long (2020)");
         std::fs::create_dir_all(&dir).unwrap();

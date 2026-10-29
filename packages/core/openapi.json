@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Nuvora",
-    "description": "The nuvora binary: config, HTTP API, OpenAPI document, embedded web app.",
+    "description": "The nuvora binary: config, the HTTP API and its OpenAPI document, accounts, Watch Together, updates, and the embedded web app.",
     "license": {
       "name": "AGPL-3.0-only",
       "identifier": "AGPL-3.0-only"

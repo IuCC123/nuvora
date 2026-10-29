@@ -30,7 +30,7 @@ use nuvora_media::{
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 
-use crate::config::HardwareEncoding;
+use crate::HardwareEncoding;
 use crate::tuning::Tuning;
 
 /// The encoder for converted video: the one `choice` names, or with `auto`

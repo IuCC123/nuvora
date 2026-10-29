@@ -115,11 +115,11 @@ enum Access {
 pub struct AppState {
     pub library: Library,
     pub auth: Arc<crate::auth::Auth>,
-    pub transcoder: Arc<crate::transcode::Transcoder>,
-    pub copies: Arc<crate::copies::Copies>,
+    pub transcoder: Arc<nuvora_transcode::transcode::Transcoder>,
+    pub copies: Arc<nuvora_transcode::copies::Copies>,
     pub parties: Arc<crate::party::Parties>,
-    pub downloads: Arc<crate::downloads::Downloads>,
-    pub streams: Arc<crate::streams::Streams>,
+    pub downloads: Arc<nuvora_torrent::downloads::Downloads>,
+    pub streams: Arc<nuvora_torrent::streams::Streams>,
     pub updater: Arc<crate::update::Updater>,
     pub server: Arc<ServerSetup>,
 }

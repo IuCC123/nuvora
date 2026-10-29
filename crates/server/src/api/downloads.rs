@@ -1,5 +1,5 @@
 //! Downloads on the wire, for admins: find a movie on the indexers, download
-//! it, and watch it land in a library ([`crate::downloads`]).
+//! it, and watch it land in a library ([`nuvora_torrent::downloads`]).
 //!
 //! | method | path                                | purpose                                       |
 //! |--------|-------------------------------------|-----------------------------------------------|
@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use super::{ApiError, AppState, ErrorBody, JsonBody};
-use crate::downloads::{self, AddError, ControlError, Snapshot, TorznabError};
+use nuvora_torrent::downloads::{self, AddError, ControlError, Snapshot, TorznabError};
 
 #[derive(Serialize, ToSchema)]
 pub struct Download {

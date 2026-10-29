@@ -70,7 +70,7 @@ pub enum Engine {
     /// or any free one.
     Internet,
     /// Trackers on this machine only, so tests never reach the network.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     Loopback,
 }
 
@@ -777,7 +777,7 @@ async fn start_engine(dir: &Path, engine: Engine) -> Result<Arc<Session>, String
     match engine {
         Engine::Off => return Err("it is turned off".to_owned()),
         Engine::Internet => {}
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         Engine::Loopback => {
             return Session::new_with_opts(dir.to_owned(), remembering(loopback_options()))
                 .await
@@ -830,7 +830,7 @@ async fn start_engine(dir: &Path, engine: Engine) -> Result<Arc<Session>, String
     Err(failed)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn loopback_options() -> SessionOptions {
     SessionOptions {
         dht: None,

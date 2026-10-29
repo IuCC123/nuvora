@@ -12,7 +12,7 @@ use nuvora_media::EncodeOptions;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::config::HardwareEncoding;
+use crate::HardwareEncoding;
 
 const SETTING_KEY: &str = "tuning";
 

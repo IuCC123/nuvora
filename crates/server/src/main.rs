@@ -4,17 +4,11 @@
 mod api;
 mod auth;
 mod config;
-mod copies;
 mod discovery;
-mod downloads;
 mod net;
 mod party;
-mod streams;
-mod transcode;
-mod tuning;
 mod update;
 mod web;
-mod whole_pieces;
 
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -23,6 +17,8 @@ use std::time::{Duration, Instant, SystemTime};
 use clap::{Parser, Subcommand};
 use nuvora_library::{Library, LibraryConfig};
 use nuvora_media::MediaTools;
+use nuvora_torrent::{downloads, streams};
+use nuvora_transcode::{copies, transcode, tuning};
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
@@ -84,9 +80,10 @@ fn raise_open_file_limit() {
 async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            // The BitTorrent engine narrates every peer at info.
+            // The BitTorrent engine narrates every peer at info, and its UPnP
+            // warns every 30 s on a network without UPnP, which is common.
             EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info,librqbit=warn")),
+                .unwrap_or_else(|_| EnvFilter::new("info,librqbit=warn,librqbit_upnp=error")),
         )
         .init();
     #[cfg(unix)]

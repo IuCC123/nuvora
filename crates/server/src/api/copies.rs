@@ -1,4 +1,4 @@
-//! Streaming copies (see [`crate::copies`]): where a heavy video's 1080p copy
+//! Streaming copies (see [`nuvora_transcode::copies`]): where a heavy video's 1080p copy
 //! stands, and the finished copy as HLS, served straight from disk.
 //!
 //! | method | path                               | access |
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use super::{ApiError, AppState, ErrorBody};
-use crate::copies::{Copies, CopyState};
+use nuvora_transcode::copies::{Copies, CopyState};
 
 #[derive(Serialize, ToSchema)]
 pub struct Copy {

@@ -2378,23 +2378,21 @@ dependencies = [
 name = "nuvora-server"
 version = "0.7.4"
 dependencies = [
- "anyhow",
  "argon2",
  "axum",
  "blake3",
- "chrono",
  "clap",
  "directories",
  "librqbit",
- "librqbit-core",
  "mdns-sd",
  "mime",
  "nix",
  "nuvora-library",
  "nuvora-media",
+ "nuvora-torrent",
+ "nuvora-transcode",
  "password-hash",
  "reqwest 0.12.28",
- "roxmltree",
  "rust-embed",
  "serde",
  "serde_json",
@@ -2402,7 +2400,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
- "tokio-util",
  "toml",
  "tower",
  "tower-http",
@@ -2410,6 +2407,46 @@ dependencies = [
  "tracing-subscriber",
  "utoipa",
  "utoipa-axum",
+]
+
+[[package]]
+name = "nuvora-torrent"
+version = "0.7.4"
+dependencies = [
+ "anyhow",
+ "axum",
+ "chrono",
+ "librqbit",
+ "librqbit-core",
+ "nuvora-library",
+ "nuvora-media",
+ "password-hash",
+ "reqwest 0.12.28",
+ "roxmltree",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "nuvora-transcode"
+version = "0.7.4"
+dependencies = [
+ "blake3",
+ "nix",
+ "nuvora-library",
+ "nuvora-media",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "utoipa",
 ]
 
 [[package]]

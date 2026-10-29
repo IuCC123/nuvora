@@ -1,0 +1,26 @@
+[package]
+name = "nuvora-transcode"
+description = "Converting video while it plays: live HLS sessions, streaming copies of heavy files, and the Transcoding settings."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+nuvora-library = { path = "../library" }
+nuvora-media = { path = "../media" }
+blake3 = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync", "time", "process", "io-util"] }
+tracing = "0.1"
+utoipa = "5"
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.30", default-features = false, features = ["fs", "signal"] }
+
+[dev-dependencies]
+tempfile = "3"

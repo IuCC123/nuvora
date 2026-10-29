@@ -19,9 +19,9 @@ use super::{
     ApiError, AppState, AudioTrack, ErrorBody, JsonBody, MediaDetails, ScanStatusResponse,
     VideoTrack, scan_status_wire, unix_ms,
 };
-use crate::config::HardwareEncoding;
-use crate::transcode::{RunPhase, StreamActivity};
-use crate::tuning::Tuning;
+use nuvora_transcode::HardwareEncoding;
+use nuvora_transcode::transcode::{RunPhase, StreamActivity};
+use nuvora_transcode::tuning::Tuning;
 
 #[derive(Serialize, ToSchema)]
 pub struct TuningResponse {
@@ -106,7 +106,7 @@ pub struct CopyJob {
     pub file_id: i64,
     pub title: String,
     #[serde(flatten)]
-    pub state: crate::copies::CopyState,
+    pub state: nuvora_transcode::copies::CopyState,
 }
 
 /// One HLS stream. Times are in seconds of the video (0 is its first frame).
@@ -359,7 +359,7 @@ mod tests {
             .await;
         assert_eq!(saved.status, StatusCode::OK);
         assert_eq!(saved.json()["settings"], settings);
-        let reloaded = crate::tuning::Tuning::load(&app.state.library).await;
+        let reloaded = nuvora_transcode::tuning::Tuning::load(&app.state.library).await;
         assert_eq!(serde_json::to_value(&reloaded).unwrap(), settings);
 
         settings["segment_seconds"] = json!(60);

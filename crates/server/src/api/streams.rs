@@ -1,5 +1,5 @@
 //! Torrent streams on the wire, for admins: play a release while it
-//! downloads ([`crate::streams`]). The status says how this device plays
+//! downloads ([`nuvora_torrent::streams`]). The status says how this device plays
 //! it, as an item's version does: the file as it is, or HLS from the
 //! converter, which always converts the picture for a stream.
 //!
@@ -27,7 +27,7 @@ use utoipa::{IntoParams, ToSchema};
 use super::hls::HlsQuery;
 use super::{ApiError, AppState, Device, ErrorBody, JsonBody, MediaDetails, Playback};
 use crate::auth::SignedIn;
-use crate::streams::{OpenError, Phase, Stream};
+use nuvora_torrent::streams::{OpenError, Phase, Stream};
 
 #[derive(Deserialize, ToSchema)]
 pub struct OpenStreamRequest {
@@ -185,7 +185,7 @@ pub(super) async fn open_stream(
         .title
         .map(|t| t.trim().chars().take(300).collect::<String>())
         .filter(|t| !t.is_empty())
-        .or_else(|| crate::downloads::magnet_name(link));
+        .or_else(|| nuvora_torrent::downloads::magnet_name(link));
     let stream = state.streams.open(link, title).map_err(|e| match e {
         OpenError::BadLink => ApiError::validation("link", e.to_string()),
         OpenError::NoEngine(_) => ApiError::refused(e.to_string()),
@@ -360,7 +360,7 @@ pub(super) async fn get_stream_file(
     let Phase::Ready(file, media) = stream.phase() else {
         return Err(ApiError::not_found());
     };
-    Ok(crate::streams::serve_range(&file, &headers, media.container.mime_type()).await)
+    Ok(nuvora_torrent::streams::serve_range(&file, &headers, media.container.mime_type()).await)
 }
 
 #[utoipa::path(
