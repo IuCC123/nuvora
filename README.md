@@ -8,8 +8,8 @@
 </p>
 
 <p align="center">
-  A media server for the movies, shows and anime you already have.<br>
-  Plex's polish, Jellyfin's freedom, and no account with anyone but you.
+  Your own streaming service. Find any movie or show, play it right away,<br>
+  keep what you love, and watch it anywhere: library, torrents and streaming in one app.
 </p>
 
 <p align="center">
@@ -24,37 +24,35 @@
   <img src="assets/readme/home.jpg" alt="Nuvora's Home screen, with Continue Watching and Recently Added rows of movie posters" width="880">
 </p>
 
-Nuvora runs on a computer in your home, whether that's a PC, a Mac, a NAS or a Raspberry Pi, and turns a folder of video files into something that feels like a streaming service. Everyone in the house signs in with their own account and gets their own Continue Watching and their own Home screen. It's free and open source, and there's no Nuvora account, no subscription and nothing phoning home.
+Nuvora runs on a computer you own, at home or on a rented server, and gives everyone you invite a streaming service of their own: posters and descriptions for everything, their own Continue Watching, and playback that works in the browser, on the TV and on the desktop, at home or away. It plays the movies and shows you already have, and it gets new ones: search your indexers, start watching a torrent while it downloads, or download it into your library. It's free and open source, with no Nuvora account, no subscription and nothing phoning home.
 
 ## What it does
 
-### Finds everything on its own
+### Watch
 
-Point it at a folder and it works out which files are movies, shows and episodes, then fills in posters, descriptions, cast and voice actors from Wikipedia, AniList and TVmaze. None of that needs an API key. A film with no artwork anywhere gets a designed title card instead of a random video frame.
-
-<img src="assets/readme/library.jpg" alt="The Movies library with sort and filter controls, posters, and a title card for a film without artwork" width="880">
-
-### Plays almost anything
-
-If your browser or TV can play a file as it is, that's what it gets, HEVC, HDR and surround sound included. If it can't, Nuvora converts only the part that needs it while you watch, which is often just the audio, and it uses the graphics chip when there is one. You can still jump to any point.
+**Plays almost anything.** If your browser or TV can play a file as it is, that's what it gets, HEVC, HDR and surround sound included. If it can't, Nuvora converts only the part that needs it while you watch, often just the audio, on the graphics chip when there is one. A 4K film too heavy to stream gets a 1080p copy, made in the background. Away from home, playback keeps a minute buffered, so a patchy connection doesn't stop the picture.
 
 <img src="assets/readme/movie.jpg" alt="Sintel's page: poster, description from Wikipedia, file details, and a Resume button" width="880">
 
-### Subtitles that behave
-
-Embedded tracks show up, and so do `.srt`, `.ass` and `.vtt` files sitting next to the video. Styled anime subtitles keep their own fonts and placement, and Nuvora remembers which track you picked for each show.
+**Subtitles that behave.** Embedded tracks show up, and so do `.srt`, `.ass` and `.vtt` files next to the video. Styled anime subtitles keep their own fonts and placement, and Nuvora remembers which track you picked for each show.
 
 <img src="assets/readme/player.jpg" alt="The player paused on Sintel with an English subtitle on screen and the subtitle menu open" width="880">
 
-### Watch together
+**Watch together.** Invite someone and play the same thing on two screens at the same moment, in the same house or across town. Pause, skip ahead or move on to the next episode, and the other screen follows.
 
-Invite someone and play the same thing on two screens at the same moment, in the same house or across town. Pause, skip ahead or move on to the next episode, and the other screen follows.
+### Get
 
-### Downloads a movie without leaving the app
+**Find it and play it now.** Search your indexers for a movie or a show and press **Play**: Nuvora streams the torrent as it arrives, fetching the part you're watching first, so it starts in seconds and you can jump ahead. Or press **Download** and it lands in your library, named and filed, with artwork. See [Downloading movies and shows](#downloading-movies-and-shows).
 
-Search for a movie on your indexers, pick a release, and Nuvora downloads it and files it into your Movies library on its own. See [Downloading movies](#downloading-movies).
+### Organize
 
-There are TV apps too: one for Fire TV, Android TV and Google TV, and one for Fire TVs with Vega OS.
+**Finds everything on its own.** Point it at a folder and it works out which files are movies, shows and episodes, then fills in posters, descriptions, cast and voice actors from Wikipedia, AniList and TVmaze, with no API key. A film with no artwork anywhere gets a designed title card instead of a random video frame. Everyone in the house signs in with their own account and gets their own Home.
+
+<img src="assets/readme/library.jpg" alt="The Movies library with sort and filter controls, posters, and a title card for a film without artwork" width="880">
+
+### Host
+
+**Five minutes to set up, one click to update.** One command installs it with Docker on Linux, macOS, Windows or a NAS. Admins update the server from Settings. There are apps for Fire TV, Android TV and Google TV, for Fire TVs with Vega OS, and for Mac and Windows.
 
 ## Set up your server
 
@@ -148,9 +146,9 @@ Media/
 
 Movies want a year in the name. Episodes want a number: `S02E01`, `2x01` and anime-style `Show - 01 [1080p].mkv` all work. Subtitle files next to a video are picked up along with their language (`.en.srt`, `.English.forced.srt`, or a `Subs/` folder).
 
-## Downloading movies
+## Downloading movies and shows
 
-Admins can find a movie and download it without leaving Nuvora. Open **Downloads** in the sidebar, search for the movie, and pick a release; it downloads inside the server and moves into your Movies library, in a `Title (Year)` folder, when it's done. You can also paste a magnet link into the search box.
+Admins can find a movie or a show and download it without leaving Nuvora. Open **Downloads** in the sidebar, search, and pick a release; it downloads inside the server and, when it's done, moves into your library: a movie into Movies, in a `Title (Year)` folder, and episodes or whole seasons into TV Shows, in the show's folder. You can also paste a magnet link into the search box.
 
 Nuvora searches [Torznab](https://torznab.github.io/spec-1.3-draft/) indexers, the feeds [Jackett](https://github.com/Jackett/Jackett) and [Prowlarr](https://prowlarr.com) provide. Run one of them, then add its feed and API key under **Settings › Downloads**. Download only what you have the right to.
 
@@ -226,24 +224,7 @@ Then tell Nuvora to trust the proxy with `NUVORA_TRUSTED_PROXY`, set to an addre
 
 ## Development
 
-You need [Rust](https://rustup.rs) (stable), [Bun](https://bun.sh) 1.3 and FFmpeg 6 or newer.
-
-```sh
-bun install
-bun run build                                   # the web app, which the server embeds
-cargo run -p nuvora-server -- --data-dir ./data # http://localhost:8640
-bun run dev                                     # web app with hot reload, proxying /api to :8640
-```
-
-The code is split like this: `crates/` is the server (`media` knows files, `library` owns the database, `server` is the HTTP API), `packages/core` is the TypeScript data layer, `apps/web` is the web app, `apps/firetv` is the TV app, and `apps/vega` is the Vega OS app.
-
-The TV app is written in Kotlin with Jetpack Compose for TV. With JDK 17+ and the Android SDK, run `./gradlew installDebug` in `apps/firetv` to build it and install it on a connected TV or emulator.
-
-The Vega OS app is in `apps/vega` (React Native for Vega, sharing `packages/core` with the web app). With the [Vega SDK](https://developer.amazon.com/docs/vega/latest/install-vega-sdk.html), `npm install` there (it also builds Shaka Player with Amazon's patches) and `npm run build:release` makes `build/<arch>-release/nuvora-vega_<arch>.vpkg`: `armv7` for Fire TV devices, `aarch64` or `x86_64` (your Mac's) for the Vega Virtual Device, where `vega run-app build/aarch64-release/nuvora-vega_aarch64.vpkg app.nuvora.vega.main -d VirtualDevice` runs it. The virtual device claims to decode HEVC but can't; the app notices and asks the server for H.264 instead.
-
-To keep a build running on a Mac without Docker, `scripts/macos-service.sh install --bin target/release/nuvora --data-dir ~/Nuvora` makes it a background service that starts when you log in and restarts if it stops. `status` and `uninstall` do what they say.
-
-Tests: `cargo test --workspace` and `bun test`, `bun run typecheck` for TypeScript, `./gradlew testDebugUnitTest` in `apps/firetv`, and `./gradlew connectedDebugAndroidTest` there with an emulator running. After changing the API, `bun run gen:api` regenerates the TypeScript client's types. To try the Docker image from your checkout, run `scripts/install.sh --build`.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers building, running and testing every part, and [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code fits together. Where Nuvora is going is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Credits
 

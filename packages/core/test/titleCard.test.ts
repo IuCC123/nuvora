@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { titleCardLook } from "../src";
 
-// Expected values come from the hash and palette code in
-// docs/design/step-1-foundation/mockup.html, so web, TV and mockup agree.
+// Expected values come from the hash and palette code of the first title
+// card mockup (git history: docs/design/step-1-foundation/mockup.html), so
+// web and TV agree with it.
 test("picks the mockup's palette and bloom for each title", () => {
   expect(titleCardLook("Tears of Steel")).toEqual({
     palette: { bloom: "#3fae7a", top: "#14503a", bottom: "#04170f" },

@@ -4,47 +4,60 @@
 
 ## Platform
 
-web
+web, plus TV and desktop apps
 
-The web app comes first. A Fire TV app (Android APK) and a Vega OS app (`.vpkg`) follow in Step 5. Those are separate React Native clients that share the TypeScript data layer and design tokens, not the web views.
+The web app is the main app and the reference for the others. The server serves it, so a browser always gets the version that matches. The Mac and Windows apps are shells around that same web app. There are two TV apps: Kotlin for Fire TV, Android TV and Google TV, and React Native for Fire TVs with Vega OS. The Vega app shares the web app's TypeScript data layer.
 
 ## Users
 
-The owner's household, plus friends and family who stream remotely from the owner's server, the way Plex sharing works. People browse a personal movie and TV library and press play. Before the TV apps exist, the web app is mostly used in a laptop or desktop browser with mouse and keyboard.
+The person who runs the server (the admin), their household, and friends and family who stream from that server over the internet. They browse, search and press play, on a laptop, on a TV with a remote, or in the Mac or Windows app. The admin also gets new movies and shows into the library, and sets up the server once and rarely after.
 
 ## Product Purpose
 
-Nuvora is a self-hosted media server and player that remakes Plex and Jellyfin from scratch. A Rust server scans the owner's media folders, and clients browse and play the library. Success means it feels as polished as Plex and noticeably faster to load. Movie and series screens appear instantly, and playback starts quickly.
+Nuvora is a self-hosted, all-in-one streaming service. Find any movie or show, play it right away from your library or straight from a torrent, keep what you like, and watch it anywhere, including together. It replaces a stack of separate tools (a media server, a torrent client, an indexer front end, a request app) with one app that is quick to set up and pleasant to use.
+
+Success means:
+- Someone who has never self-hosted is watching within five minutes of running the installer.
+- Playback starts in seconds and doesn't stop, at home or away.
+- Getting a new title takes one search and one button.
 
 ## Positioning
 
-A Plex-quality experience with speed as a feature you can see. Screens arrive in one request each, artwork has instant placeholders, and the server plays the original file whenever the device can decode it.
+The polish of a commercial streaming service, the freedom of free software, and the reach of a torrent client, in one app you own. Compared with Plex and Jellyfin, Nuvora gets content as well as playing it. Compared with the *arr stack, it's one install and one interface, built for watching rather than for managing.
 
 ## Operating Context
 
-- The owner runs the server on their own hardware, often a NAS or a home machine. Remote friends connect over the internet.
-- Libraries are folders of movie files, mostly MKV and MP4, with mixed codecs (H.264, HEVC, 4K HDR).
-- The roadmap has five steps: Foundation, Library, Playback, Polish, and TV apps and release. Step 1 is movies only, with no accounts and no TMDB metadata.
+- The server runs on the owner's hardware or a rented server: a NAS, a home PC or Mac, a Raspberry Pi, or a VPS with network storage. It is usually installed with Docker.
+- Friends connect over the internet, often on slow or patchy connections. Playback has to handle that without settings.
+- Libraries are folders of MKV, MP4 and AVI files with mixed codecs (H.264, HEVC, 4K HDR, old XviD) and anime-style names.
+- New titles come from the admin's own Torznab indexers (Jackett, Prowlarr), through the built-in torrent client.
 
 ## Capabilities and Constraints
 
-- Step 1: scan a movie folder, show Home (Recently Added, All Movies), a movie detail screen, and direct play in the browser. Files the browser can't play show a "needs transcoding" state until Step 3.
-- Step 2 adds TV shows, TMDB metadata and artwork, user accounts, resume, Continue Watching and search.
-- Until Step 2, a movie without local artwork has no poster image and shows a designed title card.
-- Stack: Rust server (axum, SQLite), React web app, shared TypeScript data layer for the later React Native TV apps.
+- **Watch:** direct play when the device can play the file, otherwise conversion while watching (hardware when available) or a background 1080p copy for heavy files. Subtitles, including styled anime ones, Continue Watching per person, and Watch Together.
+- **Get:** search indexers; play a torrent while it downloads; download into the library, named and filed.
+- **Organize:** recognizes movies, shows and episodes from file names, with metadata and artwork from Wikipedia, Wikidata, AniList and TVmaze (TMDB with a key), and designed title cards when there's no artwork.
+- **Host:** one-command installers, self-updating server and desktop apps, mDNS discovery, accounts with admin and member roles.
+- **Stack:** Rust server (axum, SQLite, FFmpeg, librqbit), React web app, shared TypeScript data layer, Kotlin and React Native TV apps.
+- **Legal:** Nuvora downloads only what the admin's own indexers offer, and the app reminds admins to download only what they have the right to.
 
 ## Brand Commitments
 
-- The owner wants the look and feel as close to Plex as possible.
-- The name is Nuvora. The teal "N" icon at `assets/icon.svg` is a placeholder, not the logo.
+- The name is Nuvora. The wordmark and its play triangle are in `assets/brand`.
+- The look is calm, dark and media-first: artwork leads and the interface stays out of the way.
+- The amber accent is inherited from the early Plex-like design. Nuvora will move to its own accent (see `docs/ROADMAP.md`). Until then, keep using the existing tokens.
+- Icons are Phosphor in every app.
 
 ## Evidence on Hand
 
-- A synthetic test library at `/tmp/nuvora-media/Movies` (seven short generated clips). There is no real artwork or metadata yet. Mockups must label any invented titles or imagery as sample content.
+- The screenshots in `assets/readme` use Blender's open movies.
+- `apps/web/src/dev` holds a made-up library for designing screens without a server (`VITE_FIXTURES=1`).
+- A real test server runs on a VPS with media on network storage, which is where the playback and download measurements in the commit history come from.
 
 ## Product Principles
 
-- Speed is a feature: one request per screen, artwork that paints before it loads, no spinners where a placeholder can stand in.
-- Plex is the reference. Departures need a reason a Plex user would thank us for.
-- Ship fewer, finished features rather than many rough ones.
-- Every client shares one data layer, so the TV apps behave like the web app.
+- **It just works.** Defaults that suit most people beat settings. When something fails, say what happened and what to do, in plain words.
+- **Speed you can see.** One request per screen, artwork that paints before it loads, playback that starts in seconds, and no spinner where a placeholder can stand in.
+- **One app, one way.** Watching, getting and organizing share one interface and one search. A title page looks the same whether you have the title yet or not.
+- **Finish features.** Ship fewer, finished features rather than many rough ones. Every feature works in the web app first; the TV apps follow.
+- **Respect the owner.** No Nuvora account and no telemetry. The server only contacts metadata sources, the owner's indexers, torrent peers, and GitHub to check for updates, which can be turned off.

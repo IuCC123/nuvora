@@ -19,7 +19,7 @@ export type RememberedSubtitle =
 
 /**
  * The track the player starts with, or null for none. The rules are in
- * docs/design/shows-library-subtitles.md ("Choosing a track"). Tracks the
+ * docs/decisions/2026-10-22-shows-library-subtitles.md ("Choosing a track"). Tracks the
  * server can't deliver as text are never chosen.
  */
 export function chooseSubtitle(
