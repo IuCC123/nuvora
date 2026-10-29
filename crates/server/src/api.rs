@@ -233,6 +233,7 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(transcoding::get_tuning, transcoding::put_tuning))
         .routes(routes!(transcoding::get_activity))
         .routes(routes!(update::get_update, update::install_update))
+        .routes(routes!(update::restart_server))
         .routes(routes!(downloads::list_downloads, downloads::add_download))
         .routes(routes!(downloads::remove_download))
         .routes(routes!(downloads::pause_download))
@@ -242,6 +243,7 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
             downloads::get_download_settings,
             downloads::put_download_settings
         ))
+        .routes(routes!(downloads::put_download_network))
         .routes(routes!(downloads::add_indexer))
         .routes(routes!(downloads::remove_indexer))
         .routes(routes!(streams::open_stream))

@@ -6,3 +6,14 @@ apps/web/dist
 .audit
 data
 .env
+apps/firetv/app/build
+apps/firetv/.gradle
+apps/firetv/build
+apps/vega/build
+apps/vega/generated
+apps/site/.next
+apps/site/.open-next
+apps/site/.wrangler
+apps/desktop/src-tauri/target
+apps/desktop/out
+out

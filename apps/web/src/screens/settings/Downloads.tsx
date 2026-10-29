@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { describeError, queryKeys, type DownloadSettings } from "@nuvora/core";
-import { FormError, SelectField, TextField } from "../../components/Field";
+import { FormError, SelectField, SwitchField, TextField } from "../../components/Field";
 import { AlertIcon, TrashIcon } from "../../components/Icon";
 import { client, queries } from "../../nuvora";
 import { serverError } from "../../lib/serverError";
@@ -15,7 +16,7 @@ export function SettingsDownloads() {
   return (
     <SettingsPage
       title="Downloads"
-      lede="Connect the indexers the Downloads page searches, and choose where new movies and shows go."
+      lede="Connect the indexers the Downloads page searches, choose where new movies and shows go, and how torrents connect."
       action={
         <Link to="/downloads" className="btn btn-secondary">
           Open Downloads
@@ -36,6 +37,7 @@ export function SettingsDownloads() {
         <>
           <Indexers settings={settings.data} />
           <Destination settings={settings.data} />
+          <Connection settings={settings.data} />
         </>
       )}
     </SettingsPage>
@@ -173,6 +175,119 @@ function Destination({ settings }: { settings: DownloadSettings }) {
         <Saved show={save.isSuccess} />
       </div>
     </section>
+  );
+}
+
+const PROXY = /^socks5:\/\/\S+:\d+$/;
+
+/** How the torrent client reaches peers: through a VPN's SOCKS5 proxy or directly, and whether the router opens a port. */
+function Connection({ settings }: { settings: DownloadSettings }) {
+  const qc = useQueryClient();
+  const { proxy, port_forwarding } = settings.network;
+  const save = useMutation({
+    mutationFn: client.admin.setDownloadNetwork,
+    onSuccess: (next) => {
+      qc.setQueryData(queryKeys.downloadSettings, next);
+      form.reset({ proxy: next.network.proxy ?? "" });
+    },
+  });
+  const form = useForm(
+    { proxy: proxy ?? "" },
+    (v) => ({ proxy: !v.proxy.trim() || PROXY.test(v.proxy.trim()) ? null : "Use a SOCKS5 address, like socks5://10.64.0.1:1080" }),
+    save.reset,
+  );
+  const failed = serverError(save.error, ["proxy"]);
+  return (
+    <section className="settings-section" aria-labelledby="connection">
+      <div>
+        <h2 id="connection">Connection</h2>
+        <p className="settings-section-note">How downloads and torrent streams reach other people. Changes apply when the server restarts.</p>
+      </div>
+      <form
+        className="form settings-form"
+        noValidate
+        onSubmit={form.submit((v) => save.mutate({ proxy: v.proxy.trim() || null, port_forwarding }))}
+      >
+        <TextField
+          label="Proxy (SOCKS5)"
+          placeholder="socks5://10.64.0.1:1080"
+          autoComplete="off"
+          spellCheck={false}
+          inputMode="url"
+          hint={
+            <>
+              Your VPN's SOCKS5 address, so other people see the VPN's address instead of this server's. Add a user and password like{" "}
+              <code>socks5://user:password@host:port</code>; the password stays on the server. With a proxy, Nuvora only connects out through it, so
+              magnet links without trackers may find no one. Leave empty to connect directly.
+            </>
+          }
+          {...form.field("proxy")}
+          error={form.field("proxy").error ?? failed.field.proxy}
+        />
+        <FormError message={failed.form} />
+        <div className="form-actions">
+          <button type="submit" className="btn btn-secondary" disabled={!form.dirty || save.isPending} aria-busy={save.isPending}>
+            Save proxy
+          </button>
+          <Saved show={save.isSuccess && !form.dirty} />
+        </div>
+        <SwitchField
+          label="Open a port on the router (UPnP)"
+          hint={
+            proxy
+              ? "Off while a proxy is set: a proxy takes no incoming connections."
+              : "Lets other people connect in, which makes downloads faster. Turn it off if this server's router shouldn't be changed."
+          }
+          checked={port_forwarding && !proxy}
+          disabled={!!proxy || save.isPending}
+          onChange={(on) => save.mutate({ proxy, port_forwarding: on })}
+        />
+        {settings.restart_needed && <RestartNotice />}
+      </form>
+    </section>
+  );
+}
+
+/** Saved connection settings wait for a restart; this one does it and waits for the server to come back. */
+function RestartNotice() {
+  const qc = useQueryClient();
+  const [state, setState] = useState<"idle" | "restarting" | "failed">("idle");
+  const restart = async () => {
+    setState("restarting");
+    try {
+      await client.admin.restart();
+    } catch {
+      return setState("failed");
+    }
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      try {
+        const next = await client.admin.downloadSettings();
+        if (!next.restart_needed) {
+          qc.setQueryData(queryKeys.downloadSettings, next);
+          return setState("idle");
+        }
+      } catch {
+        // Down while it restarts.
+      }
+    }
+    setState("failed");
+  };
+  return (
+    <div className="downloads-alert downloads-restart" role="status">
+      <AlertIcon />
+      <p>
+        {state === "restarting"
+          ? "Restarting. Anything playing pauses for a few seconds…"
+          : state === "failed"
+            ? "The server didn't come back within a minute and a half. Check that it's running."
+            : "Restart the server to use the new connection settings. Anything playing pauses for a few seconds."}
+      </p>
+      <button type="button" className="btn btn-secondary" onClick={() => void restart()} disabled={state === "restarting"} aria-busy={state === "restarting"}>
+        {state === "restarting" ? "Restarting…" : "Restart now"}
+      </button>
+    </div>
   );
 }
 

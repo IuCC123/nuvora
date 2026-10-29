@@ -99,6 +99,7 @@ export type ReleaseContent = Schemas["ReleaseContent"];
 export type UpdateDownloadSettings = Schemas["UpdateDownloadSettings"];
 export type ReleaseSource = Schemas["ReleaseSource"];
 export type DownloadSettings = Schemas["DownloadSettings"];
+export type UpdateDownloadNetwork = Schemas["UpdateDownloadNetwork"];
 export type AddIndexerRequest = Schemas["AddIndexerRequest"];
 export type TorrentStream = Schemas["TorrentStream"];
 export type TorrentStreamState = Schemas["TorrentStreamState"];
@@ -242,6 +243,8 @@ export interface AdminClient {
   update(refresh?: boolean, signal?: AbortSignalLike): Promise<UpdateStatus>;
   /** Downloads and installs the newest version; the server then restarts. */
   installUpdate(): Promise<UpdateStatus>;
+  /** Restarts the server as this version, for settings it reads at startup. Pages reconnect by themselves. */
+  restart(): Promise<void>;
   /** Every download, newest first. Poll it while the page is open. */
   downloads(signal?: AbortSignalLike): Promise<Download[]>;
   /** 400 when the link isn't a magnet or `.torrent` link, there is no Movies library, or the server can't download. */
@@ -259,6 +262,8 @@ export interface AdminClient {
   /** The server asks the indexer first; 400 `validation` names `url` or `api_key` when it doesn't answer. */
   addIndexer(body: AddIndexerRequest): Promise<DownloadSettings>;
   removeIndexer(id: number): Promise<DownloadSettings>;
+  /** How the torrent client connects, from the next restart (`restart_needed`). 400 `validation` names `proxy`. A proxy without a password keeps the saved one for the same user, host and port. */
+  setDownloadNetwork(body: UpdateDownloadNetwork): Promise<DownloadSettings>;
   /** Starts playing a release while it downloads, or returns the stream already playing it. */
   openStream(body: OpenStreamRequest): Promise<TorrentStream>;
   /** Progress, and once `ready` how this device plays it. Poll it: a stream nobody asks about for two minutes stops. */
@@ -395,6 +400,7 @@ export function createClient(options: ClientOptions): NuvoraClient {
       activity: (signal) => get<Activity>("/api/admin/activity", {}, signal),
       update: (refresh, signal) => get<UpdateStatus>("/api/admin/update", {}, signal, refresh ? { refresh: "true" } : undefined),
       installUpdate: () => post<UpdateStatus>("/api/admin/update"),
+      restart: () => post<void>("/api/admin/restart"),
       downloads: (signal) => get<Download[]>("/api/admin/downloads", {}, signal),
       addDownload: (body) => post<Download>("/api/admin/downloads", {}, body),
       pauseDownload: (id) => post<void>("/api/admin/downloads/{id}/pause", { id }),
@@ -405,6 +411,7 @@ export function createClient(options: ClientOptions): NuvoraClient {
       setDownloadLibraries: (body) => call<DownloadSettings>("PUT", "/api/admin/downloads/settings", {}, undefined, undefined, body),
       addIndexer: (body) => post<DownloadSettings>("/api/admin/downloads/indexers", {}, body),
       removeIndexer: (id) => call<DownloadSettings>("DELETE", "/api/admin/downloads/indexers/{id}", { id }),
+      setDownloadNetwork: (body) => call<DownloadSettings>("PUT", "/api/admin/downloads/network", {}, undefined, undefined, body),
       openStream: (body) => post<TorrentStream>("/api/admin/streams", {}, body),
       stream: (id, signal) => get<TorrentStream>("/api/admin/streams/{id}", { id }, signal),
       stopStream: (id) => remove("/api/admin/streams/{id}", { id }),

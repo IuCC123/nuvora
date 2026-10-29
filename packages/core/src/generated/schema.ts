@@ -68,6 +68,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/downloads/network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Read when the torrent client starts: `restart_needed` says when a
+         *     restart is due.
+         */
+        put: operations["put_download_network"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/downloads/search": {
         parameters: {
             query?: never;
@@ -281,6 +301,23 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["refresh_metadata"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open pages reconnect by themselves once the server is back, a few seconds later. */
+        post: operations["restart_server"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1632,6 +1669,17 @@ export interface components {
             /** Format: int32 */
             year?: number | null;
         };
+        /** @description How the torrent client reaches peers. */
+        DownloadNetwork: {
+            /** @description Ask the router to forward the torrent port (UPnP). */
+            port_forwarding: boolean;
+            /**
+             * @description `socks5://[user@]host:port`; the password never leaves the server.
+             *     Set, all torrent traffic goes through it, and the DHT, incoming
+             *     connections and local discovery are off.
+             */
+            proxy?: string | null;
+        };
         DownloadSettings: {
             indexers: components["schemas"]["IndexerInfo"][];
             /**
@@ -1639,6 +1687,9 @@ export interface components {
              * @description The library movies go into. `null`: the first Movies library.
              */
             library_id?: number | null;
+            network: components["schemas"]["DownloadNetwork"];
+            /** @description The saved network settings take effect when the server restarts. */
+            restart_needed: boolean;
             /**
              * Format: int64
              * @description The library episodes and seasons go into. `null`: the first TV Shows
@@ -2814,6 +2865,14 @@ export interface components {
             encoder: components["schemas"]["EncoderStatus"];
             settings: components["schemas"]["Tuning"];
         };
+        UpdateDownloadNetwork: {
+            port_forwarding: boolean;
+            /**
+             * @description `socks5://[user:password@]host:port`, or `null` for none. Without a
+             *     password, the saved one is kept for the same user, host and port.
+             */
+            proxy?: string | null;
+        };
         /**
          * @description Both choices, every time: a missing one goes back to the first library
          *     of its kind.
@@ -3231,6 +3290,55 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_download_network: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDownloadNetwork"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadSettings"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4035,6 +4143,49 @@ export interface operations {
             };
             /** @description Not an admin */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    restart_server: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

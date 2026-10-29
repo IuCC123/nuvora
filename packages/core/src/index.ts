@@ -46,6 +46,7 @@ export type {
   UpdateDownloadSettings,
   ReleaseSource,
   DownloadSettings,
+  UpdateDownloadNetwork,
   AddIndexerRequest,
   TorrentStream,
   TorrentStreamState,

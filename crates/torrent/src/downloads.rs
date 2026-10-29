@@ -78,6 +78,8 @@ pub struct Downloads {
     library: Library,
     /// `Err` says why there is no engine: it failed to start, or is off.
     engine: Result<Arc<Session>, String>,
+    /// How the running engine connects; saved changes apply at the next start.
+    running: Network,
     http: reqwest::Client,
     /// Fetches `.torrent` links, stopping at a redirect to a magnet link.
     fetcher: reqwest::Client,
@@ -100,6 +102,66 @@ struct Saved {
     /// Where episodes and seasons go; unset or gone, the first TV Shows library.
     shows_library_id: Option<i64>,
     downloads: Vec<Record>,
+    #[serde(default)]
+    network: Network,
+}
+
+/// How the torrent engine reaches peers. Read when it starts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Network {
+    /// `socks5://[user:password@]host:port`. Set, every connection goes
+    /// through it: peers and trackers over TCP, and nothing else. The DHT,
+    /// incoming connections and local discovery are off, as they would
+    /// reveal this server's own address.
+    pub proxy: Option<String>,
+    /// Ask the router to forward the listening port (UPnP), so peers can
+    /// connect in. Off with a proxy, which takes no incoming connections.
+    pub port_forwarding: bool,
+}
+
+impl Default for Network {
+    fn default() -> Self {
+        Network {
+            proxy: None,
+            port_forwarding: true,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+pub enum ProxyError {
+    #[error("Use a SOCKS5 proxy address, like socks5://10.64.0.1:1080")]
+    NotSocks5,
+    #[error("The proxy address needs a host and a port, like socks5://10.64.0.1:1080")]
+    NoHostOrPort,
+}
+
+/// A checked proxy address, normalized, with its password.
+fn parse_proxy(text: &str) -> Result<url::Url, ProxyError> {
+    let text = text.trim();
+    if !text.contains("://") {
+        return Err(ProxyError::NotSocks5);
+    }
+    let url = url::Url::parse(text).map_err(|_| ProxyError::NoHostOrPort)?;
+    if url.scheme() != "socks5" {
+        return Err(ProxyError::NotSocks5);
+    }
+    if url.host_str().is_none_or(str::is_empty) || url.port().is_none() {
+        return Err(ProxyError::NoHostOrPort);
+    }
+    Ok(url)
+}
+
+/// The proxy address without its password, which never leaves the server.
+pub fn shown_proxy(proxy: &str) -> String {
+    match parse_proxy(proxy) {
+        Ok(mut url) => {
+            let _ = url.set_password(None);
+            url.to_string().trim_end_matches('/').to_owned()
+        }
+        Err(_) => proxy.to_owned(),
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -190,6 +252,10 @@ pub struct Settings {
     pub indexers: Vec<Indexer>,
     pub library_id: Option<i64>,
     pub shows_library_id: Option<i64>,
+    /// The saved network settings, with the proxy's password left out.
+    pub network: Network,
+    /// The saved network settings differ from the running engine's.
+    pub restart_needed: bool,
 }
 
 pub struct SearchResults {
@@ -219,6 +285,14 @@ pub enum AddError {
 }
 
 #[derive(Debug, thiserror::Error)]
+pub enum NetworkError {
+    #[error(transparent)]
+    Proxy(#[from] ProxyError),
+    #[error(transparent)]
+    Save(#[from] nuvora_library::QueryError),
+}
+
+#[derive(Debug, thiserror::Error)]
 pub enum ControlError {
     #[error("No such download")]
     NotFound,
@@ -237,11 +311,7 @@ impl Downloads {
         if let Err(e) = std::fs::create_dir_all(&dir) {
             tracing::warn!("cannot create {}: {e}", dir.display());
         }
-        let engine = start_engine(&dir, engine).await;
-        if let Err(e) = &engine {
-            tracing::warn!("downloads unavailable: {e}");
-        }
-        let saved = match library.setting(SETTING_KEY).await {
+        let saved: Saved = match library.setting(SETTING_KEY).await {
             Ok(Some(json)) => serde_json::from_str(&json).unwrap_or_else(|e| {
                 tracing::warn!("saved downloads don't parse, starting empty: {e}");
                 Saved::default()
@@ -252,6 +322,11 @@ impl Downloads {
                 Saved::default()
             }
         };
+        let running = saved.network.clone();
+        let engine = start_engine(&dir, engine, &running).await;
+        if let Err(e) = &engine {
+            tracing::warn!("downloads unavailable: {e}");
+        }
         let unfinished: Vec<DownloadId> = saved
             .downloads
             .iter()
@@ -261,6 +336,7 @@ impl Downloads {
         let downloads = Arc::new(Downloads {
             library,
             engine,
+            running,
             http: torznab::client(),
             fetcher: fetcher(),
             dir,
@@ -291,7 +367,46 @@ impl Downloads {
             indexers: saved.indexers.clone(),
             library_id: saved.library_id,
             shows_library_id: saved.shows_library_id,
+            network: Network {
+                proxy: saved.network.proxy.as_deref().map(shown_proxy),
+                port_forwarding: saved.network.port_forwarding,
+            },
+            restart_needed: saved.network != self.running,
         }
+    }
+
+    /// How the engine connects from its next start. A proxy given without a
+    /// password keeps the saved one when the user, host and port are the same.
+    pub async fn set_network(
+        &self,
+        proxy: Option<&str>,
+        port_forwarding: bool,
+    ) -> Result<(), NetworkError> {
+        let mut saved = self.saved.lock().await;
+        let proxy = match proxy.map(str::trim).filter(|p| !p.is_empty()) {
+            None => None,
+            Some(text) => {
+                let mut url = parse_proxy(text)?;
+                if url.password().is_none()
+                    && let Some(old) = saved
+                        .network
+                        .proxy
+                        .as_deref()
+                        .and_then(|p| parse_proxy(p).ok())
+                    && (old.username(), old.host_str(), old.port())
+                        == (url.username(), url.host_str(), url.port())
+                {
+                    let _ = url.set_password(old.password());
+                }
+                Some(url.to_string().trim_end_matches('/').to_owned())
+            }
+        };
+        saved.network = Network {
+            proxy,
+            port_forwarding,
+        };
+        self.save(&saved).await?;
+        Ok(())
     }
 
     /// Checks the indexer answers before saving it.
@@ -757,7 +872,11 @@ impl Downloads {
     }
 }
 
-async fn start_engine(dir: &Path, engine: Engine) -> Result<Arc<Session>, String> {
+async fn start_engine(
+    dir: &Path,
+    engine: Engine,
+    network: &Network,
+) -> Result<Arc<Session>, String> {
     let pieces = dir.join("pieces");
     // The engine's list of torrents goes, its record of their pieces stays:
     // Nuvora adds its downloads again itself, and a stream's torrent isn't
@@ -784,6 +903,33 @@ async fn start_engine(dir: &Path, engine: Engine) -> Result<Arc<Session>, String
                 .map_err(|e| format!("{e:#}"));
         }
     }
+    let connect = || {
+        Some(ConnectionOptions {
+            proxy_url: network.proxy.clone(),
+            peer_opts: Some(PeerConnectionOptions {
+                connect_timeout: Some(CONNECT_TIMEOUT),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+    };
+    if network.proxy.is_some() {
+        // Only TCP through the proxy: no DHT, no listening, no local
+        // discovery, each of which would use this server's own address.
+        let options = SessionOptions {
+            dht: None,
+            listen: None,
+            disable_local_service_discovery: true,
+            connect: connect(),
+            peer_limit: Some(PEER_LIMIT),
+            runtime_worker_threads: Some(DISK_THREADS),
+            default_storage_factory: Some(storage()),
+            ..Default::default()
+        };
+        return Session::new_with_opts(dir.to_owned(), remembering(options))
+            .await
+            .map_err(|e| format!("{e:#}"));
+    }
     let options = |listen_addr: SocketAddr| SessionOptions {
         dht: Some(DhtSessionConfig {
             persistence: Some(DhtPersistenceConfig {
@@ -794,16 +940,10 @@ async fn start_engine(dir: &Path, engine: Engine) -> Result<Arc<Session>, String
         }),
         listen: Some(ListenerOptions {
             listen_addr,
-            enable_upnp_port_forwarding: true,
+            enable_upnp_port_forwarding: network.port_forwarding,
             ..Default::default()
         }),
-        connect: Some(ConnectionOptions {
-            peer_opts: Some(PeerConnectionOptions {
-                connect_timeout: Some(CONNECT_TIMEOUT),
-                ..Default::default()
-            }),
-            ..Default::default()
-        }),
+        connect: connect(),
         peer_limit: Some(PEER_LIMIT),
         runtime_worker_threads: Some(DISK_THREADS),
         default_storage_factory: Some(storage()),
@@ -1252,7 +1392,9 @@ mod tests {
         let engine_dir = dir.path().join("engine");
         std::fs::create_dir_all(&engine_dir).unwrap();
 
-        let engine = start_engine(&engine_dir, Engine::Loopback).await.unwrap();
+        let engine = start_engine(&engine_dir, Engine::Loopback, &Network::default())
+            .await
+            .unwrap();
         let options = librqbit::CreateTorrentOptions {
             name: None,
             trackers: vec![],
@@ -1270,7 +1412,9 @@ mod tests {
         engine.stop().await;
         drop((torrent, engine));
 
-        let engine = start_engine(&engine_dir, Engine::Loopback).await.unwrap();
+        let engine = start_engine(&engine_dir, Engine::Loopback, &Network::default())
+            .await
+            .unwrap();
         assert_eq!(
             engine.with_torrents(|t| t.count()),
             0,
@@ -1292,6 +1436,30 @@ mod tests {
         torrent.wait_until_initialized().await.unwrap();
         let stats = torrent.stats();
         assert!(stats.finished, "{stats:?}");
+    }
+
+    #[test]
+    fn proxies_are_socks5_with_a_host_and_port_and_show_without_their_password() {
+        assert_eq!(
+            parse_proxy("http://10.64.0.1:8080"),
+            Err(ProxyError::NotSocks5)
+        );
+        assert_eq!(
+            parse_proxy("socks5://10.64.0.1"),
+            Err(ProxyError::NoHostOrPort)
+        );
+        assert_eq!(parse_proxy("10.64.0.1:1080"), Err(ProxyError::NotSocks5));
+        assert_eq!(parse_proxy("not a proxy"), Err(ProxyError::NotSocks5));
+        assert_eq!(parse_proxy("socks5://:1080"), Err(ProxyError::NoHostOrPort));
+        assert!(parse_proxy(" socks5://vpn.example:1080 ").is_ok());
+        assert_eq!(
+            shown_proxy("socks5://me:secret@10.64.0.1:1080"),
+            "socks5://me@10.64.0.1:1080"
+        );
+        assert_eq!(
+            shown_proxy("socks5://10.64.0.1:1080"),
+            "socks5://10.64.0.1:1080"
+        );
     }
 
     #[test]

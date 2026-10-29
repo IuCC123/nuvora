@@ -4,6 +4,7 @@
 //! |--------|-------------------|-----------------------------------------------------|
 //! | GET    | /api/admin/update | This version, the newest, and install progress      |
 //! | POST   | /api/admin/update | Download and install the newest version, then restart |
+//! | POST   | /api/admin/restart | Restart as this version (settings read at startup) |
 
 use axum::Json;
 use axum::extract::{Query, State};
@@ -64,6 +65,13 @@ pub(super) async fn get_update(
     Query(query): Query<UpdateQuery>,
 ) -> Json<UpdateStatus> {
     Json(status(&state, query.refresh).await)
+}
+
+/// Open pages reconnect by themselves once the server is back, a few seconds later.
+#[utoipa::path(post, path = "/api/admin/restart", responses((status = 204), (status = 500, body = ErrorBody)))]
+pub(super) async fn restart_server(State(state): State<AppState>) -> Result<StatusCode, ApiError> {
+    state.updater.restart().map_err(ApiError::internal)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[utoipa::path(

@@ -44,6 +44,27 @@
   color: var(--nv-color-danger);
 }
 
+/* A pending restart is a to-do, not an error: neutral, with its button at the end. */
+.downloads-restart {
+  align-items: center;
+  margin: 4px 0 0;
+  background: var(--nv-color-surface);
+  border-color: var(--nv-color-hairline);
+}
+
+.downloads-restart svg {
+  margin-top: 0;
+  color: var(--nv-color-accent);
+}
+
+.downloads-restart p {
+  flex: 1;
+}
+
+.downloads-restart .btn {
+  flex: none;
+}
+
 /* The search box: big, because it is the page's one job. */
 
 .downloads-search {

@@ -239,7 +239,7 @@ async fn scheduled_scans(library: Library, transcoder: Arc<transcode::Transcoder
 async fn stop(restart: tokio::sync::watch::Receiver<Option<std::path::PathBuf>>) {
     tokio::select! {
         () = shutdown_signal() => {}
-        () = restart_requested(restart) => tracing::info!("restarting for an update"),
+        () = restart_requested(restart) => tracing::info!("restarting"),
     }
 }
 

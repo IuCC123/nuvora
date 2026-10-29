@@ -940,6 +940,8 @@ mod tests {
             ("POST", "/api/admin/libraries/1/scan"),
             ("DELETE", "/api/admin/users/1"),
             ("DELETE", "/api/admin/items/1"),
+            ("POST", "/api/admin/restart"),
+            ("PUT", "/api/admin/downloads/network"),
         ] {
             let reply = app.call(method, uri, Some(&member), None).await;
             assert_eq!(reply.status, StatusCode::FORBIDDEN, "{method} {uri}");

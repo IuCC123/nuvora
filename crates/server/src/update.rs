@@ -145,6 +145,13 @@ impl Updater {
         self.restart.subscribe()
     }
 
+    /// Restarts as this same binary, for settings read only at startup.
+    pub fn restart(&self) -> std::io::Result<()> {
+        let exe = std::env::current_exe()?;
+        self.restart.send_replace(Some(exe));
+        Ok(())
+    }
+
     /// The newest release, from cache unless it is old (or `refresh` and a minute old).
     pub async fn latest(&self, refresh: bool) -> Option<Result<Release, String>> {
         let feed = self.feed.as_deref()?;

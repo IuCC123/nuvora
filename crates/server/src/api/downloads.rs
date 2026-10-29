@@ -456,6 +456,28 @@ pub struct DownloadSettings {
     pub shows_library_id: Option<i64>,
     /// Why this server can't download, when it can't.
     pub unavailable: Option<String>,
+    pub network: DownloadNetwork,
+    /// The saved network settings take effect when the server restarts.
+    pub restart_needed: bool,
+}
+
+/// How the torrent client reaches peers.
+#[derive(Serialize, ToSchema)]
+pub struct DownloadNetwork {
+    /// `socks5://[user@]host:port`; the password never leaves the server.
+    /// Set, all torrent traffic goes through it, and the DHT, incoming
+    /// connections and local discovery are off.
+    pub proxy: Option<String>,
+    /// Ask the router to forward the torrent port (UPnP).
+    pub port_forwarding: bool,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct UpdateDownloadNetwork {
+    /// `socks5://[user:password@]host:port`, or `null` for none. Without a
+    /// password, the saved one is kept for the same user, host and port.
+    pub proxy: Option<String>,
+    pub port_forwarding: bool,
 }
 
 /// An indexer, without its API key: that never leaves the server.
@@ -499,7 +521,37 @@ pub(super) async fn get_download_settings(State(state): State<AppState>) -> Json
         library_id: settings.library_id,
         shows_library_id: settings.shows_library_id,
         unavailable: state.downloads.engine_error().map(str::to_owned),
+        network: DownloadNetwork {
+            proxy: settings.network.proxy,
+            port_forwarding: settings.network.port_forwarding,
+        },
+        restart_needed: settings.restart_needed,
     })
+}
+
+/// Read when the torrent client starts: `restart_needed` says when a
+/// restart is due.
+#[utoipa::path(
+    put,
+    path = "/api/admin/downloads/network",
+    request_body = UpdateDownloadNetwork,
+    responses((status = 200, body = DownloadSettings), (status = 400, body = ErrorBody)),
+)]
+pub(super) async fn put_download_network(
+    State(state): State<AppState>,
+    JsonBody(body): JsonBody<UpdateDownloadNetwork>,
+) -> Result<Json<DownloadSettings>, ApiError> {
+    use nuvora_torrent::downloads::NetworkError;
+    match state
+        .downloads
+        .set_network(body.proxy.as_deref(), body.port_forwarding)
+        .await
+    {
+        Ok(()) => {}
+        Err(NetworkError::Proxy(e)) => return Err(ApiError::validation("proxy", e.to_string())),
+        Err(NetworkError::Save(e)) => return Err(ApiError::internal(e)),
+    }
+    Ok(get_download_settings(State(state)).await)
 }
 
 #[utoipa::path(
@@ -812,6 +864,71 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_proxy_is_checked_its_password_stays_here_and_a_restart_applies_it() {
+        let app = TestApp::new().await;
+        let admin = app.setup_admin().await;
+        let put = |body: Value| {
+            app.call(
+                "PUT",
+                "/api/admin/downloads/network",
+                Some(&admin),
+                Some(body),
+            )
+        };
+
+        let wrong = put(json!({ "proxy": "http://10.64.0.1:8080", "port_forwarding": true })).await;
+        assert_eq!(wrong.status, StatusCode::BAD_REQUEST);
+        assert_eq!(wrong.json()["field"], "proxy");
+        let no_port = put(json!({ "proxy": "socks5://10.64.0.1", "port_forwarding": true })).await;
+        assert_eq!(no_port.json()["field"], "proxy");
+
+        let saved = put(
+            json!({ "proxy": " socks5://me:secret@10.64.0.1:1080 ", "port_forwarding": false }),
+        )
+        .await;
+        assert_eq!(saved.status, StatusCode::OK);
+        let settings = saved.json();
+        assert_eq!(
+            settings["network"],
+            json!({ "proxy": "socks5://me@10.64.0.1:1080", "port_forwarding": false })
+        );
+        assert_eq!(settings["restart_needed"], true);
+        let raw = || async {
+            app.state
+                .library
+                .setting("downloads")
+                .await
+                .unwrap()
+                .unwrap()
+        };
+        assert!(raw().await.contains("socks5://me:secret@10.64.0.1:1080"));
+
+        // Saved again as shown, without the password: the password stays.
+        put(json!({ "proxy": "socks5://me@10.64.0.1:1080", "port_forwarding": false })).await;
+        assert!(raw().await.contains("socks5://me:secret@10.64.0.1:1080"));
+        // Another host is another proxy: no password carried over.
+        put(json!({ "proxy": "socks5://me@10.64.0.2:1080", "port_forwarding": false })).await;
+        assert!(!raw().await.contains("secret"));
+
+        let back = put(json!({ "proxy": null, "port_forwarding": true }))
+            .await
+            .json();
+        assert_eq!(
+            back["network"],
+            json!({ "proxy": null, "port_forwarding": true })
+        );
+        assert_eq!(
+            back["restart_needed"], false,
+            "back to what the engine runs with"
+        );
+
+        let restart = app
+            .call("POST", "/api/admin/restart", Some(&admin), None)
+            .await;
+        assert_eq!(restart.status, StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
     async fn downloads_are_for_admins_and_explain_a_missing_engine() {
         let app = TestApp::new().await;
         let admin = app.setup_admin().await;
@@ -824,7 +941,9 @@ mod tests {
                 "indexers": [],
                 "library_id": null,
                 "shows_library_id": null,
-                "unavailable": "it is turned off"
+                "unavailable": "it is turned off",
+                "network": { "proxy": null, "port_forwarding": true },
+                "restart_needed": false
             })
         );
 

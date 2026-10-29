@@ -298,6 +298,72 @@
         ]
       }
     },
+    "/api/admin/downloads/network": {
+      "put": {
+        "summary": "Read when the torrent client starts: `restart_needed` says when a\nrestart is due.",
+        "operationId": "put_download_network",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDownloadNetwork"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/admin/downloads/search": {
       "get": {
         "operationId": "search_releases",
@@ -1335,6 +1401,55 @@
           },
           "403": {
             "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/restart": {
+      "post": {
+        "summary": "Open pages reconnect by themselves once the server is back, a few seconds later.",
+        "operationId": "restart_server",
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -6365,10 +6480,32 @@
           }
         }
       },
+      "DownloadNetwork": {
+        "type": "object",
+        "description": "How the torrent client reaches peers.",
+        "required": [
+          "port_forwarding"
+        ],
+        "properties": {
+          "port_forwarding": {
+            "type": "boolean",
+            "description": "Ask the router to forward the torrent port (UPnP)."
+          },
+          "proxy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`socks5://[user@]host:port`; the password never leaves the server.\nSet, all torrent traffic goes through it, and the DHT, incoming\nconnections and local discovery are off."
+          }
+        }
+      },
       "DownloadSettings": {
         "type": "object",
         "required": [
-          "indexers"
+          "indexers",
+          "network",
+          "restart_needed"
         ],
         "properties": {
           "indexers": {
@@ -6384,6 +6521,13 @@
             ],
             "format": "int64",
             "description": "The library movies go into. `null`: the first Movies library."
+          },
+          "network": {
+            "$ref": "#/components/schemas/DownloadNetwork"
+          },
+          "restart_needed": {
+            "type": "boolean",
+            "description": "The saved network settings take effect when the server restarts."
           },
           "shows_library_id": {
             "type": [
@@ -9744,6 +9888,24 @@
           },
           "settings": {
             "$ref": "#/components/schemas/Tuning"
+          }
+        }
+      },
+      "UpdateDownloadNetwork": {
+        "type": "object",
+        "required": [
+          "port_forwarding"
+        ],
+        "properties": {
+          "port_forwarding": {
+            "type": "boolean"
+          },
+          "proxy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`socks5://[user:password@]host:port`, or `null` for none. Without a\npassword, the saved one is kept for the same user, host and port."
           }
         }
       },
