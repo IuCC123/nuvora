@@ -8,7 +8,7 @@ Each stage ends with something that works end to end in the web app. The TV apps
 
 - Library: movies, shows and anime from file names, metadata without API keys, title cards, per-person Continue Watching and Home.
 - Watching: direct play, conversion while watching on the graphics chip, 1080p copies of heavy files, steady playback over the internet, styled subtitles, Watch Together.
-- Getting: Torznab search, torrent downloads filed into the Movies or TV Shows library, torrent streams that play while they download.
+- Getting: Torznab search, torrent downloads filed into the Movies or TV Shows library, torrent streams that play while they download, and torrent traffic through a VPN's SOCKS5 proxy.
 - Hosting: installers for Linux, macOS and Windows, self-updating server and desktop apps, Fire TV, Android TV, Google TV and Vega OS apps.
 - Code: torrents and transcoding in crates of their own, one icon set (Phosphor), and current docs (ARCHITECTURE, CONTRIBUTING, decisions).
 
@@ -22,7 +22,6 @@ The goal: one search for everything, and one title page whether you have the tit
 4. **Downloads page.** Speed, ETA, peers and disk space for each download, plus pause, resume and remove, and limits on upload ratio and seeding time.
 5. **Requests.** Members ask for a title, and admins approve or auto-approve. It downloads, and the member gets a notice when it's ready.
 6. **Subtitles in torrent streams.** Embedded subtitles show while streaming, as they do in the library.
-7. **Torrents through a VPN.** An optional SOCKS5 proxy for all torrent traffic, and a switch for router port forwarding (UPnP).
 
 ## Then: set and forget
 
