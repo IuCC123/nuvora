@@ -11,7 +11,7 @@ use regex::Regex;
 /// Bumped whenever a change in this file can change what a stored path
 /// parses to. The scanner re-derives every file stored with an older version,
 /// so a parser fix reaches files that were already cataloged.
-pub const PARSE_VERSION: u32 = 1;
+pub const PARSE_VERSION: u32 = 2;
 
 /// What a path under a library root is, decided by name alone (no I/O).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -270,16 +270,20 @@ fn title_key(title: &str, year: Option<u16>) -> String {
 /// Show, season and episode parsed from an episode's path. `None` from
 /// [`EpisodeName::parse`] means the name carries no episode number.
 ///
-/// Before matching, every `[...]` segment (release group, resolution, CRC)
-/// and every `(...)` segment without a year is dropped. Episode patterns, in
-/// priority order:
+/// Before matching, underscores become spaces, and every `[...]` segment
+/// (release group, resolution, CRC) and every `(...)` segment without a year
+/// is dropped, unless it holds the episode number (`[05x05]`). Episode
+/// patterns, in priority order:
 /// 1. `S01E02`, `s1e2`, multi-episode `S01E02E03` / `S01E02-E03` (the first
 ///    episode counts).
 /// 2. `1x02`.
 /// 3. `Episode 2`, `Ep 2` or `E02` inside a `Season N` folder.
 /// 4. The anime absolute number: the last ` - 02` (or `- 02v2`) with 1 to 4
-///    digits, at the end of the name or before release tokens.
+///    digits, at the end of the name or before release tokens; else the
+///    first ` - 02 - ` followed by the episode's title.
 /// 5. `Ep02` or `Episode 02` anywhere.
+/// 6. Inside a show's folder, a bare number: `Boogiepop 01 Portraits From
+///    Memory`, `01 - Pilot`.
 ///
 /// Without a season in the token, the season comes from a `Season N`/`S1`
 /// folder, else 1. `S00` or a `Specials` folder is season 0.
@@ -317,8 +321,9 @@ impl EpisodeName {
         let folder_season = folders.last().and_then(|f| season_folder(f));
         let show_folder = folders.iter().find(|f| season_folder(f).is_none());
 
-        let clean = strip_tags(stem);
-        let found = find_episode(&clean, folder_season.is_some())?;
+        let clean = strip_tags(&stem.replace('_', " "));
+        let found = find_episode(&clean, folder_season.is_some())
+            .or_else(|| show_folder.and_then(|_| bare_number(&clean)))?;
         let season = found.season.or(folder_season).unwrap_or(1);
         let show = match show_folder {
             Some(folder) => show_name(&strip_tags(folder)),
@@ -399,24 +404,60 @@ fn find_episode(stem: &str, in_season_folder: bool) -> Option<Found> {
         .or_else(|| numbered(&EPISODE_WORD, None, 2))
 }
 
-/// The last ` - NN` whose remainder is empty or release tokens only. A
-/// four-digit number that reads as a year is a year, not an episode.
+/// The last ` - NN` whose remainder is empty or release tokens only, else the
+/// first ` - NN - ` followed by the episode's title. A four-digit number that
+/// reads as a year is a year, not an episode.
 fn absolute_number(stem: &str) -> Option<Found> {
-    let last = ABSOLUTE.captures_iter(stem).filter_map(|c| {
-        let token = c.get(1)?;
-        let digits = c.get(2)?.as_str();
+    let mut last_tagged = None;
+    let mut first_titled = None;
+    for c in ABSOLUTE.captures_iter(stem) {
+        let (Some(whole), Some(token), Some(digits)) = (c.get(0), c.get(1), c.get(2)) else {
+            continue;
+        };
+        let digits = digits.as_str();
+        let Ok(episode) = digits.parse() else {
+            continue;
+        };
+        if digits.len() == 4 && year_of(digits).is_some() {
+            continue;
+        }
         let rest = &stem[token.end()..];
-        let only_tags = tokens(rest).iter().all(|t| is_release_token(t));
-        let year = digits.len() == 4 && year_of(digits).is_some();
-        let episode = digits.parse().ok()?;
-        (only_tags && !year).then(|| Found {
-            start: c.get(0).map_or(token.start(), |m| m.start()),
+        let found = Found {
+            start: whole.start(),
             end: token.end(),
             season: None,
             episode,
+        };
+        if tokens(rest).iter().all(|t| is_release_token(t)) {
+            last_tagged = Some(found);
+        } else if first_titled.is_none() && rest.trim_start().starts_with('-') {
+            first_titled = Some(found);
+        }
+    }
+    last_tagged.or(first_titled)
+}
+
+/// The last resort, for a file inside a show's folder: the first word that is
+/// a number of two or three digits (`Boogiepop 01 Portraits From Memory`), or
+/// any number as the first word (`1 - Pilot`). So a digit in the title
+/// (`Steins Gate 0 01`) and the parts of a date (`2006.02.12`) aren't taken
+/// for the episode.
+fn bare_number(stem: &str) -> Option<Found> {
+    static WORD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\S+").expect("valid"));
+    WORD.find_iter(stem).enumerate().find_map(|(i, word)| {
+        let digits = word.as_str();
+        let numeric = digits.bytes().all(|b| b.is_ascii_digit());
+        let wide = (2..=3).contains(&digits.len()) || (i == 0 && digits.len() == 1);
+        if !(numeric && wide) {
+            return None;
+        }
+        Some(Found {
+            start: word.start(),
+            end: word.end(),
+            season: None,
+            episode: digits.parse().ok()?,
         })
-    });
-    last.last()
+    })
 }
 
 /// `Season 1`, `Season 01`, `Series 2`, `S1`, `S01` give the number;
@@ -432,7 +473,8 @@ fn season_folder(name: &str) -> Option<u32> {
 }
 
 /// Drops every `[...]` segment and every `(...)` segment that holds no year,
-/// then collapses whitespace.
+/// then collapses whitespace. A bracketed episode number (`[05x05]`,
+/// `[S01E02]`) keeps its text.
 fn strip_tags(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
@@ -451,6 +493,9 @@ fn strip_tags(text: &str) -> String {
         let inner = &rest[open + 1..open + len];
         if close == ')' && year_of(inner.trim()).is_some() {
             out.push_str(&rest[open..=open + len]);
+        } else if SXXEXX.is_match(inner) || CROSS.is_match(inner) {
+            out.push(' ');
+            out.push_str(inner);
         }
         out.push(' ');
         rest = &rest[open + len + 1..];
@@ -1002,6 +1047,62 @@ mod tests {
             Some("Finale"),
         ),
         (
+            "Neon Genesis Evangelion/[CBM]_Neon_Genesis_Evangelion_-_04_-_Rain,_After_Running_Away_[720p]_[45182278].mkv",
+            "Neon Genesis Evangelion",
+            None,
+            1,
+            4,
+            Some("Rain, After Running Away"),
+        ),
+        (
+            "[CBM]_Neon_Genesis_Evangelion_-_21_-_Nerv_Is_Born_(DC)_[720p]_[CF6ABC15].mkv",
+            "Neon Genesis Evangelion",
+            None,
+            1,
+            21,
+            Some("Nerv Is Born"),
+        ),
+        (
+            "Top Gear BBC/Top Gear - Season 5/Top Gear - [05x05] - 2004.11.21 [VFUA].avi",
+            "Top Gear BBC",
+            None,
+            5,
+            5,
+            Some("2004.11.21"),
+        ),
+        (
+            "Top Gear BBC/Top Gear - Season 16/Top Gear - [16x00] The_Three_Wise_Men_Christmas.avi",
+            "Top Gear BBC",
+            None,
+            16,
+            0,
+            Some("The Three Wise Men Christmas"),
+        ),
+        (
+            "Boogiepop Phantom/Boogiepop 11 Under The Gravity's Rainbow.mkv",
+            "Boogiepop Phantom",
+            None,
+            1,
+            11,
+            Some("Under The Gravity's Rainbow"),
+        ),
+        (
+            "Show Name/Season 2/03 - The Title.mkv",
+            "Show Name",
+            None,
+            2,
+            3,
+            Some("The Title"),
+        ),
+        (
+            "Steins Gate 0/Steins Gate 0 01.mkv",
+            "Steins Gate 0",
+            None,
+            1,
+            1,
+            None,
+        ),
+        (
             "Mr. Robot/Season 1/Mr. Robot - S01E01 - eps1.0.mkv",
             "Mr. Robot",
             None,
@@ -1073,6 +1174,8 @@ mod tests {
             "Movie.1920x1080.mkv",
             "The.Matrix.1999.1080p.BluRay.x264-GRP.mkv",
             "Season 1/S01E02.mkv",
+            "Boogiepop 01 Portraits From Memory.mkv",
+            "Top Gear BBC/Top Gear - Season 7/Top Gear - Winter Olympics Special - 2006.02.12 [GOTHiC].avi",
         ] {
             assert_eq!(EpisodeName::parse(Path::new(path)), None, "{path}");
         }
