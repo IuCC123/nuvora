@@ -2357,6 +2357,114 @@
         ]
       }
     },
+    "/api/admin/subtitles": {
+      "get": {
+        "operationId": "get_subtitle_settings",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubtitleSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "put_subtitle_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSubtitleSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubtitleSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/admin/tuning": {
       "get": {
         "operationId": "get_tuning",
@@ -3884,6 +3992,146 @@
           },
           "416": {
             "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/files/{id}/subtitles/online": {
+      "get": {
+        "operationId": "search_online_subtitles",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "language",
+            "in": "path",
+            "description": "ISO 639-1, like `en`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnlineSubtitles"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/files/{id}/subtitles/online/{subtitle}": {
+      "get": {
+        "summary": "A result of the file's last online search, as WebVTT. Kept on the server\nonce fetched.",
+        "operationId": "get_online_subtitle",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "subtitle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "text/vtt": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -6868,6 +7116,7 @@
           "rate_limited",
           "busy",
           "update_unavailable",
+          "subtitles_unavailable",
           "internal"
         ]
       },
@@ -7973,6 +8222,77 @@
             ],
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "OnlineSubtitleResult": {
+        "type": "object",
+        "required": [
+          "id",
+          "language",
+          "label",
+          "hearing_impaired",
+          "source",
+          "same_release"
+        ],
+        "properties": {
+          "downloads": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "hearing_impaired": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "description": "`{subtitle}` in `/api/files/{id}/subtitles/online/{subtitle}`."
+          },
+          "label": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string",
+            "description": "ISO 639-1."
+          },
+          "release": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The release it was made for."
+          },
+          "same_release": {
+            "type": "boolean",
+            "description": "Made for the same release as this file, so timed for it."
+          },
+          "source": {
+            "type": "string"
+          }
+        }
+      },
+      "OnlineSubtitles": {
+        "type": "object",
+        "description": "Subtitles found online for a file, best first.",
+        "required": [
+          "results"
+        ],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OnlineSubtitleResult"
+            }
+          },
+          "unavailable": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why there are none to offer, when searching wasn't possible: no key,\nthe title's IMDb number unknown, or today's searches used up."
           }
         }
       },
@@ -9475,6 +9795,19 @@
           "off"
         ]
       },
+      "SubtitleSettings": {
+        "type": "object",
+        "description": "Settings › Subtitles.",
+        "required": [
+          "online_search"
+        ],
+        "properties": {
+          "online_search": {
+            "type": "boolean",
+            "description": "A key for the online subtitle search (Wyzie Subs) is saved. The key\nitself never leaves the server."
+          }
+        }
+      },
       "SubtitleTrack": {
         "type": "object",
         "description": "One subtitle track of a version: a stream in the file, or a subtitle\nfile next to it. Fetch a renderable one from\n`/api/files/{file_id}/subtitles/{index}`.",
@@ -10092,6 +10425,18 @@
               "null"
             ],
             "description": "The newest release's page, with what changed."
+          }
+        }
+      },
+      "UpdateSubtitleSettings": {
+        "type": "object",
+        "properties": {
+          "online_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A Wyzie Subs key; `null` or empty removes it. Checked with a search\nbefore it is saved."
           }
         }
       },

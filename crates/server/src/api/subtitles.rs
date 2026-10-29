@@ -3,6 +3,10 @@
 //! | method | path                                          | access |
 //! |--------|-----------------------------------------------|--------|
 //! | GET    | /api/files/{id}/subtitles/{stream_index}      | member |
+//! | GET    | /api/files/{id}/subtitles/online?language=     | member |
+//! | GET    | /api/files/{id}/subtitles/online/{subtitle}   | member |
+//! | GET    | /api/admin/subtitles                          | admin  |
+//! | PUT    | /api/admin/subtitles                          | admin  |
 //! | GET    | /api/files/{id}/fonts                         | member |
 //! | GET    | /api/files/{id}/fonts/{index}                 | member |
 
@@ -12,15 +16,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
+use axum::http::StatusCode;
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
 use axum::response::{IntoResponse, Response};
-use nuvora_library::{FileId, SIDECAR_INDEX_BASE, Sidecar, SubtitleSource};
+use nuvora_library::{FileId, OnlineSubtitleError, SIDECAR_INDEX_BASE, Sidecar, SubtitleSource};
 use nuvora_media::{SubtitleCodec, SubtitleStream, SubtitleText};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 use utoipa::{IntoParams, ToSchema};
 
-use super::{ApiError, AppState, ErrorBody};
+use super::{ApiError, AppState, ErrorBody, ErrorCode, JsonBody};
 
 /// ffmpeg extractions running at once, across every request.
 static EXTRACTIONS: Semaphore = Semaphore::const_new(2);
@@ -263,6 +268,186 @@ pub(super) async fn get_font(
     .await?;
     let mime = nuvora_media::font_mime_type(&bytes).unwrap_or("application/octet-stream");
     Ok(immutable(mime, bytes))
+}
+
+/// Subtitles found online for a file, best first.
+#[derive(Serialize, ToSchema)]
+pub struct OnlineSubtitles {
+    /// Why there are none to offer, when searching wasn't possible: no key,
+    /// the title's IMDb number unknown, or today's searches used up.
+    pub unavailable: Option<String>,
+    pub results: Vec<OnlineSubtitleResult>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct OnlineSubtitleResult {
+    /// `{subtitle}` in `/api/files/{id}/subtitles/online/{subtitle}`.
+    pub id: String,
+    /// ISO 639-1.
+    pub language: String,
+    pub label: String,
+    /// The release it was made for.
+    pub release: Option<String>,
+    pub hearing_impaired: bool,
+    pub source: String,
+    pub downloads: Option<u64>,
+    /// Made for the same release as this file, so timed for it.
+    pub same_release: bool,
+}
+
+#[derive(Deserialize, IntoParams)]
+pub struct OnlineQuery {
+    /// ISO 639-1, like `en`.
+    language: String,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/files/{id}/subtitles/online",
+    params(("id" = i64, Path), OnlineQuery),
+    responses((status = 200, body = OnlineSubtitles), (status = 404, body = ErrorBody)),
+)]
+pub(super) async fn search_online_subtitles(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    Query(query): Query<OnlineQuery>,
+) -> Result<axum::Json<OnlineSubtitles>, ApiError> {
+    let language = query.language.trim().to_ascii_lowercase();
+    if language.len() != 2 || !language.chars().all(|c| c.is_ascii_lowercase()) {
+        return Err(ApiError::validation(
+            "language",
+            "Use a two-letter language code, like en",
+        ));
+    }
+    let found = state
+        .library
+        .search_online_subtitles(FileId::from_raw(id), &language)
+        .await;
+    let (unavailable, results) = match found {
+        Ok(results) => (None, results),
+        Err(OnlineSubtitleError::Query(e)) => return Err(ApiError::internal(e)),
+        Err(e) => (Some(e.to_string()), Vec::new()),
+    };
+    Ok(axum::Json(OnlineSubtitles {
+        unavailable,
+        results: results
+            .into_iter()
+            .map(|s| OnlineSubtitleResult {
+                id: s.id,
+                language: s.language,
+                label: s.label,
+                release: s.release,
+                hearing_impaired: s.hearing_impaired,
+                source: s.source,
+                downloads: s.downloads,
+                same_release: s.same_release,
+            })
+            .collect(),
+    }))
+}
+
+/// A result of the file's last online search, as WebVTT. Kept on the server
+/// once fetched.
+#[utoipa::path(
+    get,
+    path = "/api/files/{id}/subtitles/online/{subtitle}",
+    params(("id" = i64, Path), ("subtitle" = String, Path)),
+    responses(
+        (status = 200, content((String = "text/vtt"))),
+        (status = 404, body = ErrorBody),
+        (status = 409, body = ErrorBody),
+    ),
+)]
+pub(super) async fn get_online_subtitle(
+    State(state): State<AppState>,
+    Path((id, subtitle)): Path<(i64, String)>,
+) -> Result<Response, ApiError> {
+    let source = subtitle_source(&state, id).await?;
+    let name = blake3::hash(subtitle.as_bytes()).to_hex();
+    let cached = cache_dir(&state, &source).join(format!("online-{}.vtt", &name[..20]));
+    let library = &state.library;
+    let subtitle = &subtitle;
+    let bytes = cached_or(&cached, &source.path, |out| async move {
+        let vtt = library
+            .online_subtitle_vtt(FileId::from_raw(id), subtitle)
+            .await
+            .map_err(|e| match e {
+                OnlineSubtitleError::NotFound => ApiError::not_found(),
+                OnlineSubtitleError::Query(e) => ApiError::internal(e),
+                other => ApiError::new(
+                    StatusCode::CONFLICT,
+                    ErrorCode::SubtitlesUnavailable,
+                    other.to_string(),
+                ),
+            })?;
+        tokio::fs::write(&out, vtt)
+            .await
+            .map_err(ApiError::internal)
+    })
+    .await?;
+    Ok(immutable(SubtitleText::WebVtt.mime_type(), bytes))
+}
+
+/// Settings › Subtitles.
+#[derive(Serialize, ToSchema)]
+pub struct SubtitleSettings {
+    /// A key for the online subtitle search (Wyzie Subs) is saved. The key
+    /// itself never leaves the server.
+    pub online_search: bool,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct UpdateSubtitleSettings {
+    /// A Wyzie Subs key; `null` or empty removes it. Checked with a search
+    /// before it is saved.
+    pub online_key: Option<String>,
+}
+
+#[utoipa::path(get, path = "/api/admin/subtitles", responses((status = 200, body = SubtitleSettings)))]
+pub(super) async fn get_subtitle_settings(
+    State(state): State<AppState>,
+) -> Result<axum::Json<SubtitleSettings>, ApiError> {
+    let online_search = state
+        .library
+        .online_subtitles_ready()
+        .await
+        .map_err(ApiError::internal)?;
+    Ok(axum::Json(SubtitleSettings { online_search }))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/subtitles",
+    request_body = UpdateSubtitleSettings,
+    responses((status = 200, body = SubtitleSettings), (status = 400, body = ErrorBody)),
+)]
+pub(super) async fn put_subtitle_settings(
+    State(state): State<AppState>,
+    JsonBody(body): JsonBody<UpdateSubtitleSettings>,
+) -> Result<axum::Json<SubtitleSettings>, ApiError> {
+    let key = body
+        .online_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|k| !k.is_empty());
+    if let Some(key) = key {
+        match nuvora_library::check_online_subtitle_key(key).await {
+            Ok(()) => {}
+            Err(OnlineSubtitleError::BadKey) => {
+                return Err(ApiError::validation(
+                    "online_key",
+                    "That key isn't valid. Copy it again from store.wyzie.io",
+                ));
+            }
+            Err(e) => return Err(ApiError::validation("online_key", e.to_string())),
+        }
+    }
+    state
+        .library
+        .set_online_subtitle_key(key)
+        .await
+        .map_err(ApiError::internal)?;
+    get_subtitle_settings(State(state)).await
 }
 
 async fn subtitle_source(state: &AppState, id: i64) -> Result<SubtitleSource, ApiError> {
@@ -577,6 +762,59 @@ Dialogue: 0,0:00:00.50,0:00:01.50,Default,,0,0,0,,{\\pos(960,100)}Hola {\\b1}mun
 
     fn text(reply: &Reply) -> &str {
         std::str::from_utf8(&reply.body).unwrap()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn online_search_says_what_it_needs_and_its_key_is_for_admins() {
+        let lib = subtitled_library().await;
+        let app = &lib.app;
+        let settings = app.get("/api/admin/subtitles", &lib.admin).await;
+        assert_eq!(
+            settings.json(),
+            serde_json::json!({ "online_search": false })
+        );
+        let cleared = app
+            .call(
+                "PUT",
+                "/api/admin/subtitles",
+                Some(&lib.admin),
+                Some(serde_json::json!({ "online_key": "  " })),
+            )
+            .await;
+        assert_eq!(
+            cleared.json(),
+            serde_json::json!({ "online_search": false })
+        );
+
+        let search = app
+            .get(
+                &format!("/api/files/{}/subtitles/online?language=en", lib.mkv),
+                &lib.admin,
+            )
+            .await;
+        assert_eq!(search.status, StatusCode::OK);
+        assert_eq!(
+            search.json(),
+            serde_json::json!({
+                "unavailable": "Add a subtitle search key in Settings › Subtitles to find subtitles online",
+                "results": []
+            })
+        );
+        let three_letters = app
+            .get(
+                &format!("/api/files/{}/subtitles/online?language=eng", lib.mkv),
+                &lib.admin,
+            )
+            .await;
+        assert_eq!(three_letters.status, StatusCode::BAD_REQUEST);
+        assert_eq!(three_letters.json()["field"], "language");
+        let never_found = app
+            .get(
+                &format!("/api/files/{}/subtitles/online/123", lib.mkv),
+                &lib.admin,
+            )
+            .await;
+        assert_eq!(never_found.status, StatusCode::NOT_FOUND);
     }
 
     #[tokio::test(flavor = "multi_thread")]

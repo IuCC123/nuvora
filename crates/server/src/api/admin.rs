@@ -941,6 +941,7 @@ mod tests {
             ("DELETE", "/api/admin/users/1"),
             ("DELETE", "/api/admin/items/1"),
             ("POST", "/api/admin/restart"),
+            ("GET", "/api/admin/subtitles"),
             ("PUT", "/api/admin/downloads/network"),
         ] {
             let reply = app.call(method, uri, Some(&member), None).await;

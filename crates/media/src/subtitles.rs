@@ -110,34 +110,39 @@ pub async fn extract_subtitle(
     Ok(())
 }
 
-/// SubRip lines as WebVTT, as ffmpeg converts them: ASS override tags like
-/// `{\an8}` dropped, `<i>`, `<b>` and `<u>` kept and other tags removed, and
-/// no blank line inside a cue, which would end it.
+/// SubRip lines as WebVTT, byte for byte as ffmpeg writes them: ASS
+/// override tags like `{\an8}` dropped, `<i>`, `<b>` and `<u>` kept and
+/// other tags removed, no blank line inside a cue (it would end it), and
+/// hours only from the first hour on.
 pub(crate) fn webvtt(lines: &[crate::matroska::SubtitleLine]) -> String {
-    let mut out = String::from("WEBVTT\n\n");
-    for line in lines {
-        let text = clean_cue_text(&line.text);
-        if text.is_empty() || line.end <= line.start {
-            continue;
-        }
-        out.push_str(&format!(
-            "{} --> {}\n{text}\n\n",
-            vtt_time(line.start),
-            vtt_time(line.end)
-        ));
-    }
-    out
+    let cues: Vec<String> = lines
+        .iter()
+        .filter(|line| line.end > line.start)
+        .filter_map(|line| {
+            let text = clean_cue_text(&line.text);
+            (!text.is_empty()).then(|| {
+                let (start, end) = (vtt_time(line.start), vtt_time(line.end));
+                format!("{start} --> {end}\n{text}\n")
+            })
+        })
+        .collect();
+    format!("WEBVTT\n\n{}", cues.join("\n"))
 }
 
 fn vtt_time(seconds: f64) -> String {
     let ms = (seconds * 1000.0).round().max(0.0) as u64;
-    format!(
-        "{:02}:{:02}:{:02}.{:03}",
-        ms / 3_600_000,
+    let hours = ms / 3_600_000;
+    let rest = format!(
+        "{:02}:{:02}.{:03}",
         ms / 60_000 % 60,
         ms / 1000 % 60,
         ms % 1000
-    )
+    );
+    if hours > 0 {
+        format!("{hours:02}:{rest}")
+    } else {
+        rest
+    }
 }
 
 fn clean_cue_text(text: &str) -> String {
@@ -408,9 +413,9 @@ mod tests {
         assert_eq!(
             webvtt(&lines),
             "WEBVTT\n\n\
-             00:00:01.000 --> 00:00:02.500\nHello <i>there</i>\n\n\
-             00:00:04.000 --> 00:00:05.000\nSecond line\nwith two rows\n\n\
-             00:00:07.250 --> 00:00:09.000\nUp top\n\n"
+             00:01.000 --> 00:02.500\nHello <i>there</i>\n\n\
+             00:04.000 --> 00:05.000\nSecond line\nwith two rows\n\n\
+             00:07.250 --> 00:09.000\nUp top\n"
         );
         // The same lines ffmpeg finds reading the whole file.
         let tools = MediaTools::locate(None, None).await.unwrap();
@@ -429,9 +434,9 @@ mod tests {
                 .collect()
         };
         let ffmpeg = std::fs::read_to_string(&out).unwrap();
-        // ffmpeg leaves out the hours under one: `00:01.000` for our `00:00:01.000`.
-        let ours = webvtt(&lines).replace("00:00:", "00:");
-        assert_eq!(cues(&ours)[..2], cues(&ffmpeg)[..2]);
+        // ffmpeg keeps the third line's `<font>` tag; otherwise the same bytes.
+        assert_eq!(cues(&webvtt(&lines))[..2], cues(&ffmpeg)[..2]);
+        assert_eq!(vtt_time(3_725.5), "01:02:05.500");
 
         // Not a SubRip track, or not Matroska: ffmpeg's job.
         assert_eq!(crate::matroska::text_subtitle_lines(&mkv, 0).unwrap(), None);

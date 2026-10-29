@@ -476,6 +476,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/subtitles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_subtitle_settings"];
+        put: operations["put_subtitle_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/tuning": {
         parameters: {
             query?: never;
@@ -842,6 +858,42 @@ export interface paths {
          *     buffering. First-frame latency is then disk + network + decoder.
          */
         get: operations["stream_file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/{id}/subtitles/online": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["search_online_subtitles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/{id}/subtitles/online/{subtitle}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A result of the file's last online search, as WebVTT. Kept on the server
+         *     once fetched.
+         */
+        get: operations["get_online_subtitle"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1801,7 +1853,7 @@ export interface components {
          * @description Clients must treat an unknown code like `bad_request`.
          * @enum {string}
          */
-        ErrorCode: "bad_request" | "validation" | "unauthorized" | "bad_credentials" | "forbidden" | "not_found" | "setup_done" | "username_taken" | "last_admin" | "rate_limited" | "busy" | "update_unavailable" | "internal";
+        ErrorCode: "bad_request" | "validation" | "unauthorized" | "bad_credentials" | "forbidden" | "not_found" | "setup_done" | "username_taken" | "last_admin" | "rate_limited" | "busy" | "update_unavailable" | "subtitles_unavailable" | "internal";
         /** @enum {string} */
         FfmpegLogLevel: "error" | "warning" | "info" | "verbose";
         /**
@@ -2128,6 +2180,30 @@ export interface components {
             watch: components["schemas"]["WatchState"];
             /** Format: int32 */
             year?: number | null;
+        };
+        OnlineSubtitleResult: {
+            /** Format: int64 */
+            downloads?: number | null;
+            hearing_impaired: boolean;
+            /** @description `{subtitle}` in `/api/files/{id}/subtitles/online/{subtitle}`. */
+            id: string;
+            label: string;
+            /** @description ISO 639-1. */
+            language: string;
+            /** @description The release it was made for. */
+            release?: string | null;
+            /** @description Made for the same release as this file, so timed for it. */
+            same_release: boolean;
+            source: string;
+        };
+        /** @description Subtitles found online for a file, best first. */
+        OnlineSubtitles: {
+            results: components["schemas"]["OnlineSubtitleResult"][];
+            /**
+             * @description Why there are none to offer, when searching wasn't possible: no key,
+             *     the title's IMDb number unknown, or today's searches used up.
+             */
+            unavailable?: string | null;
         };
         OpenStreamRequest: {
             /** @description A `magnet:` link, or a search result's `link`. */
@@ -2627,6 +2703,14 @@ export interface components {
          * @enum {string}
          */
         SubtitleMode: "auto" | "always" | "off";
+        /** @description Settings › Subtitles. */
+        SubtitleSettings: {
+            /**
+             * @description A key for the online subtitle search (Wyzie Subs) is saved. The key
+             *     itself never leaves the server.
+             */
+            online_search: boolean;
+        };
         /**
          * @description One subtitle track of a version: a stream in the file, or a subtitle
          *     file next to it. Fetch a renderable one from
@@ -2942,6 +3026,13 @@ export interface components {
             phase: components["schemas"]["UpdatePhase"];
             /** @description The newest release's page, with what changed. */
             release_url?: string | null;
+        };
+        UpdateSubtitleSettings: {
+            /**
+             * @description A Wyzie Subs key; `null` or empty removes it. Checked with a search
+             *     before it is saved.
+             */
+            online_key?: string | null;
         };
         /**
          * @description Every field is optional. Disabling a user or resetting their password signs
@@ -4810,6 +4901,92 @@ export interface operations {
             };
         };
     };
+    get_subtitle_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubtitleSettings"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_subtitle_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSubtitleSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubtitleSettings"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_tuning: {
         parameters: {
             query?: never;
@@ -5858,6 +6035,93 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    search_online_subtitles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                /** @description ISO 639-1, like `en`. */
+                language: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnlineSubtitles"];
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_online_subtitle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                subtitle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/vtt": string;
+                };
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
             };
         };
     };

@@ -212,6 +212,8 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(previews::get_previews))
         .routes(routes!(previews::get_sheet))
         .routes(routes!(subtitles::get_subtitle))
+        .routes(routes!(subtitles::search_online_subtitles))
+        .routes(routes!(subtitles::get_online_subtitle))
         .routes(routes!(subtitles::list_fonts))
         .routes(routes!(subtitles::get_font))
         .routes(routes!(get_scan))
@@ -234,6 +236,10 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(transcoding::get_activity))
         .routes(routes!(update::get_update, update::install_update))
         .routes(routes!(update::restart_server))
+        .routes(routes!(
+            subtitles::get_subtitle_settings,
+            subtitles::put_subtitle_settings
+        ))
         .routes(routes!(downloads::list_downloads, downloads::add_download))
         .routes(routes!(downloads::remove_download))
         .routes(routes!(downloads::pause_download))
@@ -1421,6 +1427,9 @@ pub enum ErrorCode {
     Busy,
     /// The server can't install an update now; `message` says why, for people.
     UpdateUnavailable,
+    /// Subtitles can't be fetched online now (no key, today's searches used
+    /// up, or the service is down); `message` says why, for people.
+    SubtitlesUnavailable,
     Internal,
 }
 
