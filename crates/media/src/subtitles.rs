@@ -1,6 +1,7 @@
 //! Text subtitles and font attachments, pulled out of a media file with
-//! ffmpeg. Each call writes one output file; caching and concurrency are the
-//! caller's job.
+//! ffmpeg, or for a Matroska file's SubRip tracks straight through its index
+//! (see [`crate::matroska`]). Each call writes one output file; caching and
+//! concurrency are the caller's job.
 
 use std::path::Path;
 use std::process::Stdio;
@@ -74,6 +75,16 @@ pub async fn extract_subtitle(
     out: &Path,
     charset: Option<&str>,
 ) -> Result<(), ExtractError> {
+    if text == SubtitleText::WebVtt && *codec == SubtitleCodec::Srt && charset.is_none() {
+        let file = path.to_owned();
+        if let Ok(Ok(Some(lines))) =
+            tokio::task::spawn_blocking(move || crate::matroska::text_subtitle_lines(&file, index))
+                .await
+        {
+            tokio::fs::write(out, webvtt(&lines)).await?;
+            return Ok(());
+        }
+    }
     let encoder = match (codec, text) {
         (SubtitleCodec::Ass, SubtitleText::Ass) => "copy",
         (_, text) => text.muxer(),
@@ -97,6 +108,77 @@ pub async fn extract_subtitle(
         return Err(failed(&output));
     }
     Ok(())
+}
+
+/// SubRip lines as WebVTT, as ffmpeg converts them: ASS override tags like
+/// `{\an8}` dropped, `<i>`, `<b>` and `<u>` kept and other tags removed, and
+/// no blank line inside a cue, which would end it.
+pub(crate) fn webvtt(lines: &[crate::matroska::SubtitleLine]) -> String {
+    let mut out = String::from("WEBVTT\n\n");
+    for line in lines {
+        let text = clean_cue_text(&line.text);
+        if text.is_empty() || line.end <= line.start {
+            continue;
+        }
+        out.push_str(&format!(
+            "{} --> {}\n{text}\n\n",
+            vtt_time(line.start),
+            vtt_time(line.end)
+        ));
+    }
+    out
+}
+
+fn vtt_time(seconds: f64) -> String {
+    let ms = (seconds * 1000.0).round().max(0.0) as u64;
+    format!(
+        "{:02}:{:02}:{:02}.{:03}",
+        ms / 3_600_000,
+        ms / 60_000 % 60,
+        ms / 1000 % 60,
+        ms % 1000
+    )
+}
+
+fn clean_cue_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(c) = rest.chars().next() {
+        let tail = &rest[c.len_utf8()..];
+        match c {
+            '{' if tail.starts_with('\\') => match tail.find('}') {
+                Some(end) => rest = &tail[end + 1..],
+                None => rest = "",
+            },
+            '<' => match tail.find('>') {
+                Some(end) => {
+                    let tag = tail[..end].trim().to_ascii_lowercase();
+                    if matches!(tag.as_str(), "i" | "/i" | "b" | "/b" | "u" | "/u") {
+                        out.push('<');
+                        out.push_str(&tag);
+                        out.push('>');
+                    }
+                    rest = &tail[end + 1..];
+                }
+                None => {
+                    out.push_str("&lt;");
+                    rest = tail;
+                }
+            },
+            _ => {
+                out.push(c);
+                rest = tail;
+            }
+        }
+    }
+    out.replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .replace("-->", "--&gt;")
+        .lines()
+        .map(str::trim_end)
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// The file's font attachments, in stream order. Attachments that are not
@@ -283,6 +365,77 @@ mod tests {
                 (5, "x", "font/ttf", None),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn a_matroska_subrip_track_reads_through_the_index_as_ffmpeg_would_extract_it() {
+        use std::process::Command;
+        let dir = tempfile::tempdir().unwrap();
+        let srt = dir.path().join("subs.srt");
+        std::fs::write(
+            &srt,
+            "1\n00:00:01,000 --> 00:00:02,500\nHello <i>there</i>\n\n\
+             2\n00:00:04,000 --> 00:00:05,000\nSecond line\nwith two rows\n\n\
+             3\n00:00:07,250 --> 00:00:09,000\n{\\an8}Up <font color=\"red\">top</font>\n\n",
+        )
+        .unwrap();
+        let mkv = dir.path().join("movie.mkv");
+        let status = Command::new("ffmpeg")
+            .args(["-y", "-nostdin", "-v", "error", "-f", "lavfi"])
+            .args(["-i", "testsrc2=size=320x180:rate=24:duration=10"])
+            .arg("-i")
+            .arg(&srt)
+            .args([
+                "-map",
+                "0",
+                "-map",
+                "1",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-c:s",
+                "srt",
+            ])
+            .arg(&mkv)
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let lines = crate::matroska::text_subtitle_lines(&mkv, 1)
+            .unwrap()
+            .expect("indexed");
+        assert_eq!(
+            webvtt(&lines),
+            "WEBVTT\n\n\
+             00:00:01.000 --> 00:00:02.500\nHello <i>there</i>\n\n\
+             00:00:04.000 --> 00:00:05.000\nSecond line\nwith two rows\n\n\
+             00:00:07.250 --> 00:00:09.000\nUp top\n\n"
+        );
+        // The same lines ffmpeg finds reading the whole file.
+        let tools = MediaTools::locate(None, None).await.unwrap();
+        let out = dir.path().join("ffmpeg.vtt");
+        let mut command = tokio::process::Command::new(&tools.ffmpeg);
+        command
+            .args(["-nostdin", "-v", "error", "-y", "-i"])
+            .arg(&mkv)
+            .args(["-map", "0:1", "-f", "webvtt"])
+            .arg(&out);
+        assert!(command.status().await.unwrap().success());
+        let cues = |vtt: &str| -> Vec<String> {
+            vtt.split("\n\n")
+                .filter(|c| c.contains("-->"))
+                .map(str::to_owned)
+                .collect()
+        };
+        let ffmpeg = std::fs::read_to_string(&out).unwrap();
+        // ffmpeg leaves out the hours under one: `00:01.000` for our `00:00:01.000`.
+        let ours = webvtt(&lines).replace("00:00:", "00:");
+        assert_eq!(cues(&ours)[..2], cues(&ffmpeg)[..2]);
+
+        // Not a SubRip track, or not Matroska: ffmpeg's job.
+        assert_eq!(crate::matroska::text_subtitle_lines(&mkv, 0).unwrap(), None);
+        assert_eq!(crate::matroska::text_subtitle_lines(&srt, 0).unwrap(), None);
     }
 
     #[test]

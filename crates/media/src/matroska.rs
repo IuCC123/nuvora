@@ -1,13 +1,15 @@
 //! Matroska's own index. A Matroska or WebM file ends (or starts) with Cues:
-//! where each keyframe of the video is. Reading them takes a few megabytes;
-//! finding the keyframes with ffprobe reads every packet of the file, which
-//! for an 80 GB remux on a network share is ten minutes.
+//! where each keyframe of the video is, and, from mkvmerge and FFmpeg, every
+//! subtitle block. Reading them takes a few megabytes; finding the keyframes
+//! with ffprobe, or a subtitle track's lines with ffmpeg, reads every packet
+//! of the file, which for an 80 GB remux on a network share is up to an hour.
 //!
 //! Muxers index every video keyframe (mkvmerge and FFmpeg both do), but
 //! nothing requires it, and segments cut at a sample of them would not line
 //! up with what FFmpeg cuts. So the index is trusted only once the frames
 //! at the start of the file agree with it.
 
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
@@ -37,6 +39,13 @@ const SIMPLE_BLOCK: u32 = 0xA3;
 const BLOCK_GROUP: u32 = 0xA0;
 const BLOCK: u32 = 0xA1;
 const REFERENCE_BLOCK: u32 = 0xFB;
+const BLOCK_DURATION: u32 = 0x9B;
+const CODEC_ID: u32 = 0x86;
+const SUBTITLE_TRACK: u64 = 0x11;
+const CUE_RELATIVE_POSITION: u32 = 0xF0;
+const CUE_DURATION: u32 = 0xB2;
+/// A subtitle block holds a line or two of text.
+const MAX_SUBTITLE_BLOCK: u64 = 64 << 10;
 
 /// The head elements (track list, settings) are small; anything bigger is
 /// not a file this understands.
@@ -86,6 +95,37 @@ struct CuePoint {
 }
 
 fn read_index(file: &mut File) -> io::Result<Option<Index>> {
+    let Some(head) = read_head(file)? else {
+        return Ok(None);
+    };
+    let Some(track) = head.tracks.as_deref().and_then(first_video_track) else {
+        return Ok(None);
+    };
+    let points = cue_points(&head.cues, track);
+    if points.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(Index {
+        scale: head.scale,
+        track,
+        segment: head.segment,
+        points,
+    }))
+}
+
+/// What the start of a Matroska file says about the rest.
+struct Head {
+    /// Nanoseconds per tick; never 0.
+    scale: u64,
+    /// Where the segment's data starts: positions in the file are relative to it.
+    segment: u64,
+    tracks: Option<Vec<u8>>,
+    cues: Vec<u8>,
+}
+
+/// The segment's settings, track list and index. `None` when the file isn't
+/// Matroska or has no index.
+fn read_head(file: &mut File) -> io::Result<Option<Head>> {
     let Some((EBML, Some(size), data)) = header_at(file, 0)? else {
         return Ok(None);
     };
@@ -96,7 +136,7 @@ fn read_index(file: &mut File) -> io::Result<Option<Index>> {
     let end = segment_size.map_or(file_end, |s| (segment + s).min(file_end));
 
     let mut scale = 1_000_000;
-    let mut track = None;
+    let mut tracks = None;
     let mut cues_at = None;
     let mut cues = None;
     let mut at = segment;
@@ -121,7 +161,7 @@ fn read_index(file: &mut File) -> io::Result<Option<Index>> {
                             scale = uint(s);
                         }
                     }
-                    TRACKS => track = first_video_track(&body),
+                    TRACKS => tracks = Some(body),
                     _ => cues = Some(body),
                 }
             }
@@ -129,9 +169,6 @@ fn read_index(file: &mut File) -> io::Result<Option<Index>> {
         }
         at = data + size;
     }
-    let Some(track) = track else {
-        return Ok(None);
-    };
     let cues = match (cues, cues_at) {
         (Some(cues), _) => cues,
         (None, Some(position)) => match header_at(file, segment + position)? {
@@ -143,15 +180,14 @@ fn read_index(file: &mut File) -> io::Result<Option<Index>> {
         },
         (None, None) => return Ok(None),
     };
-    let points = cue_points(&cues, track);
-    if points.is_empty() || scale == 0 {
+    if scale == 0 {
         return Ok(None);
     }
-    Ok(Some(Index {
+    Ok(Some(Head {
         scale,
-        track,
         segment,
-        points,
+        tracks,
+        cues,
     }))
 }
 
@@ -350,6 +386,154 @@ fn children(mut data: &[u8]) -> impl Iterator<Item = (u32, &[u8])> {
 
 fn uint(body: &[u8]) -> u64 {
     body.iter().take(8).fold(0, |v, &b| (v << 8) | u64::from(b))
+}
+
+/// One line of a text subtitle track. Times in seconds; the text as muxed
+/// (SubRip markup and all).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SubtitleLine {
+    pub start: f64,
+    pub end: f64,
+    pub text: String,
+}
+
+/// Every line of SubRip stream `stream` (FFmpeg's stream index), read
+/// through the index alone: a few kilobytes per line, where ffmpeg reads the
+/// whole file to find them (an hour for an 80 GB remux on a network share).
+/// `None` when the file isn't Matroska, the stream isn't `S_TEXT/UTF8`, or
+/// the index doesn't say exactly where each of its blocks is.
+pub fn text_subtitle_lines(path: &Path, stream: u32) -> io::Result<Option<Vec<SubtitleLine>>> {
+    let mut file = File::open(path)?;
+    let Some(head) = read_head(&mut file)? else {
+        return Ok(None);
+    };
+    // FFmpeg numbers a Matroska file's streams in track-list order.
+    let Some(entry) = head.tracks.as_deref().and_then(|tracks| {
+        children(tracks)
+            .filter(|(id, _)| *id == TRACK_ENTRY)
+            .nth(stream as usize)
+            .map(|(_, entry)| entry)
+    }) else {
+        return Ok(None);
+    };
+    let field = |wanted: u32| {
+        children(entry)
+            .find(|(id, _)| *id == wanted)
+            .map(|(_, b)| b)
+    };
+    let srt = field(TRACK_TYPE).map(uint) == Some(SUBTITLE_TRACK)
+        && field(CODEC_ID) == Some(b"S_TEXT/UTF8".as_slice());
+    let Some(track) = field(TRACK_NUMBER).map(uint).filter(|_| srt) else {
+        return Ok(None);
+    };
+    let Some(blocks) = subtitle_blocks(&head.cues, track) else {
+        return Ok(None);
+    };
+    let seconds = |ticks: u64| ticks as f64 * head.scale as f64 / 1e9;
+    // Each cluster's body start and timestamp, read once.
+    let mut clusters: HashMap<u64, (u64, Option<u64>)> = HashMap::new();
+    let mut lines = Vec::with_capacity(blocks.len());
+    for block in blocks {
+        let (body, cluster_time) = match clusters.get(&block.cluster) {
+            Some(&known) => known,
+            None => {
+                let Some((CLUSTER, _, body)) = header_at(&mut file, head.segment + block.cluster)?
+                else {
+                    return Ok(None);
+                };
+                let time = match header_at(&mut file, body)? {
+                    Some((CLUSTER_TIMESTAMP, Some(size), at)) => {
+                        read_body(&mut file, at, size, 8)?.map(|b| uint(&b))
+                    }
+                    _ => None,
+                };
+                clusters.insert(block.cluster, (body, time));
+                (body, time)
+            }
+        };
+        let Some((id, Some(size), at)) = header_at(&mut file, body + block.relative)? else {
+            return Ok(None);
+        };
+        let Some(element) = read_body(&mut file, at, size, MAX_SUBTITLE_BLOCK)? else {
+            return Ok(None);
+        };
+        let (payload, duration) = match id {
+            SIMPLE_BLOCK => (element.as_slice(), None),
+            BLOCK_GROUP => {
+                let Some((_, payload)) = children(&element).find(|(id, _)| *id == BLOCK) else {
+                    return Ok(None);
+                };
+                let duration = children(&element)
+                    .find(|(id, _)| *id == BLOCK_DURATION)
+                    .map(|(_, d)| uint(d));
+                (payload, duration)
+            }
+            _ => return Ok(None),
+        };
+        // Laced blocks hold several frames; subtitles never are.
+        let Some(header) =
+            block_header(payload).filter(|h| h.track == track && h.flags & 0x06 == 0)
+        else {
+            return Ok(None);
+        };
+        let Some(duration) = duration.or(block.duration) else {
+            return Ok(None);
+        };
+        let start = match cluster_time {
+            Some(base) => base.saturating_add_signed(i64::from(header.time)),
+            None => block.time,
+        };
+        let (_, _, number_len) = vint(payload).expect("block_header read it");
+        let text = String::from_utf8_lossy(&payload[number_len + 3..]);
+        lines.push(SubtitleLine {
+            start: seconds(start),
+            end: seconds(start + duration),
+            text: text.trim_end_matches('\0').to_owned(),
+        });
+    }
+    Ok(Some(lines))
+}
+
+/// Where one subtitle block is, from the index.
+struct SubtitleBlock {
+    /// Ticks.
+    time: u64,
+    /// The block's cluster, from the segment's data.
+    cluster: u64,
+    /// The block, from the cluster's body.
+    relative: u64,
+    /// Ticks, when the index says.
+    duration: Option<u64>,
+}
+
+/// Every indexed block of `track`, in time order. `None` when there are none,
+/// or when one has no position within its cluster.
+fn subtitle_blocks(cues: &[u8], track: u64) -> Option<Vec<SubtitleBlock>> {
+    let mut blocks = Vec::new();
+    for (_, point) in children(cues).filter(|(id, _)| *id == CUE_POINT) {
+        let Some((_, time)) = children(point).find(|(id, _)| *id == CUE_TIME) else {
+            continue;
+        };
+        for (_, positions) in children(point).filter(|(id, _)| *id == CUE_TRACK_POSITIONS) {
+            let field = |wanted: u32| {
+                children(positions)
+                    .find(|(id, _)| *id == wanted)
+                    .map(|(_, b)| uint(b))
+            };
+            if field(CUE_TRACK) != Some(track) {
+                continue;
+            }
+            blocks.push(SubtitleBlock {
+                time: uint(time),
+                cluster: field(CUE_CLUSTER_POSITION)?,
+                relative: field(CUE_RELATIVE_POSITION)?,
+                duration: field(CUE_DURATION),
+            });
+        }
+    }
+    blocks.sort_by_key(|b| (b.time, b.cluster, b.relative));
+    blocks.dedup_by_key(|b| (b.cluster, b.relative));
+    (!blocks.is_empty()).then_some(blocks)
 }
 
 #[cfg(test)]
