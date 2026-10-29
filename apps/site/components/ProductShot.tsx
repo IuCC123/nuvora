@@ -6,7 +6,7 @@ import { EASE } from "./Reveal";
 import { Mark } from "./Nav";
 import { TitleCard, type PaletteName } from "./TitleCard";
 import { media } from "./scenes";
-import { CheckIcon, FilmIcon, HouseIcon, PlayIcon, SearchIcon, SlidersIcon, TvIcon, UsersIcon } from "./icons";
+import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, FilmIcon, HouseIcon, PlayIcon, SearchIcon, SlidersIcon, TvIcon, UsersIcon } from "./icons";
 
 type Item = { title: string; year?: number; art?: string; palette: PaletteName; progress?: number; watched?: boolean; sub?: string };
 
@@ -116,8 +116,12 @@ function HomeScreen() {
                 <span className="sa-row-title">{row.title}</span>
                 {row.count !== undefined && <span className="sa-row-count">{row.count}</span>}
                 <span className="sa-arrows" aria-hidden>
-                  <i>‹</i>
-                  <i>›</i>
+                  <i>
+                    <ChevronLeftIcon />
+                  </i>
+                  <i>
+                    <ChevronRightIcon />
+                  </i>
                 </span>
               </div>
               <div className="sa-strip">

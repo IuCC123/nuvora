@@ -673,6 +673,11 @@ a.wordmark:hover svg {
   color: var(--text-2);
 }
 
+.sa-arrows svg {
+  width: 1em;
+  height: 1em;
+}
+
 .sa-strip {
   display: flex;
   gap: 1.15em;

@@ -1,7 +1,7 @@
 import { Fragment, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import type { CastMember, Details, Image } from "@nuvora/core";
 import { Artwork } from "./Artwork";
-import { ChevronLeftIcon, ChevronRightIcon } from "./Icon";
+import { ChevronLeftIcon, ChevronRightIcon, StarIcon } from "./Icon";
 import { pageStrip, useScrollEdges } from "./PosterRow";
 import "../styles/home.css";
 import "../styles/details.css";
@@ -64,9 +64,7 @@ export function HeroMeta({ parts, rating, chips = [] }: { parts: ReactNode[]; ra
       ))}
       {rating != null && (
         <span className="hero-rating" aria-label={`Rated ${rating.toFixed(1)} out of 10`}>
-          <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden>
-            <path fill="currentColor" d="M12 2.8l2.85 5.78 6.38.93-4.62 4.5 1.09 6.35L12 17.36l-5.7 3 1.09-6.35-4.62-4.5 6.38-.93z" />
-          </svg>
+          <StarIcon size={13} />
           {rating.toFixed(1)}
         </span>
       )}

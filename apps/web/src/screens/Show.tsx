@@ -134,7 +134,7 @@ function ShowActions({ show }: { show: ShowDetail }) {
         title={allWatched ? "Mark show unwatched" : "Mark show watched"}
         onClick={() => toggle.mutate(!allWatched)}
       >
-        <CheckIcon size={20} strokeWidth={2.4} />
+        <CheckIcon size={20} />
       </button>
     </div>
   );
@@ -228,7 +228,7 @@ function SeasonTabs({ show, season, onChoose, onIntent }: { show: ShowDetail; se
             onFocus={() => onIntent(s)}
           >
             {s.title}
-            {s.episode_count > 0 && s.watched_count === s.episode_count && <CheckIcon size={13} strokeWidth={3} className="season-tab-check" aria-label="watched" />}
+            {s.episode_count > 0 && s.watched_count === s.episode_count && <CheckIcon size={13} className="season-tab-check" aria-label="watched" />}
           </button>
         );
       })}
@@ -324,7 +324,7 @@ function EpisodeCard({ show, episode, special, upNext }: { show: ShowDetail; epi
         title={watch.watched ? "Mark as unwatched" : "Mark as watched"}
         onClick={() => toggle.mutate(!watch.watched)}
       >
-        <CheckIcon size={15} strokeWidth={2.8} />
+        <CheckIcon size={15} />
       </button>
     </li>
   );

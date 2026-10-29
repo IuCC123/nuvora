@@ -140,7 +140,7 @@ function Toolbar({ view, movies, groupable, onChange }: { view: LibraryView; mov
             onClick={() => onChange({ ...view, group: !view.group })}
           >
             <span className="group-box" aria-hidden>
-              {view.group && <CheckIcon size={12} strokeWidth={3} />}
+              {view.group && <CheckIcon size={12} />}
             </span>
             Group by {GROUP_NAMES[view.sort as keyof typeof GROUP_NAMES]}
           </button>

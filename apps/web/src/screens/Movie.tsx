@@ -172,7 +172,7 @@ function WatchedToggle({ movie }: { movie: MovieDetail }) {
       title={watched ? "Mark as unwatched" : "Mark as watched"}
       onClick={() => toggle.mutate(!watched)}
     >
-      <CheckIcon size={20} strokeWidth={2.4} />
+      <CheckIcon size={20} />
     </button>
   );
 }

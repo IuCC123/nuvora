@@ -76,7 +76,7 @@ export function PosterMarks({ progress, watched }: { progress: number | null; wa
       )}
       {watched && progress == null && (
         <span className="poster-watched" aria-hidden>
-          <CheckIcon size={13} strokeWidth={3} />
+          <CheckIcon size={13} />
         </span>
       )}
     </>

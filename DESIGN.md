@@ -196,6 +196,10 @@ Technical badges (1080p, HEVC, HDR10, 5.1) are 11px bold text, 20px tall, in a 1
 
 Nav items are 40px rows with an icon and a label. The active item uses `surface-raised` with an amber icon. There is no colored side border.
 
+### Icons
+
+Every app uses [Phosphor](https://phosphoricons.com) and no hand-drawn icons. The web app and site import `@phosphor-icons/react` through `apps/web/src/components/Icon.tsx`. There, stroke weight follows size: bold under 20px and regular from 20px up. Solid controls (play, pause, next episode) and "on" states (subtitles) use the fill weight. Back and forward 10 s are Phosphor's circular arrows with a bold "10" inside. The TV apps use the bold weight. Their path data comes from `@phosphor-icons/core` via `bun scripts/tv-icons.ts`, which writes Vega's `icon-paths.ts` and Fire TV's `NvIcons`. The wordmark's play triangle is the brand mark, not an icon.
+
 ### Detail pages
 
 A movie or show opens the way Apple TV's app does. A hero fills the window, less 72px so the next row peeks in. It shows the backdrop, or the title card's wash with the poster on the right when there is none. The title, a facts line (genres, year, length, rating, badges), Play with its round companions, a three-line synopsis and "Starring" sit on its lower left. The art's lower edge dissolves into a 36px blur of itself before the scrims take it to `canvas`. That is a treatment of the artwork, not a glass panel. Below the hero come shelves: a show's episodes as 16:9 cards under season pills, then the cast in round portraits. Each shelf has back and forward buttons and Left/Right keys. An "Information" block closes the page with titled columns of label-over-value facts (About, Languages, File) and where the details came from.
@@ -228,7 +232,7 @@ A movie without poster artwork gets a title card, never a cropped video frame. I
 
 ## Personal home screens
 
-- **Library icons.** Each library shows one of 22 preset line icons (24-unit grid, 1.75 stroke, same as the rest of the set) in the rail, on its home row and as the library page's heading, where it is amber. Movies default to the film icon and TV to the TV icon.
+- **Library icons.** Each library shows one of 22 preset Phosphor icons in the rail, on its home row and as the library page's heading, where it is amber. Movies default to the film icon and TV to the TV icon.
 - **Backgrounds.** Home can sit on a wash in one of six palettes (Dusk, Ocean, Forest, Ember, Aurora, Graphite), each three soft radial gradients at 14% to 42% opacity, or "Posters", the first poster on screen blurred 80px at 50%. Every background fades into the canvas within the first screen and a half, so rows stay on the canvas color for reading.
 - **Poster sizes.** Small 124px, medium 150px, large 196px. Everything else in a row scales from the card width.
 - **Customize panel.** A 440px panel from the right on `canvas`, like the menus, with swatches, a segmented size control, and the row list on `surface`. A row's move arrows appear on hover or focus (always on touch screens). Changes apply as they happen and save to the account, so the panel only speaks up when a save fails.

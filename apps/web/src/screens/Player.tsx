@@ -617,7 +617,7 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
       {waiting && !src && !notice && (
         <div className="player-waiting" role="status" aria-live="polite">
           <span className="player-spinner">
-            <SpinIcon size={44} strokeWidth={2} />
+            <SpinIcon size={44} />
           </span>
           <p className="player-waiting-label">{waiting}</p>
           {streamNote && <p className="player-stream-note">{streamNote}</p>}
