@@ -20,6 +20,7 @@ const SENTENCES: Record<ErrorCode, string> = {
   rate_limited: "Too many sign-in attempts. Try again in 15 minutes.",
   busy: "The server is as busy as it's set to be. Try again in a minute.",
   update_unavailable: "This server can't update itself right now.",
+  subtitles_unavailable: "Subtitles can't be fetched online right now.",
   internal: SERVER_TROUBLE,
 };
 

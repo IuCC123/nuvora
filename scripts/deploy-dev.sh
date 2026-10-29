@@ -26,6 +26,7 @@ rsync -rlz --checksum --delete --exclude-from=.dockerignore --exclude .git ./ "$
 echo "Building on $host"
 # The server stage always reruns, so files copied in keep their fresh mtimes;
 # the Cargo cache mount keeps the build incremental.
-ssh "$host" "cd $src && docker build --no-cache-filter server -t nuvora:dev . 2>&1 | tail -n 5"
+# The whole log stays on the server; a failed build stops here, with its end shown.
+ssh "$host" "cd $src && { docker build --no-cache-filter server -t nuvora:dev . > /tmp/nuvora-build.log 2>&1; status=\$?; tail -n 15 /tmp/nuvora-build.log; exit \$status; }"
 echo "Restarting Nuvora on nuvora:dev"
 ssh "$host" "cd $dir && NUVORA_IMAGE=nuvora:dev docker compose up -d && docker ps --filter name=nuvora --format '{{.Image}} {{.Status}}'"
