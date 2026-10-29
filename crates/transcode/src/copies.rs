@@ -156,6 +156,10 @@ impl Copies {
             urgent: Mutex::new(Vec::new()),
             wake: Notify::new(),
         });
+        // Where every copy stands is known before the first request: a player
+        // asking during startup would otherwise hear there is none and stream
+        // the heavy original instead.
+        copies.refresh(&HashMap::new()).await;
         tokio::spawn(work(copies.clone()));
         copies
     }
@@ -469,24 +473,22 @@ impl Copies {
     }
 }
 
-/// Every minute and whenever someone opens a heavy video: list what
-/// needs a copy, and make the most wanted one.
-async fn work(copies: Arc<Copies>) {
-    // Let the startup scan read the catalog first.
-    tokio::time::sleep(Duration::from_secs(20)).await;
-    let mut failed: HashMap<FileId, String> = HashMap::new();
-    loop {
-        let on = copies.transcoder.tuning().streaming_copies;
-        let Some(heavy) = copies.survey().await else {
-            tokio::time::sleep(Duration::from_secs(60)).await;
-            continue;
-        };
+impl Copies {
+    /// Lists what needs a copy and records where each stands. Returns the
+    /// heavy videos and those still to make, most wanted first; `None` when
+    /// the catalog can't be read.
+    async fn refresh(
+        &self,
+        failed: &HashMap<FileId, String>,
+    ) -> Option<(Vec<(FileId, StreamSource)>, Vec<FileId>)> {
+        let on = self.transcoder.tuning().streaming_copies;
+        let heavy = self.survey().await?;
         let mut todo = Vec::new();
         {
-            let mut states = copies.states.lock().unwrap();
+            let mut states = self.states.lock().unwrap();
             states.clear();
             for (file, source) in &heavy {
-                let dir = copies.dir(source);
+                let dir = self.dir(source);
                 let state = if dir.join(DONE_FILE).is_file() {
                     ready_state(&dir)
                 } else if let Some(reason) = failed.get(file) {
@@ -501,7 +503,7 @@ async fn work(copies: Arc<Copies>) {
                 };
                 states.insert(*file, state);
             }
-            let urgent = copies.urgent.lock().unwrap().clone();
+            let urgent = self.urgent.lock().unwrap().clone();
             todo.sort_by_key(|f| urgent.iter().position(|u| u == f).unwrap_or(usize::MAX));
             for (i, file) in todo.iter().enumerate() {
                 states.insert(
@@ -512,6 +514,21 @@ async fn work(copies: Arc<Copies>) {
                 );
             }
         }
+        Some((heavy, todo))
+    }
+}
+
+/// Every minute and whenever someone opens a heavy video: list what
+/// needs a copy, and make the most wanted one.
+async fn work(copies: Arc<Copies>) {
+    // Let the startup scan read the catalog before converting anything.
+    tokio::time::sleep(Duration::from_secs(20)).await;
+    let mut failed: HashMap<FileId, String> = HashMap::new();
+    loop {
+        let Some((heavy, todo)) = copies.refresh(&failed).await else {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            continue;
+        };
         let Some(&file) = todo.first() else {
             tokio::select! {
                 () = copies.wake.notified() => {}

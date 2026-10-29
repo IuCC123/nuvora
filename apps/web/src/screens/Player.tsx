@@ -6,7 +6,7 @@ import { client, queries, servedClient } from "../nuvora";
 import { ArrowLeftIcon, Back10Icon, Forward10Icon, FullscreenIcon, PauseIcon, PipIcon, PlayIcon, SpinIcon, SubtitlesIcon, VolumeIcon } from "../components/Icon";
 import { Notice, type NoticeText } from "../components/Notice";
 import { NextEpisodeButton } from "../components/player/NextEpisodeButton";
-import { LoadingPanel, durationText, useLoadStats } from "../components/player/LoadingPanel";
+import { LoadingPanel, bufferedEnd, durationText, useLoadStats } from "../components/player/LoadingPanel";
 import { PlaybackMode, playbackMode, type Mode } from "../components/player/PlaybackMode";
 import { PlainSubtitles } from "../components/player/PlainSubtitles";
 import { PlayerTitle } from "../components/player/PlayerTitle";
@@ -16,7 +16,7 @@ import { SubtitleMenu } from "../components/player/SubtitleMenu";
 import { UpNext } from "../components/player/UpNext";
 import { initials } from "@nuvora/core";
 import { usePartyPlayer } from "../components/party/usePartyPlayer";
-import { useHls } from "../components/player/useHls";
+import { useHls, type HlsInfo } from "../components/player/useHls";
 import { useRebuffer } from "../components/player/useRebuffer";
 import { useRewrap } from "../components/player/useRewrap";
 import { useSubtitles } from "../components/player/useSubtitles";
@@ -29,7 +29,7 @@ import { useMediaState } from "../lib/useMediaState";
 import { useProgressReporting, type ProgressTarget } from "../lib/useProgressReporting";
 import { loadVolume, saveVolume } from "../lib/volumeMemory";
 import { loadQuality, saveQuality, type Quality } from "../lib/qualityMemory";
-import { opensNatively } from "../platform/deviceProfile";
+import { awayFromHome, opensNatively } from "../platform/deviceProfile";
 import "../styles/player.css";
 import "../styles/subtitles.css";
 
@@ -109,9 +109,11 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
   const fromServer = served?.file === file;
   const playback = notice ? undefined : fromServer ? served.playback : version?.playback;
 
-  // A 4K or very high bitrate file plays from the server's 1080p copy once there is one, unless the viewer chose the original.
+  // A 4K or very high bitrate file plays from the server's 1080p copy once there is one. At home the viewer's
+  // last choice holds; away from home it always starts from the copy, which is all most connections carry.
   const heavy = !!version && isHeavy(version);
-  const [quality, setQuality] = useState<Quality>(loadQuality);
+  const [quality, setQuality] = useState<Quality>(() => (awayFromHome() ? "copy" : loadQuality()));
+  const [autoSwitched, setAutoSwitched] = useState(false);
   const [copyBroken, setCopyBroken] = useState(false);
   const [switchedAt, setSwitchedAt] = useState<number | undefined>(undefined);
   const { data: copy, isPending: copyPending } = useQuery({
@@ -170,7 +172,7 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
       about={{
         source: playsCopy ? "1080p copy · H.264" : version ? (heavy ? `Original · ${version.summary}` : version.summary) : null,
         bitrate: playsCopy && copy.state === "ready" ? copy.bitrate : (version?.media?.bitrate ?? null),
-        hint: heavy && !playsCopy ? copyHint(copy, copyReady) : null,
+        hint: autoSwitched && playsCopy ? AUTO_SWITCH_HINT : heavy && !playsCopy ? copyHint(copy, copyReady) : null,
       }}
       quality={
         copyReady && copy.state === "ready"
@@ -187,13 +189,26 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
       subtitleScope={episode ? `show:${episode.show_id}` : `movie:${id}`}
       notice={notice}
       onBack={back}
-      onFailed={playsCopy ? () => setCopyBroken(true) : fallBack}
+      onTooSlow={
+        // Once only: a viewer who switches back to the original after this keeps it.
+        heavy && copyReady && !playsCopy && !autoSwitched
+          ? (at) => {
+              setAutoSwitched(true);
+              switchQuality("copy", at);
+            }
+          : undefined
+      }
+      // A copy that won't play falls back to the original at home. Away from home the original
+      // needs far more than most connections carry, so the player says it stopped instead.
+      onFailed={playsCopy ? () => (awayFromHome() ? setFailed(true) : setCopyBroken(true)) : fallBack}
       onPosition={keepPlace}
     />
   );
 }
 
 const NO_TRACKS: SubtitleTrack[] = [];
+
+const AUTO_SWITCH_HINT = "Switched to the 1080p copy: the original needs more than this connection carries. The quality button switches back.";
 
 const COPY_MODE: Mode = {
   label: "1080p copy",
@@ -278,12 +293,14 @@ interface PlayerViewProps {
   streamNote?: string | null;
   onBack: () => void;
   onFailed: () => void;
+  /** Called once if the stream can't keep up (see `useTooSlow`), with the playhead in seconds. */
+  onTooSlow?: (at: number) => void;
   onPosition: (positionMs: number) => void;
 }
 
 type PulseKind = "play" | "pause" | "back" | "forward" | "volume" | "subtitles-on" | "subtitles-off";
 
-export function PlayerView({ catalog, streamId, title, year, episode, onNext, source, mode, startAt: initialStart, durationHint, about, quality, subtitleTracks, audioLanguage, subtitleScope, notice, waiting, streamNote, onBack, onFailed, onPosition }: PlayerViewProps) {
+export function PlayerView({ catalog, streamId, title, year, episode, onNext, source, mode, startAt: initialStart, durationHint, about, quality, subtitleTracks, audioLanguage, subtitleScope, notice, waiting, streamNote, onBack, onFailed, onTooSlow, onPosition }: PlayerViewProps) {
   const [startAt] = useState(initialStart);
   const src = source?.url;
   const root = useRef<HTMLDivElement>(null);
@@ -304,6 +321,7 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
     onFailed();
   };
   const hlsInfo = useHls(video, source?.kind === "hls" ? source.url : undefined, startAt, fail);
+  useTooSlow(source?.kind === "hls" ? video : null, hlsInfo, onTooSlow);
   useRewrap(video, source?.kind === "rewrap" ? source.url : undefined, startAt, fail);
   const party = usePartyPlayer(src ? video : null, catalog, startAt);
   // Only where the player feeds the buffer: `<video src>` never holds the seconds a hold waits for.
@@ -816,4 +834,53 @@ function useHeldFor(value: boolean, ms: number) {
     return () => window.clearTimeout(timer);
   }, [value, ms]);
   return held;
+}
+
+/**
+ * Calls `onTooSlow` once when a stream can't keep up and less than 20 s is buffered: two segments came in
+ * slower than they play (`fill` under 0.9), the one arriving is on course to take more than twice its
+ * length, or playback stalled twice within 90 s. Seeks don't count. A 52 Mbit/s original over a
+ * 15 Mbit/s link shows within about 8 s, where waiting for whole segments would take a minute.
+ */
+function useTooSlow(video: HTMLVideoElement | null, info: RefObject<HlsInfo>, onTooSlow: ((at: number) => void) | undefined) {
+  const latest = useRef(onTooSlow);
+  latest.current = onTooSlow;
+  const watching = !!onTooSlow;
+  useEffect(() => {
+    if (!video || !watching) return;
+    let reported = false;
+    let started = false;
+    let stalls: number[] = [];
+    const report = () => {
+      if (reported) return;
+      reported = true;
+      latest.current?.(video.currentTime);
+    };
+    const onPlaying = () => {
+      started = true;
+    };
+    const onWaiting = () => {
+      if (!started || video.seeking) return;
+      const now = performance.now();
+      stalls = [...stalls.filter((t) => now - t < 90_000), now];
+      if (stalls.length >= 2) report();
+    };
+    const timer = window.setInterval(() => {
+      if (bufferedEnd(video) - video.currentTime >= 20) return;
+      const { fragments, fill, fragment } = info.current;
+      if (fragments >= 2 && fill !== null && fill < 0.9) report();
+      if (fragment && fragment.duration > 0 && fragment.total > 0 && fragment.loaded > 0) {
+        const elapsed = (performance.now() - fragment.requested) / 1000;
+        const projected = elapsed * (fragment.total / fragment.loaded);
+        if (elapsed > 6 && fragment.duration / projected < 0.5) report();
+      }
+    }, 2_000);
+    video.addEventListener("playing", onPlaying);
+    video.addEventListener("waiting", onWaiting);
+    return () => {
+      window.clearInterval(timer);
+      video.removeEventListener("playing", onPlaying);
+      video.removeEventListener("waiting", onWaiting);
+    };
+  }, [video, info, watching]);
 }

@@ -10,7 +10,12 @@ export interface HlsInfo {
   bitrate: number | null;
   /** Seconds of video per second of fetching, over recent segments, the server's wait included. Below 1, playback outruns the stream. */
   fill: number | null;
+  /** Media segments fetched so far: how much `fill` has to go on. */
+  fragments: number;
 }
+
+/** Tries after a network error before playback gives up: 2, 4, 8, 16 s, then every 30 s, about 2½ minutes in all. */
+const NETWORK_RETRIES = 8;
 
 /**
  * Plays a server HLS stream (`playback.kind === "hls"`) in `video`. hls.js
@@ -26,7 +31,7 @@ export function useHls(video: HTMLVideoElement | null, url: string | undefined, 
   const failed = useRef(onFailed);
   failed.current = onFailed;
   const start = useRef(startAt);
-  const info = useRef<HlsInfo>({ fragment: null, bandwidth: null, bitrate: null, fill: null });
+  const info = useRef<HlsInfo>({ fragment: null, bandwidth: null, bitrate: null, fill: null, fragments: 0 });
 
   useEffect(() => {
     if (!video || !url) return;
@@ -87,8 +92,12 @@ export function useHls(video: HTMLVideoElement | null, url: string | undefined, 
             requested: performance.now(),
           };
         });
+        let networkRetries = 0;
+        let retry: ReturnType<typeof setTimeout> | undefined;
         hls.on(Hls.Events.FRAG_LOADED, (_event, { frag }) => {
+          networkRetries = 0;
           if (frag.sn !== "initSegment" && frag.duration > 0) {
+            info.current.fragments += 1;
             bytes += frag.stats.loaded;
             seconds += frag.duration;
             info.current.bitrate = (bytes * 8) / seconds;
@@ -105,6 +114,18 @@ export function useHls(video: HTMLVideoElement | null, url: string | undefined, 
         let recovered = false;
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (!data.fatal) return;
+          // A dropped connection or a segment that ran out of retries isn't the end: what's
+          // buffered keeps playing while hls.js tries again, more patiently each time.
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR && networkRetries < NETWORK_RETRIES) {
+            networkRetries += 1;
+            console.warn("Network trouble, trying again:", data.details);
+            clearTimeout(retry);
+            retry = setTimeout(
+              () => (data.details.startsWith("manifest") ? hls.loadSource(playlist) : hls.startLoad()),
+              Math.min(30_000, 1_000 * 2 ** networkRetries),
+            );
+            return;
+          }
           console.warn("Playback stopped:", data.details, data.error?.message ?? "");
           if (data.type === Hls.ErrorTypes.MEDIA_ERROR && !recovered) {
             recovered = true;
@@ -115,7 +136,10 @@ export function useHls(video: HTMLVideoElement | null, url: string | undefined, 
         });
         hls.loadSource(playlist);
         hls.attachMedia(video);
-        destroy = () => hls.destroy();
+        destroy = () => {
+          clearTimeout(retry);
+          hls.destroy();
+        };
       });
     }
     return () => {

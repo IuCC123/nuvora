@@ -69,7 +69,11 @@ export function opensNatively(mime: string): boolean {
  * nothing. Needs Media Source Extensions, for hls.js.
  */
 export function streamsEverything(host: string): boolean {
-  if (!mediaSourceClass()) return false;
+  return !!mediaSourceClass() && awayFromHome(host);
+}
+
+/** The server is reached over the internet rather than the local network. */
+export function awayFromHome(host: string = location.hostname): boolean {
   return !onLocalNetwork(host.replace(/^\[|\]$/g, "").toLowerCase());
 }
 
