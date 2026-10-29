@@ -188,7 +188,7 @@ Set these in `.env` next to `compose.yaml`, then run `docker compose up -d`:
 | `NUVORA_IMAGE` | `ghcr.io/iucc123/nuvora:latest` | Image and version to run |
 | `NUVORA_UID`, `NUVORA_GID` | `10001` | User and group Nuvora runs as; must be able to read your media and write `data` (the installer sets yours) |
 | `NUVORA_TRUSTED_PROXY` | | Your reverse proxy's address or network, see [Remote access](#remote-access) |
-| `NUVORA_HARDWARE_ENCODING` | `auto` | Convert video on the graphics chip when one works: `auto`, `off`, or `videotoolbox`, `nvenc`, `vaapi` |
+| `NUVORA_HARDWARE_ENCODING` | (Settings › Transcoding) | Convert video on the graphics chip when one works: `auto`, `off`, or `videotoolbox`, `nvenc`, `vaapi`. Set, it overrides the admin panel |
 | `NUVORA_UPDATES` | `true` | Look for new versions on GitHub so admins can update from Settings; `false` and the server never contacts GitHub (update by hand) |
 | `TZ` | `UTC` | Time zone, for example `Europe/Amsterdam` |
 

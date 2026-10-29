@@ -19,7 +19,7 @@ services:
     environment:
       TZ: ${TZ:-UTC}
       NUVORA_TRUSTED_PROXY: ${NUVORA_TRUSTED_PROXY:-}
-      NUVORA_HARDWARE_ENCODING: ${NUVORA_HARDWARE_ENCODING:-auto}
+      NUVORA_HARDWARE_ENCODING: ${NUVORA_HARDWARE_ENCODING:-}
       NUVORA_UPDATES: ${NUVORA_UPDATES:-true}
     # Convert video on the graphics chip (Linux). Intel or AMD: uncomment the
     # next two lines, and set NUVORA_RENDER_GID in .env to the output of

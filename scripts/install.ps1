@@ -399,7 +399,7 @@ services:
     environment:
       TZ: ${TZ:-UTC}
       NUVORA_TRUSTED_PROXY: ${NUVORA_TRUSTED_PROXY:-}
-      NUVORA_HARDWARE_ENCODING: ${NUVORA_HARDWARE_ENCODING:-auto}
+      NUVORA_HARDWARE_ENCODING: ${NUVORA_HARDWARE_ENCODING:-}
     restart: unless-stopped
 
 '@
