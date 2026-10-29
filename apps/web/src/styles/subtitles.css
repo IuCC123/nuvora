@@ -196,8 +196,7 @@
 }
 
 .subs-heading {
-  float: left;
-  width: 100%;
+  flex: none;
   padding: 8px 10px 6px;
   color: var(--nv-color-text-secondary);
   font-size: var(--nv-type-small-size);
@@ -206,7 +205,6 @@
 }
 
 .subs-track-list {
-  clear: both;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;

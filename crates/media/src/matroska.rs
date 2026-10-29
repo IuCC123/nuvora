@@ -429,41 +429,99 @@ pub fn text_subtitle_lines(path: &Path, stream: u32) -> io::Result<Option<Vec<Su
     let Some(blocks) = subtitle_blocks(&head.cues, track) else {
         return Ok(None);
     };
+    // Each line is a few small reads somewhere in the file; on a network
+    // share the wait for each is what takes the time, so several are read at
+    // once (Interstellar's 1,915 lines: 152 s one at a time).
+    let per_reader = blocks.len().div_ceil(SUBTITLE_READERS);
+    let parts: Vec<io::Result<Option<Vec<SubtitleLine>>>> = std::thread::scope(|scope| {
+        let readers: Vec<_> = blocks
+            .chunks(per_reader)
+            .map(|part| scope.spawn(|| read_subtitle_lines(path, &head, track, part)))
+            .collect();
+        readers
+            .into_iter()
+            .map(|reader| {
+                reader
+                    .join()
+                    .unwrap_or_else(|_| Err(io::Error::other("a subtitle reader panicked")))
+            })
+            .collect()
+    });
+    let mut lines = Vec::with_capacity(blocks.len());
+    for part in parts {
+        let Some(part) = part? else {
+            return Ok(None);
+        };
+        lines.extend(part);
+    }
+    Ok(Some(lines))
+}
+
+/// Reads running at once for [`text_subtitle_lines`].
+const SUBTITLE_READERS: usize = 16;
+/// Enough for a cluster's header and its timestamp, the element after it.
+const CLUSTER_HEAD: usize = 32;
+/// Enough for a subtitle block in one read, almost always.
+const BLOCK_READ: usize = 4096;
+
+/// The lines at `blocks`, from a file of its own: two reads each, the
+/// cluster's head (once per cluster) and the block. `None` as for
+/// [`text_subtitle_lines`].
+fn read_subtitle_lines(
+    path: &Path,
+    head: &Head,
+    track: u64,
+    blocks: &[SubtitleBlock],
+) -> io::Result<Option<Vec<SubtitleLine>>> {
+    let mut file = File::open(path)?;
     let seconds = |ticks: u64| ticks as f64 * head.scale as f64 / 1e9;
-    // Each cluster's body start and timestamp, read once.
+    // Each cluster's body start and timestamp.
     let mut clusters: HashMap<u64, (u64, Option<u64>)> = HashMap::new();
     let mut lines = Vec::with_capacity(blocks.len());
     for block in blocks {
         let (body, cluster_time) = match clusters.get(&block.cluster) {
             Some(&known) => known,
             None => {
-                let Some((CLUSTER, _, body)) = header_at(&mut file, head.segment + block.cluster)?
-                else {
+                let at = head.segment + block.cluster;
+                let bytes = read_at(&mut file, at, CLUSTER_HEAD)?;
+                let Some((CLUSTER, _, len)) = header(&bytes) else {
                     return Ok(None);
                 };
-                let time = match header_at(&mut file, body)? {
-                    Some((CLUSTER_TIMESTAMP, Some(size), at)) => {
-                        read_body(&mut file, at, size, 8)?.map(|b| uint(&b))
-                    }
+                let time = match header(&bytes[len..]) {
+                    Some((CLUSTER_TIMESTAMP, Some(size), inner)) => bytes
+                        .get(len + inner..len + inner + size as usize)
+                        .filter(|_| size <= 8)
+                        .map(uint),
                     _ => None,
                 };
-                clusters.insert(block.cluster, (body, time));
-                (body, time)
+                let known = (at + len as u64, time);
+                clusters.insert(block.cluster, known);
+                known
             }
         };
-        let Some((id, Some(size), at)) = header_at(&mut file, body + block.relative)? else {
+        let at = body + block.relative;
+        let mut bytes = read_at(&mut file, at, BLOCK_READ)?;
+        let Some((id, Some(size), len)) = header(&bytes) else {
             return Ok(None);
         };
-        let Some(element) = read_body(&mut file, at, size, MAX_SUBTITLE_BLOCK)? else {
+        if size > MAX_SUBTITLE_BLOCK {
             return Ok(None);
-        };
+        }
+        let end = len + size as usize;
+        if bytes.len() < end {
+            bytes = read_at(&mut file, at, end)?;
+            if bytes.len() < end {
+                return Ok(None);
+            }
+        }
+        let element = &bytes[len..end];
         let (payload, duration) = match id {
-            SIMPLE_BLOCK => (element.as_slice(), None),
+            SIMPLE_BLOCK => (element, None),
             BLOCK_GROUP => {
-                let Some((_, payload)) = children(&element).find(|(id, _)| *id == BLOCK) else {
+                let Some((_, payload)) = children(element).find(|(id, _)| *id == BLOCK) else {
                     return Ok(None);
                 };
-                let duration = children(&element)
+                let duration = children(element)
                     .find(|(id, _)| *id == BLOCK_DURATION)
                     .map(|(_, d)| uint(d));
                 (payload, duration)
@@ -492,6 +550,21 @@ pub fn text_subtitle_lines(path: &Path, stream: u32) -> io::Result<Option<Vec<Su
         });
     }
     Ok(Some(lines))
+}
+
+/// Up to `len` bytes from `at`; fewer at the end of the file.
+fn read_at(file: &mut File, at: u64, len: usize) -> io::Result<Vec<u8>> {
+    let mut bytes = vec![0; len];
+    file.seek(SeekFrom::Start(at))?;
+    let mut read = 0;
+    while read < len {
+        match file.read(&mut bytes[read..])? {
+            0 => break,
+            n => read += n,
+        }
+    }
+    bytes.truncate(read);
+    Ok(bytes)
 }
 
 /// Where one subtitle block is, from the index.

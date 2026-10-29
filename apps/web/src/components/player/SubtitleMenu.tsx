@@ -108,8 +108,12 @@ export function SubtitleMenu({ subtitles, style, onStyle, onOpenChange }: Subtit
       </button>
       {open && (
         <div ref={menu} id={`${id}-menu`} className="subs-menu" role="dialog" aria-label="Subtitles" tabIndex={-1}>
-          <fieldset className="subs-tracks">
-            <legend className="subs-heading">Subtitles</legend>
+          {/* A div, not a fieldset: a fieldset lays its contents out in a box of its own that ignores
+              the menu's height, so the list would never scroll. */}
+          <div className="subs-tracks" role="radiogroup" aria-labelledby={`${id}-heading`}>
+            <p id={`${id}-heading`} className="subs-heading">
+              Subtitles
+            </p>
             <div className="subs-track-list">
               <TrackOption name={`${id}-track`} checked={!on} onPick={(pointer) => pick(null, pointer)}>
                 <span className="subs-track-name">Off</span>
@@ -187,7 +191,7 @@ export function SubtitleMenu({ subtitles, style, onStyle, onOpenChange }: Subtit
                 </details>
               )}
             </div>
-          </fieldset>
+          </div>
           {note && (
             <p className="subs-note" role="status">
               {NOTES[note]}
