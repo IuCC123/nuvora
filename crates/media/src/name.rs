@@ -308,6 +308,25 @@ pub struct ShowName {
     pub year: Option<u16>,
 }
 
+impl ShowName {
+    /// The show a folder at the top of a TV library holds, read as the scanner
+    /// reads it: `Dexter Resurrection (2025)`. `None` for a season folder.
+    pub fn of_folder(folder: &str) -> Option<ShowName> {
+        if season_folder(folder).is_some() {
+            return None;
+        }
+        show_name(&strip_tags(folder))
+    }
+
+    /// The same title, ignoring case, accents and punctuation, and no
+    /// conflicting years: `Dexter Resurrection` is `Dexter: Resurrection
+    /// (2025)`, but `Doctor Who (1963)` isn't `Doctor Who (2005)`.
+    pub fn same_show(&self, other: &ShowName) -> bool {
+        title_key(&self.title, None) == title_key(&other.title, None)
+            && (self.year.is_none() || other.year.is_none() || self.year == other.year)
+    }
+}
+
 impl EpisodeName {
     pub fn parse(rel: &Path) -> Option<EpisodeName> {
         let parts: Vec<String> = rel
@@ -1286,6 +1305,22 @@ mod tests {
                 stem: "movie (2010)-poster".into()
             }
         );
+    }
+
+    #[test]
+    fn a_show_folder_with_or_without_its_year_is_the_same_show() {
+        let show = |folder: &str| ShowName::of_folder(folder).expect("a show");
+        let dexter = show("Dexter Resurrection (2025)");
+        assert_eq!(
+            (dexter.title.as_str(), dexter.year),
+            ("Dexter Resurrection", Some(2025))
+        );
+        assert!(dexter.same_show(&show("Dexter Resurrection")));
+        assert!(show("Dexter - Resurrection").same_show(&dexter));
+        assert!(show("dexter: resurrection [1080p]").same_show(&dexter));
+        assert!(!dexter.same_show(&show("Dexter")));
+        assert!(!show("Doctor Who (1963)").same_show(&show("Doctor Who (2005)")));
+        assert_eq!(ShowName::of_folder("Season 02"), None);
     }
 
     #[test]

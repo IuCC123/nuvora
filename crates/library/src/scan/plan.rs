@@ -72,6 +72,24 @@ pub(crate) struct ScanPlan {
 /// clock running ahead). Beyond it the timestamp is simply wrong.
 const CLOCK_SKEW: Duration = Duration::from_secs(60);
 
+/// Files modified more recently than `window` may still be copying, so a scan
+/// leaves them for later; `whole` lists those known to be complete anyway (a
+/// finished download, moved in).
+#[derive(Debug, Default)]
+pub(crate) struct Settle {
+    pub window: Duration,
+    pub whole: HashSet<(RootId, RelPath)>,
+}
+
+impl From<Duration> for Settle {
+    fn from(window: Duration) -> Settle {
+        Settle {
+            window,
+            whole: HashSet::new(),
+        }
+    }
+}
+
 /// Diff stored files against walks. Rules:
 /// - same path, same (size, mtime) and current probe_version => unchanged,
 ///   and also reparse when its parse_version is stale;
@@ -80,7 +98,8 @@ const CLOCK_SKEW: Duration = Duration::from_secs(60);
 /// - path only in store, under a complete root that is not held and not under
 ///   an unreadable subfolder => gone, candidate for move pairing; otherwise
 ///   left untouched;
-/// - a file modified within `settle` is counted as settling and skipped;
+/// - a file modified within the settle window is counted as settling and
+///   skipped, unless the caller knows it is whole;
 /// - a file modified more than [`CLOCK_SKEW`] in the future is not settling:
 ///   it is planned as usual and listed in `future`.
 ///
@@ -89,11 +108,12 @@ pub(crate) fn diff(
     mut known: Vec<KnownFile>,
     walks: &[RootWalk],
     now: SystemTime,
-    settle: Duration,
+    settle: impl Into<Settle>,
 ) -> ScanPlan {
+    let settle = settle.into();
     known.sort_by(|a, b| (a.root, &a.rel).cmp(&(b.root, &b.rel)));
     let settle_cutoff_ns = now
-        .checked_sub(settle)
+        .checked_sub(settle.window)
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map_or(i64::MAX, |d| d.as_nanos() as i64);
     let future_ns = (now + CLOCK_SKEW)
@@ -121,7 +141,9 @@ pub(crate) fn diff(
             }
             if disk.mtime_ns > future_ns {
                 plan.future.push(disk.rel.clone());
-            } else if disk.mtime_ns > settle_cutoff_ns {
+            } else if disk.mtime_ns > settle_cutoff_ns
+                && !settle.whole.contains(&(walk.root, disk.rel.clone()))
+            {
                 plan.settling += 1;
                 continue;
             }
@@ -700,6 +722,20 @@ mod tests {
             Duration::ZERO,
         );
         assert_eq!((plan.settling, plan.to_probe.len()), (0, 1));
+    }
+
+    #[test]
+    fn a_file_known_to_be_whole_skips_the_settle_wait() {
+        let mut downloaded = disk("New (2020)/New (2020).mkv", 5);
+        downloaded.mtime_ns = NOW_NS;
+        let mut copying = disk("Copying (2021)/Copying (2021).mkv", 5);
+        copying.mtime_ns = NOW_NS;
+        let settle = Settle {
+            window: settle(),
+            whole: HashSet::from([(RootId(1), downloaded.rel.clone())]),
+        };
+        let plan = diff(vec![], &[walk(&[downloaded, copying])], now(), settle);
+        assert_eq!((plan.settling, plan.to_probe.len()), (1, 1));
     }
 
     #[test]

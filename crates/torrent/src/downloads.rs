@@ -30,7 +30,7 @@ use librqbit::{
     SessionPersistenceConfig, TorrentStats, TorrentStatsState,
 };
 use nuvora_library::{Library, LibraryId, LibraryInfo, LibraryKind};
-use nuvora_media::{EpisodeName, PathClass, ReleaseName, classify_path};
+use nuvora_media::{EpisodeName, PathClass, ReleaseName, ShowName, classify_path};
 use serde::{Deserialize, Serialize};
 
 pub use torznab::{Indexer, Release, TorznabError};
@@ -58,6 +58,9 @@ const WANTED_FILES: &str =
 /// A `.torrent` bigger than this is not a movie's.
 const MAX_TORRENT_BYTES: usize = 16 * 1024 * 1024;
 const POLL: Duration = Duration::from_secs(1);
+/// How long a finished download waits for the scan that adds it, a few
+/// seconds usually, before the Downloads page calls it done anyway.
+const ADDING_AT_MOST: Duration = Duration::from_secs(300);
 
 pub type DownloadId = u64;
 
@@ -659,28 +662,24 @@ impl Downloads {
     async fn drive(self: Arc<Self>, id: DownloadId) {
         let outcome = self.download(id).await;
         self.live.lock().expect("live lock").remove(&id);
-        let phase = match outcome {
-            Ok(path) => {
-                tracing::info!(id, path = %path.display(), "download in the library");
-                self.library.request_scan();
-                Phase::Done {
-                    path,
-                    finished_at: unix_now(),
-                }
-            }
-            Err(error) => {
-                tracing::warn!(id, "download failed: {error}");
-                Phase::Failed { error }
-            }
-        };
-        if let Err(e) = self.set_phase(id, |_| Ok(phase.clone())).await
+        if let Err(error) = outcome {
+            tracing::warn!(id, "download failed: {error}");
+            self.save_phase(id, Phase::Failed { error }).await;
+        }
+    }
+
+    async fn save_phase(&self, id: DownloadId, phase: Phase) {
+        if let Err(e) = self.set_phase(id, |_| Ok(phase)).await
             && !matches!(e, ControlError::NotFound)
         {
             tracing::error!(id, "cannot save the download's outcome: {e}");
         }
     }
 
-    async fn download(&self, id: DownloadId) -> Result<PathBuf, String> {
+    /// Downloads, moves into the library and waits for the scan that adds
+    /// it, in [`Stage::Moving`] from the last piece until it is in the
+    /// catalog. Saved as done once moved, so a restart doesn't fetch it again.
+    async fn download(&self, id: DownloadId) -> Result<(), String> {
         let engine = self.engine.clone()?;
         let record = self.record(id).await.ok_or("No such download")?;
         let torrent = self.torrent(&record).await?;
@@ -724,14 +723,34 @@ impl Downloads {
             tracing::debug!(id, "stop after download: {e:#}");
         }
         finished?;
-        let (root, title) = match self.show_instead(&record, &staging).await {
-            Some(show) => show,
-            None => (record.root.clone(), record.title.clone()),
+        let (root, title, show) = match self.show_instead(&record, &staging).await {
+            Some((root, title)) => (root, title, true),
+            None => (
+                record.root.clone(),
+                record.title.clone(),
+                ReleaseName::parse(&record.title).content.is_show(),
+            ),
         };
-        tokio::task::spawn_blocking(move || move_into_library(&staging, &root, &title))
-            .await
-            .map_err(|e| format!("Moving it into the library stopped: {e}"))?
-            .map_err(|e| format!("Couldn't move it into the library: {e}"))
+        let landed =
+            tokio::task::spawn_blocking(move || move_into_library(&staging, &root, &title, show))
+                .await
+                .map_err(|e| format!("Moving it into the library stopped: {e}"))?
+                .map_err(|e| format!("Couldn't move it into the library: {e}"))?;
+        tracing::info!(id, path = %landed.folder.display(), "download in the library");
+        let path = landed.folder.clone();
+        self.save_phase(
+            id,
+            Phase::Done {
+                path,
+                finished_at: unix_now(),
+            },
+        )
+        .await;
+        let adding = self.library.add_whole_files(landed.files);
+        if tokio::time::timeout(ADDING_AT_MOST, adding).await.is_err() {
+            tracing::warn!(id, "the scan adding the download is taking long");
+        }
+        Ok(())
     }
 
     /// What to hand the engine. An indexer link is fetched once and kept.
@@ -994,6 +1013,8 @@ fn storage() -> librqbit::storage::BoxStorageFactory {
 
 fn state(phase: &Phase, stage: Option<&Stage>) -> State {
     match (phase, stage) {
+        // Saved as done once moved, but still waiting for the scan.
+        (_, Some(Stage::Moving)) => State::Moving,
         (Phase::Done { path, finished_at }, _) => State::Done {
             path: path.clone(),
             finished_at: *finished_at,
@@ -1001,7 +1022,6 @@ fn state(phase: &Phase, stage: Option<&Stage>) -> State {
         (Phase::Failed { error }, _) => State::Failed {
             error: error.clone(),
         },
-        (_, Some(Stage::Moving)) => State::Moving,
         (phase, Some(Stage::Running(torrent))) => {
             let stats = torrent.stats();
             let progress = progress(&stats);
@@ -1135,18 +1155,35 @@ fn staging(record: &Record) -> PathBuf {
     record.root.join(STAGING).join(record.id.to_string())
 }
 
+/// Where a finished download went.
+#[derive(Debug)]
+struct Landed {
+    folder: PathBuf,
+    /// The videos and subtitles moved there.
+    files: Vec<PathBuf>,
+}
+
 /// Moves the videos and subtitles from `staging` into the movie's or show's
 /// folder, `root/<Title (Year)>/`, keeping the torrent's sub-folders below
 /// its top folder (a show's `Season 01/`, say), then deletes `staging` and
-/// whatever else it held. Episodes join the show's folder if it is there.
-/// Returns the folder.
-fn move_into_library(staging: &Path, root: &Path, title: &str) -> std::io::Result<PathBuf> {
+/// whatever else it held. A show's episodes join the folder it already has,
+/// even when one name has the year and the other doesn't.
+fn move_into_library(
+    staging: &Path,
+    root: &Path,
+    title: &str,
+    show: bool,
+) -> std::io::Result<Landed> {
     let name = ReleaseName::parse(title);
     let folder = match name.year {
         Some(year) => format!("{} ({year})", name.title),
         None => name.title,
     };
     let folder = safe_name(&folder).unwrap_or_else(|| "Downloaded".to_owned());
+    let folder = match show {
+        true => show_folder(root, &folder).unwrap_or(folder),
+        false => folder,
+    };
     let destination = root.join(folder);
     // A multi-file torrent has one top folder; its name is the release's.
     let mut top = staging.to_path_buf();
@@ -1156,7 +1193,7 @@ fn move_into_library(staging: &Path, root: &Path, title: &str) -> std::io::Resul
     {
         top = only.path();
     }
-    let mut moved = 0;
+    let mut moved = Vec::new();
     for file in files_under(&top)? {
         let rel = file.strip_prefix(&top).expect("under top");
         if !matches!(classify_path(rel), PathClass::Video | PathClass::Subtitle) {
@@ -1165,9 +1202,9 @@ fn move_into_library(staging: &Path, root: &Path, title: &str) -> std::io::Resul
         let target = free_path(&destination.join(rel));
         std::fs::create_dir_all(target.parent().expect("has a parent"))?;
         move_file(&file, &target)?;
-        moved += 1;
+        moved.push(target);
     }
-    if moved == 0 {
+    if moved.is_empty() {
         return Err(std::io::Error::other("it holds no video"));
     }
     std::fs::remove_dir_all(staging)?;
@@ -1175,7 +1212,35 @@ fn move_into_library(staging: &Path, root: &Path, title: &str) -> std::io::Resul
     if let Some(parent) = staging.parent() {
         let _ = std::fs::remove_dir(parent);
     }
-    Ok(destination)
+    Ok(Landed {
+        folder: destination,
+        files: moved,
+    })
+}
+
+/// The folder in `root` that already holds the show `folder` names: the one
+/// with the same title and year, else the only one with the same title and
+/// no conflicting year. `None` when there is none or it's ambiguous.
+fn show_folder(root: &Path, folder: &str) -> Option<String> {
+    let wanted = ShowName::of_folder(folder)?;
+    let mut same = Vec::new();
+    for entry in std::fs::read_dir(root).ok()?.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') || !entry.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        let Some(show) = ShowName::of_folder(&name).filter(|s| s.same_show(&wanted)) else {
+            continue;
+        };
+        if show.year == wanted.year {
+            return Some(name);
+        }
+        same.push(name);
+    }
+    match <[String; 1]>::try_from(same) {
+        Ok([only]) => Some(only),
+        Err(_) => None,
+    }
 }
 
 /// The show a finished torrent holds: every main video names an episode of
@@ -1335,10 +1400,11 @@ mod tests {
             &staging,
             &root,
             "Night.of.the.Living.Dead.1968.1080p.BluRay.x264-GRP",
+            false,
         )
         .unwrap();
 
-        assert_eq!(landed, root.join("Night of the Living Dead (1968)"));
+        assert_eq!(landed.folder, root.join("Night of the Living Dead (1968)"));
         assert_eq!(
             tree(&root),
             [
@@ -1348,6 +1414,41 @@ mod tests {
             ]
         );
         assert!(!root.join(STAGING).exists());
+    }
+
+    #[test]
+    fn a_new_season_joins_the_shows_folder_with_or_without_its_year() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("TV Shows");
+        touch(&root.join("Dexter Resurrection (2025)/S01E01.mkv"), b"s1");
+        touch(&root.join("Doctor Who (1963)/S01E01.mkv"), b"old");
+        let staging = root.join(STAGING).join("4");
+        touch(
+            &staging.join("dexter.resurrection.s02e01.1080p.web.h264-cakes.mkv"),
+            b"s2",
+        );
+
+        let landed = move_into_library(
+            &staging,
+            &root,
+            "Dexter.Resurrection.S02E01.1080p.WEB.H264-CAKES",
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(landed.folder, root.join("Dexter Resurrection (2025)"));
+        assert_eq!(
+            landed.files,
+            [root.join(
+                "Dexter Resurrection (2025)/dexter.resurrection.s02e01.1080p.web.h264-cakes.mkv"
+            )]
+        );
+
+        // A different year is a different show.
+        let staging = root.join(STAGING).join("5");
+        touch(&staging.join("Doctor.Who.2005.S01E01.mkv"), b"new");
+        let landed = move_into_library(&staging, &root, "Doctor Who 2005 S01E01", true).unwrap();
+        assert_eq!(landed.folder, root.join("Doctor Who (2005)"));
     }
 
     #[test]
@@ -1361,9 +1462,10 @@ mod tests {
             b"still downloading",
         );
 
-        let landed = move_into_library(&root.join(STAGING).join("1"), &root, "Heat 1995").unwrap();
+        let landed =
+            move_into_library(&root.join(STAGING).join("1"), &root, "Heat 1995", false).unwrap();
 
-        assert_eq!(landed, root.join("Heat (1995)"));
+        assert_eq!(landed.folder, root.join("Heat (1995)"));
         assert_eq!(
             tree(&root),
             [
@@ -1379,7 +1481,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let staging = dir.path().join(STAGING).join("3");
         touch(&staging.join("readme.txt"), b"nope");
-        let error = move_into_library(&staging, dir.path(), "Nothing").unwrap_err();
+        let error = move_into_library(&staging, dir.path(), "Nothing", false).unwrap_err();
         assert_eq!(error.to_string(), "it holds no video");
         assert!(staging.join("readme.txt").exists());
     }

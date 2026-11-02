@@ -109,7 +109,7 @@ export function Downloads() {
   );
 }
 
-/** A finished download starts a scan on the server; asking for its status lets the top bar follow it and refresh Home after. */
+/** A download turns done once the server's scan has added it, so the library's screens refresh then. */
 function useScanWhenDone(downloads: Download[] | undefined) {
   const qc = useQueryClient();
   const done = useRef<Set<number> | null>(null);
@@ -119,8 +119,9 @@ function useScanWhenDone(downloads: Download[] | undefined) {
     const fresh = done.current !== null && [...now].some((id) => !done.current!.has(id));
     done.current = now;
     if (fresh) {
-      void qc.invalidateQueries({ queryKey: queryKeys.scan });
-      void qc.invalidateQueries({ queryKey: queryKeys.libraries });
+      for (const queryKey of [queryKeys.scan, queryKeys.libraries, queryKeys.library, queryKeys.home, queryKeys.rows]) {
+        void qc.invalidateQueries({ queryKey });
+      }
     }
   }, [downloads, qc]);
 }
@@ -436,7 +437,7 @@ const STATE_LABEL: Record<DownloadState, string> = {
   checking: "Checking",
   downloading: "Downloading",
   paused: "Paused",
-  moving: "Moving",
+  moving: "Adding",
   done: "In your library",
   failed: "Stopped",
 };
@@ -547,13 +548,13 @@ function detail(d: Download, percent: number | null): string {
     case "downloading": {
       if (d.peers === 0) return [amount, "Looking for peers"].filter(Boolean).join(" · ");
       const parts = [amount, `${formatBytes(d.down_bps)}/s`, `${d.peers} ${d.peers === 1 ? "peer" : "peers"}`];
-      if (d.eta_s != null) parts.push(`${formatDuration(d.eta_s * 1000)} left`);
+      if (d.eta_s != null) parts.push(`in your library in ${formatDuration(d.eta_s * 1000)}`);
       return parts.filter(Boolean).join(" · ");
     }
     case "paused":
       return amount ? `Paused at ${amount}` : "Paused before it started";
     case "moving":
-      return "Moving it into your library";
+      return "Adding it to your library, a few seconds";
     case "done":
       return d.path ?? "In your library";
     case "failed":

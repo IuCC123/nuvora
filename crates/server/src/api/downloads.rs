@@ -66,7 +66,7 @@ pub enum DownloadState {
     Checking,
     Downloading,
     Paused,
-    /// Moving the files into the library.
+    /// Moving the files into the library and adding them, a few seconds.
     Moving,
     Done,
     Failed,

@@ -189,7 +189,7 @@ fn is_share_down(e: &std::io::Error) -> bool {
 }
 
 /// `path` relative to `root`, `/`-separated; `None` when not valid UTF-8.
-fn rel_path(root: &Path, path: &Path) -> Option<String> {
+pub(crate) fn rel_path(root: &Path, path: &Path) -> Option<String> {
     let rel = path.strip_prefix(root).ok()?;
     let parts = rel.iter().map(|c| c.to_str()).collect::<Option<Vec<_>>>()?;
     Some(parts.join("/"))

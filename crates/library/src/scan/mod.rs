@@ -37,11 +37,11 @@ mod sidecars;
 mod walk;
 pub(crate) mod write;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use futures::StreamExt;
 use nuvora_media::{
@@ -125,6 +125,36 @@ const NOT_AN_EPISODE: &str =
 pub(crate) struct ScanHandle {
     requests: mpsc::Sender<()>,
     status: watch::Receiver<ScanStatus>,
+    whole: Arc<WholeFiles>,
+}
+
+/// Files a caller knows are complete, such as a finished download moved in,
+/// so the next scan adds them without waiting out the settle window. Each is
+/// forgotten once the window has passed, when the usual rule admits it anyway.
+#[derive(Default)]
+struct WholeFiles(Mutex<Vec<(PathBuf, Instant)>>);
+
+impl WholeFiles {
+    fn add(&self, files: Vec<PathBuf>) {
+        let now = Instant::now();
+        let mut whole = self.0.lock().expect("whole files lock");
+        whole.extend(files.into_iter().map(|f| (f, now)));
+    }
+
+    /// The ones under `walks`' roots, for [`plan::Settle`].
+    fn under(&self, walks: &[RootWalk], window: Duration) -> HashSet<(RootId, walk::RelPath)> {
+        let mut whole = self.0.lock().expect("whole files lock");
+        whole.retain(|(_, at)| at.elapsed() <= window);
+        whole
+            .iter()
+            .filter_map(|(path, _)| {
+                walks.iter().find_map(|w| {
+                    let rel = walk::rel_path(&w.abs, path)?;
+                    Some((w.root, walk::RelPath(rel)))
+                })
+            })
+            .collect()
+    }
 }
 
 /// What the worker needs. All fields are handles; nothing here is mutated.
@@ -144,8 +174,28 @@ impl ScanHandle {
             state: ScanState::Idle,
             last: None,
         });
-        tokio::spawn(worker(ctx, rx, requests.downgrade(), tx));
-        ScanHandle { requests, status }
+        let whole = Arc::new(WholeFiles::default());
+        tokio::spawn(worker(ctx, whole.clone(), rx, requests.downgrade(), tx));
+        ScanHandle {
+            requests,
+            status,
+            whole,
+        }
+    }
+
+    /// Scans `files`, known to be complete, without the settle wait, and
+    /// returns once a scan that started after this call has finished.
+    pub(crate) async fn add_whole(&self, files: Vec<PathBuf>) {
+        let asked = SystemTime::now();
+        self.whole.add(files);
+        let mut status = self.status.clone();
+        self.request();
+        let _ = status
+            .wait_for(|s| {
+                matches!(s.state, ScanState::Idle)
+                    && s.last.as_ref().is_some_and(|last| last.started_at >= asked)
+            })
+            .await;
     }
 
     /// `try_send(())`: Ok => queued; Full => one is already queued, nothing to do.
@@ -177,6 +227,7 @@ impl ScanHandle {
 /// `Library`.
 async fn worker(
     ctx: ScanContext,
+    whole: Arc<WholeFiles>,
     mut requests: mpsc::Receiver<()>,
     resend: mpsc::WeakSender<()>,
     status: watch::Sender<ScanStatus>,
@@ -187,7 +238,7 @@ async fn worker(
             started_at: SystemTime::now(),
         };
         progress.set(ScanPhase::Discovering, 0, 0);
-        let summary = run(&ctx, &progress).await;
+        let summary = run(&ctx, &whole, &progress).await;
         tracing::info!(
             added = summary.added,
             changed = summary.changed,
@@ -276,9 +327,9 @@ impl Tally {
 
 /// One full scan, phases 1-5 above. Never fails: an error that stops the scan
 /// becomes the summary's one issue.
-async fn run(ctx: &ScanContext, progress: &Progress<'_>) -> ScanSummary {
+async fn run(ctx: &ScanContext, whole: &WholeFiles, progress: &Progress<'_>) -> ScanSummary {
     let mut tally = Tally::new(progress.started_at);
-    if let Err(e) = scan(ctx, progress, &mut tally).await {
+    if let Err(e) = scan(ctx, whole, progress, &mut tally).await {
         tally.failed("", format!("scan aborted: {e}"));
     }
     tally.summary.finished_at = SystemTime::now();
@@ -287,6 +338,7 @@ async fn run(ctx: &ScanContext, progress: &Progress<'_>) -> ScanSummary {
 
 async fn scan(
     ctx: &ScanContext,
+    whole: &WholeFiles,
     progress: &Progress<'_>,
     tally: &mut Tally,
 ) -> Result<(), DbError> {
@@ -324,7 +376,11 @@ async fn scan(
         .db
         .read(move |c| write::load_known_files(c, &root_ids))
         .await?;
-    let plan = plan::diff(known.clone(), &walks, now, ctx.settle_window);
+    let settle = plan::Settle {
+        window: ctx.settle_window,
+        whole: whole.under(&walks, ctx.settle_window),
+    };
+    let plan = plan::diff(known.clone(), &walks, now, settle);
     let abs_for_pairing = root_abs.clone();
     let mut plan = tokio::task::spawn_blocking(move || {
         plan::pair_moves(plan, &known, |job| {

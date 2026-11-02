@@ -216,6 +216,15 @@ impl Library {
         self.inner.scan.request()
     }
 
+    /// Adds `files`, absolute paths under a library root that are known to
+    /// be complete (a finished download, moved in), without the settle wait
+    /// a copy in progress needs. Returns once a scan that started after this
+    /// call has finished, so they are in the catalog unless that scan
+    /// couldn't read them.
+    pub async fn add_whole_files(&self, files: Vec<PathBuf>) {
+        self.inner.scan.add_whole(files).await;
+    }
+
     /// Latest scan status (cheap; reads a `watch` channel).
     pub fn scan_status(&self) -> ScanStatus {
         self.inner.scan.status()
@@ -985,6 +994,34 @@ mod tests {
         assert_eq!((info.roots, info.item_count), (vec![b], 0));
         scan(&lib).await;
         assert_eq!(lib.library(movies.id).await.unwrap().unwrap().item_count, 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_finished_download_skips_the_settle_wait() {
+        let dir = tempfile::tempdir().unwrap();
+        let (root, data) = (dir.path().join("Movies"), dir.path().join("data"));
+        let file = root.join("Heat (1995)/Heat (1995).mp4");
+        sdr_movie(&file);
+        let lib = Library::open(LibraryConfig {
+            data_dir: data,
+            libraries: vec![LibrarySpec {
+                key: "movies".into(),
+                name: "Movies".into(),
+                kind: LibraryKind::Movies,
+                roots: vec![root],
+            }],
+            tools: MediaTools::locate(None, None).await.unwrap(),
+            probe_concurrency: NonZeroUsize::new(4).unwrap(),
+            settle_window: Duration::from_secs(60),
+            online_metadata: false,
+        })
+        .await
+        .unwrap();
+
+        let copying = scan(&lib).await;
+        assert_eq!((copying.added, copying.settling), (0, 1));
+        lib.add_whole_files(vec![file]).await;
+        assert_eq!(home_titles(&lib).await, ["Heat"]);
     }
 
     #[tokio::test(flavor = "multi_thread")]
