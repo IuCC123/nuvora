@@ -5,22 +5,23 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 /**
  * The addresses to try for what someone typed with a remote. People type
  * `192.168.1.20`, `192.168.1.20:8640`, `nuvora.example.com` or a full URL;
- * a bare host is tried on Nuvora's port first, then as a website.
+ * a host without a port is tried on Nuvora's port first, then as a website.
+ * `http://` rules out HTTPS but not Nuvora's port; `https://` is taken as typed.
  */
 fun serverCandidates(typed: String): List<String> {
     val input = typed.trim().trimEnd('/').replace(" ", "")
     if (input.isEmpty()) return emptyList()
-    if (input.startsWith("http://", ignoreCase = true) || input.startsWith("https://", ignoreCase = true)) {
-        return listOfNotNull(normalize(input))
-    }
-    val hostPart = input.substringBefore('/')
+    if (input.startsWith("https://", ignoreCase = true)) return listOfNotNull(normalize(input))
+    val plain = input.startsWith("http://", ignoreCase = true)
+    val rest = if (plain) input.substring("http://".length) else input
+    val hostPart = rest.substringBefore('/')
     val hasPort = hostPart.substringAfterLast(':', "").let { it.isNotEmpty() && it.all(Char::isDigit) }
     val candidates = if (hasPort) {
-        listOf("http://$input", "https://$input")
+        listOf("http://$rest", "https://$rest")
     } else {
-        listOf("http://$hostPart:8640", "https://$input", "http://$input")
+        listOf("http://$hostPart:8640", "https://$rest", "http://$rest")
     }
-    return candidates.mapNotNull(::normalize).distinct()
+    return candidates.filter { !plain || it.startsWith("http://") }.mapNotNull(::normalize).distinct()
 }
 
 private fun normalize(url: String): String? {

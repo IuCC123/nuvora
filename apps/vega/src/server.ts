@@ -73,17 +73,20 @@ export function clientFor(baseUrl: string, device: DeviceProfile, token?: string
 
 /**
  * The addresses to try for what someone typed with a remote: `192.168.1.20`,
- * `192.168.1.20:8640`, `nuvora.example.com` or a full URL. A bare host is tried
- * on Nuvora's port first, then as a website. (The Fire TV app's rule.)
+ * `192.168.1.20:8640`, `nuvora.example.com` or a full URL. A host without a
+ * port is tried on Nuvora's port first, then as a website. `http://` rules out
+ * HTTPS but not Nuvora's port; `https://` is taken as typed. (The Fire TV app's rule.)
  */
 export function serverCandidates(typed: string): string[] {
   const input = typed.trim().replace(/\/+$/, '').replace(/\s/g, '');
   if (!input) return [];
-  if (/^https?:\/\//i.test(input)) return [input];
-  const host = input.split('/')[0]!;
+  if (/^https:\/\//i.test(input)) return [input];
+  const plain = /^http:\/\//i.test(input);
+  const rest = plain ? input.slice('http://'.length) : input;
+  const host = rest.split('/')[0]!;
   const hasPort = /:\d+$/.test(host);
-  const candidates = hasPort ? [`http://${input}`, `https://${input}`] : [`http://${host}:8640`, `https://${input}`, `http://${input}`];
-  return [...new Set(candidates)];
+  const candidates = hasPort ? [`http://${rest}`, `https://${rest}`] : [`http://${host}:8640`, `https://${rest}`, `http://${rest}`];
+  return [...new Set(candidates.filter((url) => !plain || url.startsWith('http://')))];
 }
 
 /** The first candidate that answers like a Nuvora server, set up and ready to sign in to. */

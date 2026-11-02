@@ -38,29 +38,40 @@ impl Current {
 
 /// The addresses to try for what someone typed, as the TV app does: people
 /// type `192.168.1.20`, `192.168.1.20:8640`, `nuvora.example.com` or a full
-/// URL; a bare host is tried on Nuvora's port first, then as a website.
+/// URL; a host without a port is tried on Nuvora's port first, then as a
+/// website. `http://` rules out HTTPS but not Nuvora's port; `https://` is
+/// taken as typed.
 pub fn candidates(typed: &str) -> Vec<String> {
     let input: String = typed.trim().trim_end_matches('/').replace(' ', "");
     if input.is_empty() {
         return Vec::new();
     }
     let lower = input.to_ascii_lowercase();
-    let urls = if lower.starts_with("http://") || lower.starts_with("https://") {
+    let urls = if lower.starts_with("https://") {
         vec![input.clone()]
     } else {
-        let host = input.split('/').next().unwrap_or_default();
+        let plain = lower.starts_with("http://");
+        let rest = if plain {
+            &input["http://".len()..]
+        } else {
+            input.as_str()
+        };
+        let host = rest.split('/').next().unwrap_or_default();
         let has_port = host
             .rsplit_once(':')
             .is_some_and(|(_, port)| !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()));
-        if has_port {
-            vec![format!("http://{input}"), format!("https://{input}")]
+        let urls = if has_port {
+            vec![format!("http://{rest}"), format!("https://{rest}")]
         } else {
             vec![
                 format!("http://{host}:{PORT}"),
-                format!("https://{input}"),
-                format!("http://{input}"),
+                format!("https://{rest}"),
+                format!("http://{rest}"),
             ]
-        }
+        };
+        urls.into_iter()
+            .filter(|url| !plain || url.starts_with("http://"))
+            .collect()
     };
     let mut origins: Vec<String> = Vec::new();
     for url in urls {
@@ -204,7 +215,19 @@ mod tests {
     }
 
     #[test]
-    fn a_port_or_scheme_is_taken_as_typed() {
+    fn http_without_a_port_still_tries_nuvoras_port_first() {
+        assert_eq!(
+            candidates("http://85.11.167.17"),
+            ["http://85.11.167.17:8640", "http://85.11.167.17"]
+        );
+        assert_eq!(
+            candidates("Http://nas.local/web/"),
+            ["http://nas.local:8640", "http://nas.local"]
+        );
+    }
+
+    #[test]
+    fn a_port_or_https_is_taken_as_typed() {
         assert_eq!(
             candidates("nas.local:9000"),
             ["http://nas.local:9000", "https://nas.local:9000"]
