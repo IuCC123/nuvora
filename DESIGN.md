@@ -1,110 +1,50 @@
 ---
 name: Nuvora
-description: A self-hosted media server with Plex's look and noticeably faster screens.
+description: A self-hosted streaming service that looks and moves like a premium one.
 colors:
-  canvas: "#0f1012"
-  surface: "#1a1c1f"
-  surface-raised: "#24272b"
-  hairline: "#2c2f34"
-  divider: "#1d1f22"
-  overlay-border: "rgba(255,255,255,0.18)"
-  overlay-panel: "rgba(26,28,31,0.82)"
-  overlay-hairline: "rgba(255,255,255,0.08)"
-  text-primary: "#f2f2f2"
-  text-secondary: "#a6a8ab"
-  text-muted: "#85888d"
-  accent: "#e5a00d"
-  accent-hover: "#f0b232"
-  accent-text: "#141414"
-  focus-ring: "#e5a00d"
-  danger: "#e5534b"
-  placeholder: "#1f2226"
-  poster-hover: "rgba(8,9,10,0.38)"
+  canvas: "#060708"
+  surface: "#14161a"
+  surface-raised: "#1e2126"
+  hairline: "rgba(255,255,255,0.12)"
+  divider: "rgba(255,255,255,0.08)"
+  overlay-border: "rgba(255,255,255,0.32)"
+  overlay-panel: "rgba(22,24,28,0.72)"
+  text-primary: "rgba(255,255,255,0.96)"
+  text-secondary: "rgba(235,235,245,0.68)"
+  text-muted: "rgba(235,235,245,0.52)"
+  accent: "#ffffff"
+  accent-hover: "#e9e9ec"
+  accent-text: "#050505"
+  focus-ring: "#ffffff"
+  danger: "#ff5f57"
+  placeholder: "#16181c"
   video: "#000000"
-  title-card-ink: "#f7f2ea"
-  title-card-ink-muted: "rgba(247,242,234,0.7)"
-  title-card-vignette: "rgba(0,0,0,0.6)"
-  title-card-edge: "rgba(255,255,255,0.06)"
+  material-thin: "rgba(30,32,38,0.38)"
+  material-regular: "rgba(26,28,34,0.56)"
+  material-thick: "rgba(18,20,24,0.78)"
+  material-solid: "#17191d"
 typography:
   ui:
-    fontFamily: "'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
-    fontSize: "14px"
-    fontWeight: 400
-    lineHeight: 1.43
-  small:
-    fontFamily: "'Inter Variable', Inter, system-ui, sans-serif"
-    fontSize: "13px"
-    fontWeight: 400
-    lineHeight: "18px"
-  body-large:
-    fontFamily: "'Inter Variable', Inter, system-ui, sans-serif"
-    fontSize: "16px"
-    fontWeight: 400
-    lineHeight: "24px"
-  button:
-    fontFamily: "'Inter Variable', Inter, system-ui, sans-serif"
+    fontFamily: "'Inter Variable', Inter, -apple-system, system-ui, sans-serif"
     fontSize: "15px"
-    fontWeight: 600
-    lineHeight: "20px"
-  chip:
-    fontFamily: "'Inter Variable', Inter, system-ui, sans-serif"
-    fontSize: "11px"
-    fontWeight: 600
-    lineHeight: "14px"
-    letterSpacing: "0.02em"
-  caption:
-    fontFamily: "'Inter Variable', Inter, system-ui, sans-serif"
-    fontSize: "12px"
     fontWeight: 400
-    lineHeight: "16px"
-  title:
-    fontFamily: "'Inter Variable', Inter, system-ui, sans-serif"
-    fontSize: "20px"
-    fontWeight: 600
-    lineHeight: 1.4
-  heading:
-    fontFamily: "'Inter Variable', Inter, system-ui, sans-serif"
-    fontSize: "28px"
-    fontWeight: 700
-    lineHeight: "34px"
-  headline:
-    fontFamily: "'Inter Variable', Inter, system-ui, sans-serif"
-    fontSize: "40px"
-    fontWeight: 700
-    lineHeight: 1.1
-    letterSpacing: "-0.02em"
-  wordmark:
-    fontFamily: "'Archivo Variable', Archivo, 'Arial Narrow', sans-serif"
-    fontSize: "19px"
-    fontWeight: 700
-    lineHeight: "24px"
-    letterSpacing: "0.01em"
-  card-title:
-    fontFamily: "'Archivo Variable', Archivo, 'Arial Narrow', sans-serif"
-    fontSize: "23px"
-    fontWeight: 800
-    lineHeight: 0.93
-    letterSpacing: "0.004em"
-  card-title-medium:
-    fontFamily: "'Archivo Variable', Archivo, 'Arial Narrow', sans-serif"
-    fontSize: "26px"
-    fontWeight: 800
-    lineHeight: 0.93
-  card-title-large:
-    fontFamily: "'Archivo Variable', Archivo, 'Arial Narrow', sans-serif"
-    fontSize: "36px"
-    fontWeight: 800
-    lineHeight: 0.93
-  card-year:
-    fontFamily: "'Inter Variable', Inter, system-ui, sans-serif"
-    fontSize: "10.5px"
-    fontWeight: 600
-    lineHeight: 1
-    letterSpacing: "0.08em"
+    lineHeight: "22px"
+  caption: { fontSize: "12px", lineHeight: "16px" }
+  small: { fontSize: "13px", lineHeight: "18px" }
+  body-large: { fontSize: "17px", lineHeight: "25px" }
+  button: { fontSize: "16px", fontWeight: 600, lineHeight: "20px" }
+  title: { fontSize: "22px", fontWeight: 600, lineHeight: "28px", letterSpacing: "-0.015em" }
+  heading: { fontSize: "28px", fontWeight: 700, lineHeight: "34px" }
+  headline: { fontSize: "34px", fontWeight: 700, lineHeight: "40px" }
+  display: { fontSize: "44px to 88px (fluid)", fontWeight: 700, lineHeight: 0.96, letterSpacing: "-0.045em" }
+  wordmark: { fontFamily: "'Archivo Variable', Archivo, sans-serif", fontSize: "20px", fontWeight: 700 }
+  card-title: { fontFamily: "'Archivo Variable', Archivo, sans-serif", fontSize: "23px", fontWeight: 800, lineHeight: 0.93 }
 rounded:
-  sm: "4px"
-  md: "6px"
-  lg: "10px"
+  sm: "8px"
+  md: "10px"
+  card: "12px"
+  lg: "20px"
+  sheet: "28px"
   pill: "999px"
 spacing:
   "1": "4px"
@@ -114,125 +54,104 @@ spacing:
   "5": "24px"
   "6": "32px"
   "7": "48px"
-components:
-  button-primary:
-    backgroundColor: "{colors.accent}"
-    textColor: "{colors.accent-text}"
-    rounded: "{rounded.md}"
-    padding: "0 22px"
-    height: "44px"
-  button-primary-hover:
-    backgroundColor: "{colors.accent-hover}"
-  poster:
-    backgroundColor: "{colors.surface}"
-    rounded: "{rounded.sm}"
-    width: "150px"
-  chip:
-    textColor: "rgba(255,255,255,0.82)"
-    rounded: "{rounded.sm}"
-    padding: "0 6px"
-    height: "20px"
+  "8": "64px"
+  gutter: "16px to 56px (4.4vw)"
+motion:
+  spring-snappy: "linear(0, 0.22 7%, 0.6 16%, 0.86 26%, 0.98 36%, 1.02 46%, 1.01 60%, 1) over 520ms"
+  spring-smooth: "linear(0, 0.13 8%, 0.43 19%, 0.72 31%, 0.9 44%, 0.98 58%, 1) over 520ms"
+  ambient: "1200ms standard"
+  lift-scale: 1.06
 ---
 
 # Design
 
-`packages/tokens` is the code source of truth, and this file must match it. The Step 1 web build settled the values above.
+`packages/tokens` is the code source of truth, and this file must match it. The November 2026 redesign settled the values above. The TV apps still use their own look; Vega reads only the color tokens.
 
 ## Overview
 
-Nuvora follows Plex's interface language on purpose: a near-black canvas, a left navigation rail, horizontal poster rows, full-bleed detail pages with an ambient backdrop, and one warm amber accent for the primary action and focus. People use it at home in the evening, often with the lights low, so the interface is dark and lets artwork carry the color. It is an Operate surface. Familiarity is a feature, and delight lives in the artwork, the speed, and the details.
+Nuvora looks and moves like a premium streaming service, in Apple TV's manner with a Netflix home: a deep, slightly cool canvas, full-bleed artwork that drifts slowly, rows that run off the window's edge, and glass on the chrome that floats over it all. People watch at home in the evening, often with the lights low, so the interface is dark and lets artwork carry the color. Delight lives in the artwork, the motion and the speed.
 
 ## Colors
 
-### Primary
+### Named Rules
 
-Amber `#e5a00d` marks the primary action (Play), the current selection, focus rings and progress. It never decorates.
+- **Artwork owns the color.** The chrome is neutral and white. Each screen takes its glow from its art: the ThumbHash's average color, moved in OKLCH into a lightness and chroma band that reads as light on the canvas (`lib/ambient.ts`). It costs no request and is there in the first frame.
+- **White is the accent.** The primary action (Play), focus rings, progress and the current section are white, with `accent-text` on white. Nothing in the chrome is saturated, except `danger` and a person's avatar.
+- **Glass with restraint.** The three materials (thin, regular, thick: a tint, a backdrop blur with saturation, one hairline stroke with a top highlight) are for chrome that floats over content: the top bar once the page scrolls, the section pill, the phone tab bar, the player's dock, sheets, menus, buttons over art. Never on content cards. Without backdrop-filter, or with reduced transparency, they become `material-solid`.
 
 ### Neutral
 
-Three stacked neutrals: `canvas` for the page and the chrome, menus included (a hairline border and a soft shadow lift them off the page), `surface` for posters and panels, `surface-raised` for hovered rows, highlighted menu items and the active nav item. Body text uses `text-primary`. Metadata uses `text-secondary`. `text-muted` is the floor for small text and still clears 4.5:1 on the canvas.
-
-### Named Rules
-
-- **Artwork owns the color.** The chrome stays neutral. Color on a screen comes from posters, backdrops, and the ambient wash behind a detail page.
-- **One accent.** Nothing else in the chrome is saturated, except `danger` for destructive actions.
+`canvas` is the page. `surface` sits under art before it loads and behind panels. Labels use an opacity ramp of white: `text-primary` for titles, `text-secondary` for metadata (9.6:1 on the canvas), `text-muted` as the floor for small text (6.1:1).
 
 ## Typography
 
-Inter carries the whole interface on a fixed px scale (12, 13, 14, 16, 20, 28, 40), plus 15 for button labels and 11 for chips. Archivo, at 64% width on its variable `wdth` axis, is used only for the title card, the poster a movie gets when it has no artwork, where it plays the role of poster lettering. The wordmark uses Archivo at 112% width. Both faces are self-hosted from `@fontsource-variable` packages, because the server often runs on a LAN without internet access. Numerals in runtimes, sizes, and bitrates use tabular figures.
+Inter, self-hosted with optical sizing, carries everything; on Apple devices it reads close to SF Pro, and it works on a server with no internet. The scale is 12, 13, 15, 17, 22, 28 and 34, plus a fluid display size for hero titles (44 to 88, bold at -0.045em). Archivo appears only in the wordmark and the title card. Numbers in runtimes, sizes and bitrates use tabular figures.
 
-### Hierarchy
-
-- Row titles are 20/600.
-- Detail titles are display size, fluid from 40 to 76px, 800 at -0.035em, set on the hero's art. They are the one place type goes past 40.
-- Poster captions are 14/500 for the title and 13/400 `text-secondary` for the year, on one line each and truncated.
+- Hero and detail titles: display, balanced, with a soft shadow on the art.
+- Row titles: 22/600 at -0.015em, 19 on phones, 26 on TV-size windows.
+- Card captions: 13/600 title, 12 secondary for the year or episode.
 
 ## Layout
 
-The top bar is 56px. It holds the wordmark on the left and the scan status pill and scan button on the right. Search joins it, centered, in Step 2. The left navigation rail is 232px and collapses to icons under 1024px. Content has 40px side padding. Poster rows scroll horizontally, with a 150px card and a 16px gap. Each row shows its first page from the server and loads more as it scrolls.
+A floating top bar (72px) holds the wordmark, a glass pill of sections (Home, each library, Downloads), and round glass buttons for Search, Customize, scan, Watch Together and the account. It is clear over a hero and turns to thick glass once the page scrolls. Under 900px the pill goes away; under 600px a glass tab bar floats at the bottom with Home, the libraries, Search and Downloads. Screens own their top spacing, so heroes run under the bar. The page margin is fluid, 16 to 56px. Settings keep a section rail beside the page, a row of pills on phones.
 
-## Elevation & Depth
-
-The interface is flat by default. A hovered or focused poster lifts with a soft shadow (`0 12px 28px rgba(0,0,0,.45)`) and a 2px amber ring offset by 2px. A detail page's poster, shown only when there is no backdrop, rests on `0 18px 40px rgba(0,0,0,.5)`, and the Play button and the poster play badge on `0 6px 16px rgba(0,0,0,.4)`. A detail hero layers the backdrop under three scrims into `canvas`: up from the bottom, in from the left, and a light one down from the top bar.
-
-## Shapes
-
-Posters use 4px corners, and buttons and fields use 6px. The scan pill and avatar are fully rounded.
+Rows: a 22px title, then a strip that scrolls sideways to the window's right edge, snaps card by card, and pads itself so a lifted card's scale and shadow never clip. Glass paddles page it for a mouse; touch swipes. Card widths: posters 156 (116 on phones, 184 at 1600px, 232 at 2200px), wide cards 320, genre tiles 248, ranked posters 132, all scaling at the same breakpoints. The user's poster size setting picks 128, 156 or 200.
 
 ## Components
 
-### Buttons
+### Home
 
-- **Primary.** Amber with dark text, 44px tall, a play icon plus "Play". On a detail hero it is 52px with 10px corners, and Resume carries a small dark progress bar and the time left.
-- **Secondary.** Uses `surface-raised` with primary text.
-- **Round.** A detail hero's companions to Play (Start over, Watched) are 52px circles of 14% white over the art, icon only, with a tooltip. Watched turns amber when pressed.
-- **Disabled.** The primary button drops to `surface-raised` with `text-muted`, and an inline notice explains why.
+- **Hero.** Up to six featured titles from the server (new and unfinished first, then what the viewer is in the middle of, then the best rated). Each backdrop drifts in a slow Ken Burns and crossfades to the next every nine seconds; dots pick one. It pauses for the pointer, focus, a hidden tab and reduced motion. Facts (kind, genres, year, seasons or runtime, rating), the title, two or three lines of synopsis, a white Play (Resume, with the episode) and glass More Info. The active art colors the glow under the rows.
+- **Continue Watching.** Wide 16:9 cards of the episode's frame or the title's backdrop (or the poster, sharp on a blur of itself), a white progress bar in a frosted track, and the episode under the title. The art resumes playback; the title opens the page.
+- **Top 10.** The household's most watched titles, each poster with its rank set large and hollow behind it.
+- **Trending.** The last week's most watched; hidden with fewer than three.
+- **Genres.** Tiles of a title's backdrop washed from the corner in its own color, the genre's name and size; each opens a genre page.
+- **Poster rows.** Recently Added and one per library, loading more as they scroll, with skeleton cards that shimmer.
 
-### Chips
+### Cards
 
-Technical badges (1080p, HEVC, HDR10, 5.1) are 11px bold text, 20px tall, in a 1px 40% white outline, because they sit on the hero's art. They are the server's version `summary` segments plus the container.
-
-### Navigation
-
-Nav items are 40px rows with an icon and a label. The active item uses `surface-raised` with an amber icon. There is no colored side border.
-
-### Icons
-
-Every app uses [Phosphor](https://phosphoricons.com) and no hand-drawn icons. The web app and site import `@phosphor-icons/react` through `apps/web/src/components/Icon.tsx`. There, stroke weight follows size: bold under 20px and regular from 20px up. Solid controls (play, pause, next episode) and "on" states (subtitles) use the fill weight. Back and forward 10 s are Phosphor's circular arrows with a bold "10" inside. The TV apps use the bold weight. Their path data comes from `@phosphor-icons/core` via `bun scripts/tv-icons.ts`, which writes Vega's `icon-paths.ts` and Fire TV's `NvIcons`. The wordmark's play triangle is the brand mark, not an icon.
+Posters are 2:3 with 12px corners, a resting shadow and a hairline edge. Hover and focus lift them to 1.06 on the snappy spring with a deeper shadow; keyboard focus adds a 3px white ring 4px out. Cards that play show a glass play badge. Watch marks: a white bar in a frosted track while in progress, a glass check once watched, a glass count of unwatched episodes on a show.
 
 ### Detail pages
 
-A movie or show opens the way Apple TV's app does. A hero fills the window, less 72px so the next row peeks in. It shows the backdrop, or the title card's wash with the poster on the right when there is none. The title, a facts line (genres, year, length, rating, badges), Play with its round companions, a three-line synopsis and "Starring" sit on its lower left. The art's lower edge dissolves into a 36px blur of itself before the scrims take it to `canvas`. That is a treatment of the artwork, not a glass panel. Below the hero come shelves: a show's episodes as 16:9 cards under season pills, then the cast in round portraits. Each shelf has back and forward buttons and Left/Right keys. An "Information" block closes the page with titled columns of label-over-value facts (About, Languages, File) and where the details came from.
-
-### Watch marks
-
-An in-progress poster carries a 3px amber bar along its bottom edge over a dark track, with a 1px dark seam so it reads over warm artwork. A watched poster carries a 22px canvas disc in the top-right corner with an amber check. Unwatched posters carry nothing. The detail poster uses the same marks at 4px and 28px. An episode card's watched check is a 30px button on the still's corner. It is always visible once the episode is watched, and otherwise appears when the pointer is over the card.
+The backdrop fills the window, drifting slowly, its lower edge melting into a blur of itself and then the canvas, tinted by its color. Without a backdrop, the title card's palette washes the hero and the poster stands on the right. On its lower left: the title, facts and badges, white Play (Resume shows its progress and the time left), glass round companions (Start over, Watched, which turns white when on, Delete for admins), the synopsis and Starring. Below: seasons as a glass segmented control (a menu past six) over 16:9 episode cards, More Like This from the server, the cast in round portraits, and an Information block. The card that opened the page morphs into its hero (View Transitions, `lib/sharedArt.ts`): a backdrop into the backdrop, a poster into the poster.
 
 ### Player
 
-The player fills the window with `video` black. A top bar holds the back arrow, title and year, and a chip saying how the file reaches the screen: Direct play, Direct stream, Converting audio or Converting video, with the server's reason on hover. A bottom bar holds the timeline (elapsed, scrubber, remaining) and three clusters: volume on the left, back 10 s, play and forward 10 s in the center, and picture-in-picture and full screen on the right. Each bar sits on its own black gradient scrim, and the bars fade together: 160 ms in, 400 ms out with a 6px drift. Buttons are white glyphs with a soft white disc on hover and a tooltip naming the action and its key. The scrubber is 4px, 6px on hover, with amber for played, translucent white for buffered, and an amber thumb on hover. Volume fills in white, because amber is reserved for progress and focus.
+The picture fills the window. A glass back button and the title sit top left over a soft scrim; timeline and controls share one floating glass dock at the bottom: elapsed, the scrubber (white played, translucent buffered, a glass tip with the preview frame and time), remaining; volume, back 10, a white play disc, forward 10, next episode; quality, subtitles, picture in picture, full screen. The chrome springs in and fades out after three seconds. Skip Intro or Skip Recap (S) shows as a glass pill while the playhead is inside one the file's chapters mark. Over marked end credits, the Next episode card comes up at once and plays when its countdown ends; otherwise it shows over the last ten seconds.
+
+### Search
+
+A large title and a 56px glass field that stays put while results change under it. Before a query, the genres to browse; then movies and shows as posters rising in a beat apart, episodes, and people on quiet cards. `/` or Ctrl/⌘+K opens it from anywhere.
 
 ### Title card (signature component)
 
-A movie without poster artwork gets a title card, never a cropped video frame. It is a deep two-stop gradient picked from twelve cinematic palettes by a hash of the title (`titleCardLook` in `@nuvora/core`, so every client picks the same one), with a soft light bloom, a vignette, and fine film grain. The title is set bottom-left in uppercase condensed Archivo 800 in `title-card-ink`, with the year below it in tabular Inter. The same palette tints the ambient wash on the detail page, so the card and the page belong together.
+A movie without poster artwork gets a title card, never a cropped video frame: a deep two-stop gradient picked from twelve palettes by a hash of the title (`titleCardLook` in `@nuvora/core`, so every client picks the same one), a soft bloom, a vignette, fine grain, and the title in condensed Archivo 800. The same palette washes a detail page without a backdrop.
+
+### Icons
+
+Phosphor everywhere, through `apps/web/src/components/Icon.tsx`: bold under 20px, regular from 20px up, fill for solid controls and "on" states. The TV apps use the bold weight from `@phosphor-icons/core`. The wordmark's play triangle is the brand mark, not an icon.
+
+## Motion
+
+Two springs as CSS `linear()` curves: snappy (a touch of overshoot) for lifts, presses and indicators; smooth for heroes, sheets and the dock. Everything animates transform and opacity only. Pages crossfade through the View Transitions API, and shared art morphs between card and hero. Loading shows skeletons that shimmer, never spinners where a shape can stand in. Arrow keys move focus like a TV remote (`lib/spatialNav.ts`): Left and Right along a row, Up and Down to the nearest card of the next row, which scrolls to the middle. With reduced motion, transitions and animations go instant, the hero holds still, and the drift stops.
 
 ## Do's and Don'ts
 
-### Do:
+### Do
 
-- Paint every poster in the first frame, using the title card or the ThumbHash placeholder.
-- Keep motion to state changes (150 to 240 ms, standard easing), and respect reduced motion.
+- Paint every image slot in the first frame: ThumbHash placeholders, title cards, skeletons. Nothing shifts as images arrive.
+- Keep text on art legible with scrims and the art's own blur, not with panels.
 - Theme the browser parts too: selection, scrollbars, focus rings and caret.
 
-### Don't:
+### Don't
 
-- Use spinners where a placeholder can stand in.
-- Put the accent on inactive or decorative elements.
-- Add an eyebrow label above a heading, gradient text, or a glass effect.
+- Put glass on content cards, or more than one layer of it on top of another.
+- Use a saturated chrome color; the art brings the color.
+- Add an eyebrow label above a heading, or gradient text on headings or metrics. (The hollow Top 10 numerals are the one gradient fill, as rank art.)
 
 ## Personal home screens
 
-- **Library icons.** Each library shows one of 22 preset Phosphor icons in the rail, on its home row and as the library page's heading, where it is amber. Movies default to the film icon and TV to the TV icon.
-- **Backgrounds.** Home can sit on a wash in one of six palettes (Dusk, Ocean, Forest, Ember, Aurora, Graphite), each three soft radial gradients at 14% to 42% opacity, or "Posters", the first poster on screen blurred 80px at 50%. Every background fades into the canvas within the first screen and a half, so rows stay on the canvas color for reading.
-- **Poster sizes.** Small 124px, medium 150px, large 196px. Everything else in a row scales from the card width.
-- **Customize panel.** A 440px panel from the right on `canvas`, like the menus, with swatches, a segmented size control, and the row list on `surface`. A row's move arrows appear on hover or focus (always on touch screens). Changes apply as they happen and save to the account, so the panel only speaks up when a save fails.
+- **Rows.** Continue Watching, Top 10, Recently Added, Trending, Browse by Genre and one row per library by default; each can be hidden, renamed and reordered, and library rows sorted and filtered. Rows added in an update join a saved layout once, where the default puts them.
+- **Backgrounds.** With featured titles, Home's glow comes from the hero. Without, the chosen wash (Dusk, Ocean, Forest, Ember, Aurora, Graphite or Posters) sits behind the rows and fades into the canvas.
+- **Poster sizes.** Small, medium and large; everything else in a row scales from the card width.

@@ -44,8 +44,8 @@ The polish of a commercial streaming service, the freedom of free software, and 
 ## Brand Commitments
 
 - The name is Nuvora. The wordmark and its play triangle are in `assets/brand`.
-- The look is calm, dark and media-first: artwork leads and the interface stays out of the way.
-- The amber accent is inherited from the early Plex-like design. Nuvora will move to its own accent (see `docs/ROADMAP.md`). Until then, keep using the existing tokens.
+- The look is calm, dark and media-first, with a premium streaming service's polish: artwork leads and the interface stays out of the way.
+- The look is Nuvora's own since November 2026: white for the primary action and focus, glass on floating chrome, color from the artwork (see DESIGN.md). The TV apps still carry the earlier amber look until they follow.
 - Icons are Phosphor in every app.
 
 ## Evidence on Hand

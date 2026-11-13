@@ -32,7 +32,7 @@ The goal: one search for everything, and one title page whether you have the tit
 
 ## Then: feels like a product
 
-1. **Its own look.** Replace the Plex-inherited amber with Nuvora's own accent across web, TV and site, and refresh the screenshots.
+1. **Its own look.** Done for the web and desktop apps (November 2026): a glass and white design with a featured hero, Top 10, genres and skip intro. Still to do: the TV apps, the site and the README screenshots.
 2. **Safe remote access.** HTTPS out of the box (a bundled reverse proxy with automatic certificates, or a Tailscale guide in the app), so nobody exposes plain HTTP to the internet.
 3. **Phones.** A web layout made for phones, installable to the home screen.
 4. **One-command releases.** A script that raises the version in every file and tags the release.
