@@ -410,6 +410,7 @@
   border-radius: var(--nv-radius-pill);
   background: linear-gradient(135deg, #8e9bff, #c86dd7);
   color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
   font-size: var(--nv-type-small-size);
   font-weight: var(--nv-font-weight-semibold);
   letter-spacing: 0.02em;

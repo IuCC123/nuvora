@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { initials } from "@nuvora/core";
 import { useSignOut, useUser } from "../lib/session";
 import { desktop } from "../platform/desktop";
+import { avatarStyle } from "../lib/avatar";
 import { ServerIcon, SettingsIcon, SignOutIcon, UserIcon } from "./Icon";
 
 /**
@@ -56,6 +57,7 @@ export function AccountMenu() {
         ref={button}
         type="button"
         className="avatar avatar-button"
+        style={avatarStyle(user.username)}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -67,7 +69,7 @@ export function AccountMenu() {
       {open && (
         <div className="menu" id={menuId} role="menu" aria-label="Account" ref={menu} onKeyDown={onKeyDown}>
           <div className="menu-head">
-            <span className="avatar avatar-large" aria-hidden>
+            <span className="avatar avatar-large" aria-hidden style={avatarStyle(user.username)}>
               {initials(user.display_name)}
             </span>
             <div className="menu-who">

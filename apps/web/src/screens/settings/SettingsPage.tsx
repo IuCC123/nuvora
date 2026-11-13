@@ -5,14 +5,14 @@ import { AlertIcon, CheckIcon } from "../../components/Icon";
 import "../../styles/forms.css";
 import "../../styles/settings.css";
 
-export function SettingsPage({ title, lede, action, children }: { title: string; lede: string; action?: ReactNode; children: ReactNode }) {
+export function SettingsPage({ title, lede, action, children }: { title: string; lede?: string; action?: ReactNode; children: ReactNode }) {
   useDocumentTitle(`${title} · Settings`);
   return (
     <div className="settings-page">
       <header className="settings-head">
         <div>
           <h1 tabIndex={-1}>{title}</h1>
-          <p>{lede}</p>
+          {lede && <p>{lede}</p>}
         </div>
         {action}
       </header>

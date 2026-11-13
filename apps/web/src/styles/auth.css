@@ -130,13 +130,12 @@
   box-sizing: border-box;
   width: min(100%, 440px);
   padding: 48px 44px 40px;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--nv-color-canvas) 72%, transparent);
-  border: 1px solid var(--nv-color-overlay-hairline);
-  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(28px) saturate(150%);
-  -webkit-backdrop-filter: blur(28px) saturate(150%);
-  animation: auth-rise 560ms var(--nv-motion-easing-enter) both;
+  border-radius: var(--nv-radius-sheet);
+  background: var(--nv-material-thick);
+  box-shadow: var(--nv-material-stroke), 0 40px 100px rgba(0, 0, 0, 0.55);
+  backdrop-filter: var(--nv-material-blur-thick);
+  -webkit-backdrop-filter: var(--nv-material-blur-thick);
+  animation: auth-rise var(--nv-motion-duration-ambient) var(--nv-motion-easing-spring-smooth) both;
 }
 
 .auth-card-wide {
@@ -144,10 +143,10 @@
 }
 
 .auth-card h1 {
-  font-size: 32px;
-  line-height: 38px;
+  font-size: 34px;
+  line-height: 40px;
   font-weight: var(--nv-font-weight-bold);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   text-wrap: balance;
 }
 

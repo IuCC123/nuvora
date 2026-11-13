@@ -1,14 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import {
-  checkDisplayName,
-  checkPassword,
-  checkPasswordsMatch,
-  LANGUAGES,
-  PASSWORD_MIN_LENGTH,
-  preferredLanguage,
-  type SubtitleMode,
-  type User,
-} from "@nuvora/core";
+import { checkDisplayName, checkPassword, checkPasswordsMatch, LANGUAGES, PASSWORD_MIN_LENGTH, preferredLanguage, type SubtitleMode, type User, initials } from "@nuvora/core";
 import { client } from "../../nuvora";
 import { FormError, SelectField, TextField } from "../../components/Field";
 import { languageName } from "../../lib/languageName";
@@ -16,6 +7,7 @@ import { setSessionUser, useUser } from "../../lib/session";
 import { serverError } from "../../lib/serverError";
 import { useForm } from "../../lib/useForm";
 import { AppUpdates } from "../../components/Updates";
+import { avatarStyle } from "../../lib/avatar";
 import { Saved, SettingsPage } from "./SettingsPage";
 
 /** Every user's own name, password and subtitle preferences, the Mac or Windows app's updates, and how to get the TV app. */
@@ -23,13 +15,31 @@ export function SettingsAccount() {
   const user = useUser();
   if (!user) return null;
   return (
-    <SettingsPage title="Account" lede={`You're signed in as ${user.username}.`}>
+    <SettingsPage title="Account">
+      <AccountHero user={user} />
       <Profile user={user} />
       <Subtitles user={user} />
       <Password />
       <AppUpdates />
       <TvApp />
     </SettingsPage>
+  );
+}
+
+/** Who is signed in: their avatar, name, username and role, at the top of the page. */
+function AccountHero({ user }: { user: User }) {
+  return (
+    <header className="account-hero">
+      <span className="avatar account-avatar" style={avatarStyle(user.username)} aria-hidden>
+        {initials(user.display_name)}
+      </span>
+      <div className="account-who">
+        <p className="account-name">{user.display_name}</p>
+        <p className="account-handle">
+          {user.username} · {user.role === "admin" ? "Admin" : "Member"}
+        </p>
+      </div>
+    </header>
   );
 }
 

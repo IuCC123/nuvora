@@ -43,11 +43,11 @@
 .input {
   box-sizing: border-box;
   width: 100%;
-  height: 44px;
-  padding: 0 14px;
-  border: 1px solid var(--nv-color-hairline);
-  border-radius: var(--nv-radius-md);
-  background: var(--nv-color-surface);
+  height: 46px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--nv-radius-card);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--nv-color-text-primary);
   font: inherit;
   font-size: var(--nv-type-body-large-size);
@@ -59,14 +59,15 @@
 }
 
 .input:hover {
-  border-color: color-mix(in srgb, var(--nv-color-text-muted) 45%, var(--nv-color-hairline));
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .input:focus-visible {
   outline: 2px solid var(--nv-color-focus-ring);
-  outline-offset: -1px;
-  border-radius: var(--nv-radius-md);
+  outline-offset: 1px;
+  border-radius: var(--nv-radius-card);
   border-color: transparent;
+  background: rgba(255, 255, 255, 0.09);
 }
 
 .input[aria-invalid="true"] {

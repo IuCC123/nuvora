@@ -21,7 +21,7 @@ export function Shell() {
         {settings ? (
           <div className="settings-shell">
             <SettingsRail />
-            <div className="settings-page">
+            <div className="settings-main">
               <Outlet />
             </div>
           </div>
