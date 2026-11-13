@@ -53,10 +53,10 @@ const TOGGLE_KEYS = new Set([" ", "k", "m", "f", "c", "Escape"]);
 export function Player() {
   const { id } = useParams({ from: "/movie/$id/play" });
   const { file, t } = useSearch({ from: "/movie/$id/play" });
-  return <PlayerScreen route="/movie/$id/play" id={id} file={file} t={t} />;
+  return file === undefined ? null : <PlayerScreen route="/movie/$id/play" id={id} file={file} t={t} />;
 }
 
-/** An episode's player. Its loader always settles on a file, so a missing one only means the redirect is still on its way. */
+/** An episode's player. Like a movie's, its loader always settles on a file, so a missing one only means the redirect is still on its way. */
 export function EpisodePlayer() {
   const { id } = useParams({ from: "/episode/$id/play" });
   const { file, t } = useSearch({ from: "/episode/$id/play" });

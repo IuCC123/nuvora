@@ -1,0 +1,516 @@
+/* Shelves: a title, then a strip of cards that runs to the window's edge and scrolls sideways. */
+
+.row {
+  --card-w: var(--nv-poster-width-regular);
+  --wide-w: 320px;
+  --tile-w: 248px;
+  --ranked-w: 132px;
+  position: relative;
+  margin-top: 36px;
+}
+
+.row[data-variant="landscape"] {
+  --card-w: var(--wide-w);
+}
+
+.row[data-variant="tile"] {
+  --card-w: var(--tile-w);
+}
+
+.row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 0 var(--gutter);
+  margin-bottom: 4px;
+}
+
+.row-head h2 {
+  min-width: 0;
+  font-size: var(--nv-type-title-size);
+  line-height: var(--nv-type-title-line);
+  font-weight: var(--nv-font-weight-semibold);
+  letter-spacing: -0.015em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-see-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex: none;
+  padding: 4px 2px 4px 8px;
+  border-radius: var(--nv-radius-pill);
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+  font-weight: var(--nv-font-weight-semibold);
+  transition: color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.row-see-all:hover {
+  color: var(--nv-color-text-primary);
+}
+
+.row-count {
+  color: var(--nv-color-text-muted);
+  font-weight: var(--nv-font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.row-body {
+  position: relative;
+}
+
+/* Room above and below for a lifted card's scale and shadow, given back by the negative margin. */
+/* Positioned, so absolutely placed bits of a card (screen-reader labels) stay inside the scroller instead of widening the page. */
+.row-strip {
+  position: relative;
+  display: flex;
+  gap: var(--nv-poster-gap);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: var(--gutter);
+  padding: 16px var(--gutter) 28px;
+  margin: -6px 0 -24px;
+  scrollbar-width: none;
+}
+
+.row-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.row-item {
+  flex: none;
+  width: var(--card-w);
+  scroll-snap-align: start;
+}
+
+.row-pending .poster-frame {
+  box-shadow: none;
+}
+
+.row-failed .poster-frame {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 12px;
+  text-align: center;
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-small-size);
+}
+
+/* Paddles: glass circles at the strip's edges, for a mouse. Hidden on touch screens and at the ends. */
+.row-paddle {
+  position: absolute;
+  z-index: 4;
+  top: calc(16px + var(--paddle-y, 50%) - 6px);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-top: -22px;
+  border-radius: 50%;
+  color: var(--nv-label-primary);
+  opacity: 0;
+  transform: scale(0.9);
+  transition:
+    opacity var(--nv-motion-duration-base) var(--nv-motion-easing-standard),
+    transform var(--nv-motion-duration-spring) var(--nv-motion-easing-spring-snappy);
+}
+
+.row-paddle[data-side="start"] {
+  left: max(8px, calc(var(--gutter) - 22px));
+}
+
+.row-paddle[data-side="end"] {
+  right: max(8px, calc(var(--gutter) - 22px));
+}
+
+.row-paddle[hidden] {
+  display: none;
+}
+
+.row:hover .row-paddle,
+.row-paddle:focus-visible {
+  opacity: 1;
+  transform: none;
+}
+
+.row-paddle:hover {
+  background: rgba(60, 62, 70, 0.7);
+}
+
+@media (hover: none) {
+  .row-paddle {
+    display: none;
+  }
+}
+
+/* Where each strip's art sits, so a paddle centres on the art rather than the captions. */
+.row[data-variant="poster"],
+.row[data-variant="ranked"] {
+  --paddle-y: calc(var(--card-w) * 0.75);
+}
+
+.row[data-variant="ranked"] {
+  --paddle-y: calc(var(--ranked-w) * 0.75);
+}
+
+.row[data-variant="landscape"],
+.row[data-variant="tile"] {
+  --paddle-y: calc(var(--card-w) * 0.28125);
+}
+
+/* A round icon button beside a shelf's title (detail pages). */
+.round-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--nv-color-text-primary);
+  transition:
+    background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    opacity var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.round-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.round-btn:focus-visible {
+  border-radius: 50%;
+}
+
+.round-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Wide cards (Continue Watching): 16:9 art with a progress bar, the title and episode under it. */
+
+.wide-card {
+  position: relative;
+}
+
+.wide-link {
+  display: block;
+  width: 100%;
+  border-radius: var(--nv-radius-card);
+}
+
+.wide-link:focus-visible {
+  outline: none;
+}
+
+.wide-frame {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--nv-radius-card);
+  overflow: hidden;
+  background: var(--nv-color-surface);
+  box-shadow: var(--nv-shadow-card), inset 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+  transition:
+    transform var(--nv-motion-duration-spring) var(--nv-motion-easing-spring-snappy),
+    box-shadow var(--nv-motion-duration-base) var(--nv-motion-easing-standard);
+  will-change: transform;
+}
+
+.wide-frame > .artwork,
+.wide-frame > .title-card,
+.wide-frame > .landscape-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.wide-frame::after {
+  content: "";
+  position: absolute;
+  inset: 45% 0 0;
+  z-index: 1;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.55));
+  pointer-events: none;
+}
+
+@media (hover: hover) {
+  .wide-link:hover .wide-frame {
+    transform: scale(1.04);
+    box-shadow: var(--nv-shadow-lift);
+  }
+}
+
+.wide-link:focus-visible .wide-frame {
+  transform: scale(1.04);
+  box-shadow: var(--nv-shadow-lift);
+  outline: 3px solid var(--nv-color-focus-ring);
+  outline-offset: 4px;
+  overflow: hidden;
+}
+
+.wide-link:active .wide-frame {
+  transform: scale(0.98);
+  transition-duration: var(--nv-motion-duration-fast);
+}
+
+.wide-progress {
+  position: absolute;
+  z-index: 2;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.3);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.wide-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--nv-color-accent);
+  transform-origin: left;
+}
+
+.wide-caption {
+  display: block;
+  margin-top: 10px;
+}
+
+.wide-title,
+.wide-sub {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wide-title {
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+a.wide-title:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--nv-color-text-muted);
+}
+
+.wide-sub {
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-caption-size);
+  line-height: var(--nv-type-caption-line);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A poster standing in for a missing backdrop: sharp at the left over a blur of itself. */
+.landscape-poster {
+  display: block;
+  overflow: hidden;
+}
+
+.landscape-poster > .artwork {
+  transform: scale(1.4);
+  filter: blur(24px) saturate(1.3) brightness(0.8);
+}
+
+.landscape-poster-sharp {
+  position: absolute;
+  top: 10%;
+  bottom: 10%;
+  left: 7%;
+  aspect-ratio: 2 / 3;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.landscape-poster-sharp > .artwork {
+  height: 100%;
+}
+
+/* Ranked cards (Top 10): the rank set large and hollow behind the poster. */
+
+.row[data-variant="ranked"] .row-item {
+  width: auto;
+}
+
+.ranked-card {
+  display: flex;
+  align-items: flex-end;
+}
+
+.ranked-card .poster-frame {
+  width: var(--ranked-w);
+  flex: none;
+}
+
+.rank-numeral {
+  position: relative;
+  z-index: 0;
+  margin-right: calc(var(--ranked-w) * -0.16);
+  font-size: calc(var(--ranked-w) * 1.32);
+  line-height: 0.74;
+  font-weight: var(--nv-font-weight-heavy);
+  letter-spacing: -0.08em;
+  font-variant-numeric: lining-nums;
+  color: transparent;
+  -webkit-text-stroke: 2px rgba(255, 255, 255, 0.46);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.02) 85%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  user-select: none;
+}
+
+.ranked-card .poster-frame {
+  z-index: 1;
+}
+
+/* Genre tiles: a title's backdrop washed from the bottom in its own color, the genre's name on it. */
+
+.genre-tile {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--nv-radius-lg);
+  background: linear-gradient(135deg, var(--tc-top, #2a3340), var(--tc-bottom, #0e1218));
+  box-shadow: var(--nv-shadow-card), inset 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+  transition:
+    transform var(--nv-motion-duration-spring) var(--nv-motion-easing-spring-snappy),
+    box-shadow var(--nv-motion-duration-base) var(--nv-motion-easing-standard);
+  will-change: transform;
+}
+
+.genre-tile > .artwork {
+  position: absolute;
+  inset: 0;
+  transition: transform var(--nv-motion-duration-ambient) var(--nv-motion-easing-standard);
+}
+
+.genre-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    20deg,
+    color-mix(in oklab, var(--tile, var(--tc-bottom, #111)) 92%, black) 0%,
+    color-mix(in oklab, var(--tile, var(--tc-bottom, #111)) 55%, transparent) 45%,
+    transparent 80%
+  );
+}
+
+.genre-text {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+}
+
+.genre-name {
+  font-size: 19px;
+  line-height: 22px;
+  font-weight: var(--nv-font-weight-bold);
+  letter-spacing: -0.015em;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.35);
+}
+
+.genre-count {
+  color: var(--nv-label-secondary);
+  font-size: var(--nv-type-caption-size);
+  line-height: var(--nv-type-caption-line);
+  font-weight: var(--nv-font-weight-medium);
+}
+
+@media (hover: hover) {
+  .genre-tile:hover {
+    transform: scale(1.04);
+    box-shadow: var(--nv-shadow-lift), inset 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+  }
+
+  .genre-tile:hover > .artwork {
+    transform: scale(1.06);
+  }
+}
+
+.genre-tile:focus-visible {
+  transform: scale(1.04);
+  outline: 3px solid var(--nv-color-focus-ring);
+  outline-offset: 4px;
+  border-radius: var(--nv-radius-lg);
+}
+
+/* Sizes: phones, tablets, desktops, and TV-size windows. */
+
+@media (max-width: 599px) {
+  .row {
+    --nv-poster-width-regular: 116px;
+    --wide-w: 264px;
+    --tile-w: 176px;
+    --ranked-w: 104px;
+    margin-top: 28px;
+  }
+
+  .row-head h2 {
+    font-size: 19px;
+    line-height: 24px;
+  }
+
+  .row-strip {
+    --nv-poster-gap: 12px;
+  }
+
+  .genre-name {
+    font-size: 16px;
+  }
+}
+
+@media (min-width: 1600px) {
+  .row {
+    --nv-poster-width-regular: 184px;
+    --wide-w: 384px;
+    --tile-w: 296px;
+    --ranked-w: 152px;
+    margin-top: 44px;
+  }
+
+  .row-head h2 {
+    font-size: 26px;
+    line-height: 32px;
+  }
+}
+
+@media (min-width: 2200px) {
+  .row {
+    --nv-poster-width-regular: 232px;
+    --wide-w: 480px;
+    --tile-w: 368px;
+    --ranked-w: 188px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wide-link:hover .wide-frame,
+  .wide-link:focus-visible .wide-frame,
+  .genre-tile:hover,
+  .genre-tile:focus-visible {
+    transform: none;
+  }
+}

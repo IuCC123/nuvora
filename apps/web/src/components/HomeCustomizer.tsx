@@ -15,7 +15,7 @@ import {
   type PosterSize,
 } from "@nuvora/core";
 import { client, queries } from "../nuvora";
-import { ArrowDownIcon, ArrowUpIcon, ClockIcon, CloseIcon, EyeIcon, EyeOffIcon, GripIcon, PencilIcon, PlusIcon, ResumeIcon, TrashIcon } from "./Icon";
+import { ArrowDownIcon, ArrowUpIcon, ClockIcon, CloseIcon, EyeIcon, EyeOffIcon, GridIcon, GripIcon, PencilIcon, PlusIcon, ResumeIcon, TrashIcon, TrendIcon, TrophyIcon } from "./Icon";
 import { LibraryIcon } from "./LibraryIcon";
 import "../styles/customize.css";
 
@@ -345,6 +345,9 @@ function rowName(row: HomeRowConfig, library: LibrarySummary | undefined): strin
   if (row.title) return row.title;
   if (row.type === "continue_watching") return "Continue Watching";
   if (row.type === "recently_added") return "Recently Added";
+  if (row.type === "top") return "Top 10 on Nuvora";
+  if (row.type === "trending") return "Trending Now";
+  if (row.type === "genres") return "Browse by Genre";
   return library?.name ?? "Library";
 }
 
@@ -367,5 +370,8 @@ function rowDetail(row: HomeRowConfig): string | null {
 function RowIcon({ row, library }: { row: HomeRowConfig; library: LibrarySummary | undefined }) {
   if (row.type === "continue_watching") return <ResumeIcon size={18} className="row-config-icon" />;
   if (row.type === "recently_added") return <ClockIcon size={18} className="row-config-icon" />;
+  if (row.type === "top") return <TrophyIcon size={18} className="row-config-icon" />;
+  if (row.type === "trending") return <TrendIcon size={18} className="row-config-icon" />;
+  if (row.type === "genres") return <GridIcon size={18} className="row-config-icon" />;
   return <LibraryIcon icon={library?.icon ?? null} kind={library?.kind ?? "movies"} size={18} className="row-config-icon" />;
 }

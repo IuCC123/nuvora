@@ -2,7 +2,7 @@ import { Fragment, useLayoutEffect, useRef, useState, type KeyboardEvent, type R
 import type { CastMember, Details, Image } from "@nuvora/core";
 import { Artwork } from "./Artwork";
 import { ChevronLeftIcon, ChevronRightIcon, StarIcon } from "./Icon";
-import { pageStrip, useScrollEdges } from "./PosterRow";
+import { pageStrip, useScrollEdges } from "./Row";
 import "../styles/home.css";
 import "../styles/details.css";
 

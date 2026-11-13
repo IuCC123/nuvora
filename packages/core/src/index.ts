@@ -106,6 +106,9 @@ export type {
   ProgressRequest,
   RowKind,
   RowPage,
+  FeaturedItem,
+  GenreTile,
+  GenrePage,
   ScanStatus,
   Version,
   WatchState,
@@ -121,7 +124,7 @@ export type {
 } from "./client";
 export { createQueries, findCard, isScanRunning, LIBRARY_PAGE_SIZE, queryKeys, homeRowQueryParams, rowCards, watchStateKeys } from "./queries";
 export type { InfiniteQueryDef, Queries, QueryDef } from "./queries";
-export { placeholderDataUrl } from "./images";
+export { averageColor, placeholderDataUrl } from "./images";
 export { previewFrame, type PreviewFrame } from "./previews";
 export { titleCardLook } from "./titleCard";
 export type { TitleCardLook } from "./titleCard";

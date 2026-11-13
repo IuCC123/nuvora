@@ -11,6 +11,9 @@ export type HomeRowQuery = Schemas["HomeRowQuery"];
 export type HomeRow = Schemas["HomeRow"];
 export type RowKind = Schemas["RowKind"];
 export type RowPage = Schemas["RowPage"];
+export type FeaturedItem = Schemas["FeaturedItem"];
+export type GenreTile = Schemas["GenreTile"];
+export type GenrePage = Schemas["GenrePage"];
 export type PosterCard = Schemas["PosterCard"];
 export type ItemDetail = Schemas["ItemDetail"];
 export type ItemKind = Schemas["ItemKind"];
@@ -144,6 +147,8 @@ export interface NuvoraClient {
   row(kind: RowKind, after: string, signal?: AbortSignalLike, library?: number): Promise<RowPage>;
   /** Rejects with `ApiError(404)` when the item does not exist. */
   item(id: number, signal?: AbortSignalLike): Promise<ItemDetail>;
+  /** One genre's movies and shows, newest first; `after` is a page's `next`. 404 for a genre no title has. */
+  genre(key: string, after: string | null, signal?: AbortSignalLike): Promise<GenrePage>;
   /** A season's episodes in order. 404 unless `seasonId` is a season. */
   episodes(seasonId: number, signal?: AbortSignalLike): Promise<Episode[]>;
   /** Every library, for the nav rail and the library page header. */
@@ -351,6 +356,7 @@ export function createClient(options: ClientOptions): NuvoraClient {
     row: (kind, after, signal, library) =>
       get<RowPage>("/api/rows/{row}", { row: kind }, signal, library === undefined ? { after } : { after, library: String(library) }),
     item: (id, signal) => get<ItemDetail>("/api/items/{id}", { id }, signal),
+    genre: (key, after, signal) => get<GenrePage>("/api/genres/{genre}", { genre: key }, signal, after === null ? undefined : { after }),
     episodes: (id, signal) => get<Episode[]>("/api/items/{id}/episodes", { id }, signal),
     libraries: (signal) => get<LibrarySummary[]>("/api/libraries", {}, signal),
     libraryItems: (id, query, after, limit, signal) =>

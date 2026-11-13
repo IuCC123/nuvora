@@ -5,6 +5,7 @@ import type {
   Episode,
   FsInspect,
   FsListing,
+  GenrePage,
   HomeResponse,
   HomeRow,
   ItemDetail,
@@ -59,6 +60,7 @@ export const queryKeys = {
   /** Prefix of every row page query; invalidate it together with `home`. */
   rows: ["row"] as const,
   item: (id: number) => ["item", id] as const,
+  genre: (key: string) => ["genre", key] as const,
   /** Prefix of every season's episode list. */
   episodes: ["episodes"] as const,
   libraries: ["libraries"] as const,
@@ -124,6 +126,8 @@ export interface Queries {
   queryRowPages(library: number, query: Record<string, string>, after: string): InfiniteQueryDef<LibraryPage, string>;
   /** A season's episodes, with watch state and a playback decision each. */
   episodes(seasonId: number): QueryDef<Episode[]>;
+  /** One genre's pages, newest first. */
+  genrePages(key: string): InfiniteQueryDef<GenrePage, string | null>;
   libraries(): QueryDef<LibrarySummary[]>;
   /** `query` is `libraryQuery(view, movies)`, so equal views share one cache entry. */
   libraryIndex(id: number, query: Record<string, string>): QueryDef<LibraryIndex>;
@@ -183,6 +187,13 @@ export function createQueries(client: NuvoraClient): Queries {
       staleTime: 30_000,
     }),
     episodes: (id) => ({ queryKey: [...queryKeys.episodes, id], queryFn: ({ signal }) => client.episodes(id, signal), staleTime: 30_000 }),
+    genrePages: (key) => ({
+      queryKey: queryKeys.genre(key),
+      queryFn: ({ signal, pageParam }) => client.genre(key, pageParam, signal),
+      initialPageParam: null,
+      getNextPageParam: (last) => last.next ?? undefined,
+      staleTime: 30_000,
+    }),
     libraries: () => ({ queryKey: queryKeys.libraries, queryFn: ({ signal }) => client.libraries(signal), staleTime: 60_000 }),
     search: (q) => ({ queryKey: queryKeys.search(q), queryFn: ({ signal }) => client.search(q, signal), staleTime: 30_000 }),
     libraryIndex: (id, query) => ({

@@ -17,6 +17,8 @@ import { Home } from "./screens/Home";
 import { LibraryScreen } from "./screens/Library";
 import { MovieScreen } from "./screens/Movie";
 import { Search } from "./screens/Search";
+import { GenreScreen } from "./screens/Genre";
+import { HomeSkeleton } from "./screens/Home";
 import { Downloads } from "./screens/Downloads";
 import { Watch } from "./screens/Watch";
 import { PartyLayer } from "./components/party/PartyLayer";
@@ -45,7 +47,8 @@ import { SettingsUsers } from "./screens/settings/Users";
  *   /signin?redirect=<path>     Sign in
  *   /                           Home
  *   /movie/$id                  Movie detail
- *   /movie/$id/play?file=<id>&t=<s>  Player (reads the cached detail; no new request), from second `t`
+ *   /movie/$id/play?file=<id>&t=<s>  Player, from second `t`; without `file` it resumes where the viewer stopped
+ *   /genre/$key                 One genre's movies and shows
  *   /show/$id?season=<n>        Show: seasons and episodes, season `n` open
  *   /library/$id?sort=&order=&filter=&res=&hdr=&group=  Library grid (view also kept per device)
  *   /episode/$id/play?file=&t=  Player for an episode; without `file` it resumes where the viewer stopped
@@ -144,7 +147,16 @@ const home = createRoute({
   path: "/",
   loader: () => queryClient.ensureQueryData(queries.home()),
   component: Home,
+  pendingComponent: HomeSkeleton,
+  pendingMs: 150,
   errorComponent: Unreachable,
+});
+
+const genre = createRoute({
+  getParentRoute: () => shell,
+  path: "/genre/$key",
+  loader: ({ params }) => void queryClient.prefetchInfiniteQuery(queries.genrePages(params.key)),
+  component: GenreScreen,
 });
 
 const movie = createRoute({
@@ -273,36 +285,51 @@ const settingsUsers = createRoute({
 
 const settingsAccount = createRoute({ getParentRoute: () => settings, path: "/account", component: SettingsAccount });
 
+/**
+ * A movie or episode plays from a card or button that may know only its id.
+ * Without a `file`, the loader picks one the way the detail page would (the
+ * version the viewer stopped in, else the first playable) and redirects with
+ * it and the resume point, so a reload resumes like any other link.
+ */
+function resumeSearch(item: { versions: Parameters<typeof playState>[0]; watch: { position_ms?: number | null; file_id?: number | null } }) {
+  const { position_ms, file_id } = item.watch;
+  const resumable = item.versions.some((v) => v.file_id === file_id && playable(v));
+  const state = playState(item.versions);
+  const file = resumable ? file_id! : state.kind === "play" ? state.fileId : (item.versions[0]?.file_id ?? 0);
+  const t = resumable && position_ms != null ? Math.floor(position_ms / 1000) : undefined;
+  return { file, t };
+}
+
+function fileSearch(s: Record<string, unknown>): { file?: number | undefined; t?: number | undefined } {
+  const file = Number(s.file);
+  return { file: Number.isSafeInteger(file) && file > 0 ? file : undefined, ...playSearch(s) };
+}
+
 const play = createRoute({
   getParentRoute: () => root,
   path: "/movie/$id/play",
   params: movieParams,
-  // The router lays this over the raw search, so a rejected `t` has to be overwritten, not just left out.
-  validateSearch: (s: Record<string, unknown>): { file: number; t?: number | undefined } => ({ file: Number(s.file), ...playSearch(s) }),
+  validateSearch: fileSearch,
   beforeLoad: requireUser,
-  loader: ({ params }) =>
-    queryClient.ensureQueryData(queries.item(params.id)).catch((error: unknown) => {
+  loaderDeps: ({ search }) => ({ file: search.file }),
+  loader: async ({ params, deps }) => {
+    const item = await queryClient.ensureQueryData(queries.item(params.id)).catch((error: unknown) => {
       throw error instanceof ApiError && error.status === 404 ? notFound() : error;
-    }),
+    });
+    if (item.kind !== "movie") throw notFound();
+    if (deps.file !== undefined) return;
+    throw redirect({ to: "/movie/$id/play", params: { id: params.id }, search: resumeSearch(item), replace: true });
+  },
   component: Player,
   notFoundComponent: MissingMovie,
   errorComponent: Unreachable,
 });
 
-/**
- * An episode plays from a card or button that knows only its id. Without a
- * `file`, the loader picks one the way the show page would (the version the
- * viewer stopped in, else the first playable) and redirects with it and the
- * resume point, so a reload resumes like any movie link.
- */
 const playEpisode = createRoute({
   getParentRoute: () => root,
   path: "/episode/$id/play",
   params: movieParams,
-  validateSearch: (s: Record<string, unknown>): { file?: number | undefined; t?: number | undefined } => {
-    const file = Number(s.file);
-    return { file: Number.isSafeInteger(file) && file > 0 ? file : undefined, ...playSearch(s) };
-  },
+  validateSearch: fileSearch,
   beforeLoad: requireUser,
   loaderDeps: ({ search }) => ({ file: search.file }),
   loader: async ({ params, deps }) => {
@@ -311,12 +338,7 @@ const playEpisode = createRoute({
     });
     if (item.kind !== "episode") throw notFound();
     if (deps.file !== undefined) return;
-    const { position_ms, file_id } = item.watch;
-    const resumable = item.versions.some((v) => v.file_id === file_id && playable(v));
-    const state = playState(item.versions);
-    const file = resumable ? file_id! : state.kind === "play" ? state.fileId : (item.versions[0]?.file_id ?? 0);
-    const t = resumable && position_ms != null ? Math.floor(position_ms / 1000) : undefined;
-    throw redirect({ to: "/episode/$id/play", params: { id: params.id }, search: { file, t }, replace: true });
+    throw redirect({ to: "/episode/$id/play", params: { id: params.id }, search: resumeSearch(item), replace: true });
   },
   component: EpisodePlayer,
   notFoundComponent: MissingEpisode,
@@ -346,7 +368,7 @@ export const router = createRouter({
     welcome,
     welcomeLibrary,
     signin,
-    shell.addChildren([home, movie, show, library, search, downloads, settings.addChildren([
+    shell.addChildren([home, movie, show, library, genre, search, downloads, settings.addChildren([
       settingsIndex,
       settingsGeneral,
       settingsLibraries,
@@ -362,6 +384,8 @@ export const router = createRouter({
     watch,
   ]),
   defaultPreload: "intent",
+  // Pages crossfade, and a card's art morphs into the detail page's (see lib/sharedArt).
+  defaultViewTransition: true,
   defaultPreloadStaleTime: 0, // TanStack Query owns freshness
   scrollRestoration: true,
 });

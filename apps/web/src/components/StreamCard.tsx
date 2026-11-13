@@ -11,7 +11,7 @@ import { PosterMarks } from "./PosterCard";
  * again and plays on from where it stopped. It has no artwork, so its title
  * card stands in, marked as a stream so it isn't taken for a library title.
  */
-export function StreamCardView({ stream }: { stream: WatchedStream }) {
+export function StreamCardView({ stream, wide = false }: { stream: WatchedStream; wide?: boolean }) {
   const qc = useQueryClient();
   const open = useOpenStream();
   const forget = useMutation({
@@ -21,28 +21,29 @@ export function StreamCardView({ stream }: { stream: WatchedStream }) {
   const movie = stream.content.kind === "movie";
   const second = movie ? (stream.year != null ? String(stream.year) : " ") : contentLabel(stream.content);
   return (
-    <div className="stream-poster">
+    <div className={wide ? "stream-poster wide-card" : "stream-poster"}>
       <button
         type="button"
-        className="poster-card"
+        className={wide ? "poster-card wide-link" : "poster-card"}
+        data-nav-item
         onClick={() => open.mutate({ link: stream.link, title: stream.title })}
         disabled={open.isPending}
         aria-busy={open.isPending}
         aria-label={`Play ${stream.movie}${movie ? "" : `, ${second}`} from ${formatClock(stream.position_ms)}, streamed`}
       >
-        <span className="poster-frame">
+        <span className={wide ? "wide-frame" : "poster-frame"}>
           <CardArt image={null} title={stream.movie} year={movie ? stream.year : null} />
           <PosterMarks progress={stream.duration_ms > 0 ? stream.position_ms / stream.duration_ms : null} watched={false} />
           <span className="poster-stream" aria-hidden>
             Stream
           </span>
           <span className="poster-hover" aria-hidden>
-            <span className="poster-hover-play">{open.isPending ? <SpinIcon size={22} className="poster-spin" /> : <PlayIcon size={22} />}</span>
+            <span className="poster-hover-play glass">{open.isPending ? <SpinIcon size={22} className="poster-spin" /> : <PlayIcon size={22} />}</span>
           </span>
         </span>
-        <span className="poster-caption">
-          <span className="poster-title">{stream.movie}</span>
-          <span className="poster-year">{second}</span>
+        <span className={wide ? "wide-caption" : "poster-caption"}>
+          <span className={wide ? "wide-title" : "poster-title"}>{stream.movie}</span>
+          <span className={wide ? "wide-sub" : "poster-year"}>{second}</span>
         </span>
       </button>
       <button type="button" className="poster-remove" onClick={() => forget.mutate()} disabled={forget.isPending} aria-label={`Remove ${stream.movie} from Continue Watching`}>

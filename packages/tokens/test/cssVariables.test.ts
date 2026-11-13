@@ -9,20 +9,20 @@ test("emits one :root block", () => {
 });
 
 test("kebab-cases nested keys and keeps strings verbatim", () => {
-  expect(css).toContain("  --nv-color-canvas: #0f1012;\n");
-  expect(css).toContain("  --nv-color-text-muted: #85888d;\n");
+  expect(css).toContain("  --nv-color-canvas: #060708;\n");
+  expect(css).toContain("  --nv-color-text-muted: rgba(235,235,245,0.52);\n");
   expect(css).toContain("  --nv-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);\n");
 });
 
 test("suffixes numbers with the unit of their group", () => {
   expect(css).toContain("  --nv-space-4: 16px;\n");
   expect(css).toContain("  --nv-radius-pill: 999px;\n");
-  expect(css).toContain("  --nv-type-headline-size: 40px;\n");
-  expect(css).toContain("  --nv-type-headline-line: 44px;\n");
-  expect(css).toContain("  --nv-poster-width-regular: 150px;\n");
+  expect(css).toContain("  --nv-type-headline-size: 34px;\n");
+  expect(css).toContain("  --nv-type-headline-line: 40px;\n");
+  expect(css).toContain("  --nv-poster-width-regular: 156px;\n");
   expect(css).toContain("  --nv-poster-gap: 16px;\n");
   expect(css).toContain("  --nv-motion-duration-fast: 160ms;\n");
-  expect(css).toContain("  --nv-motion-image-fade: 240ms;\n");
+  expect(css).toContain("  --nv-motion-image-fade: 320ms;\n");
   expect(css).toContain("  --nv-title-card-stretch: 64%;\n");
 });
 

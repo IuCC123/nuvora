@@ -1,0 +1,287 @@
+/* Poster cards: rows, library grids, search. A card lifts on a spring when hovered or focused; focus adds a white ring. */
+
+.poster-card {
+  display: block;
+  border-radius: var(--nv-radius-card);
+  -webkit-touch-callout: none;
+}
+
+.poster-card:focus-visible {
+  outline: none;
+}
+
+.poster-frame {
+  position: relative;
+  display: block;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--nv-radius-card);
+  background: var(--nv-color-surface);
+  box-shadow: var(--nv-shadow-card);
+  transition:
+    transform var(--nv-motion-duration-spring) var(--nv-motion-easing-spring-snappy),
+    box-shadow var(--nv-motion-duration-base) var(--nv-motion-easing-standard);
+  will-change: transform;
+}
+
+/* A hairline on the art's edge, so dark posters keep their shape on the dark canvas. */
+.poster-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+}
+
+.poster-frame > .artwork,
+.poster-frame > .title-card {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+@media (hover: hover) {
+  .poster-card:hover .poster-frame {
+    transform: scale(var(--nv-motion-lift-scale));
+    box-shadow: var(--nv-shadow-lift);
+  }
+}
+
+.poster-card:focus-visible .poster-frame {
+  transform: scale(var(--nv-motion-lift-scale));
+  box-shadow: var(--nv-shadow-lift);
+  outline: 3px solid var(--nv-color-focus-ring);
+  outline-offset: 4px;
+}
+
+.poster-card:active .poster-frame {
+  transform: scale(0.98);
+  transition-duration: var(--nv-motion-duration-fast);
+}
+
+/* The play badge: on cards that play rather than open a page. */
+.poster-hover {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  background: var(--nv-color-poster-hover);
+  opacity: 0;
+  transition: opacity var(--nv-motion-duration-base) var(--nv-motion-easing-standard);
+}
+
+.poster-hover-play {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  color: var(--nv-label-primary);
+  transform: scale(0.86);
+  transition: transform var(--nv-motion-duration-spring) var(--nv-motion-easing-spring-snappy);
+}
+
+.poster-hover-play svg {
+  margin-left: 3px;
+}
+
+@media (hover: hover) {
+  :is(.poster-card, .wide-link):hover .poster-hover {
+    opacity: 1;
+  }
+
+  :is(.poster-card, .wide-link):hover .poster-hover-play {
+    transform: none;
+  }
+}
+
+:is(.poster-card, .wide-link):focus-visible .poster-hover {
+  opacity: 1;
+}
+
+:is(.poster-card, .wide-link):focus-visible .poster-hover-play {
+  transform: none;
+}
+
+/* Watch marks: a white bar while in progress, a check once watched. Unwatched posters carry nothing. */
+
+.poster-progress {
+  position: absolute;
+  z-index: 1;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.28);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+}
+
+.poster-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--nv-color-accent);
+  transform-origin: left;
+}
+
+.poster-watched,
+.poster-count {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  height: 24px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-material-regular);
+  -webkit-backdrop-filter: var(--nv-material-blur-thin);
+  backdrop-filter: var(--nv-material-blur-thin);
+  box-shadow: var(--nv-material-stroke), 0 1px 6px rgba(0, 0, 0, 0.4);
+  color: var(--nv-label-primary);
+}
+
+.poster-watched {
+  width: 24px;
+}
+
+/* A show's unwatched episodes, in the corner a watched check would take. */
+.poster-count {
+  min-width: 24px;
+  padding: 0 7px;
+  box-sizing: border-box;
+  font-size: var(--nv-type-caption-size);
+  line-height: 1;
+  font-weight: var(--nv-font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.poster-caption {
+  display: block;
+  margin-top: 10px;
+}
+
+.poster-title-link {
+  width: fit-content;
+  max-width: 100%;
+  border-radius: var(--nv-radius-sm);
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.poster-title-link:hover {
+  text-decoration-color: var(--nv-color-text-muted);
+}
+
+.poster-title,
+.poster-year {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.poster-title {
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.poster-year {
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-caption-size);
+  line-height: var(--nv-type-caption-line);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A torrent stream in Continue Watching: marked as one, and removable. */
+
+.stream-poster {
+  position: relative;
+}
+
+.stream-poster > .poster-card {
+  width: 100%;
+  text-align: left;
+}
+
+.poster-stream {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  left: 8px;
+  padding: 4px 9px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-material-regular);
+  -webkit-backdrop-filter: var(--nv-material-blur-thin);
+  backdrop-filter: var(--nv-material-blur-thin);
+  box-shadow: var(--nv-material-stroke);
+  color: var(--nv-label-primary);
+  font-size: var(--nv-type-caption-size);
+  line-height: 1;
+  font-weight: var(--nv-font-weight-semibold);
+}
+
+.poster-remove {
+  position: absolute;
+  z-index: 4;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--nv-material-regular);
+  -webkit-backdrop-filter: var(--nv-material-blur-thin);
+  backdrop-filter: var(--nv-material-blur-thin);
+  box-shadow: var(--nv-material-stroke);
+  color: var(--nv-label-primary);
+  opacity: 0;
+  transition: opacity var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+}
+
+.stream-poster:hover .poster-remove,
+.poster-remove:focus-visible {
+  opacity: 1;
+}
+
+.poster-spin {
+  animation: poster-spin 0.9s linear infinite;
+}
+
+@keyframes poster-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.poster-error {
+  margin-top: 4px;
+  color: var(--nv-color-danger);
+  font-size: var(--nv-type-caption-size);
+  line-height: var(--nv-type-caption-line);
+}
+
+@media (hover: none) {
+  .poster-remove {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .poster-card:hover .poster-frame,
+  .poster-card:focus-visible .poster-frame {
+    transform: none;
+  }
+}

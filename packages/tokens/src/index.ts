@@ -1,37 +1,62 @@
 /**
  * Nuvora design tokens. Values are platform-neutral numbers and strings; the
  * web turns them into CSS custom properties (`cssVariables`), the TV apps read
- * them as a plain object in StyleSheet code. Plex-like: near-black canvas,
- * warm amber accent, dense poster grids, quick and quiet motion.
+ * them as a plain object in StyleSheet code. The look is a premium streaming
+ * service in Apple TV's manner: a deep, slightly cool canvas, artwork that
+ * owns the color (the ambient wash comes from the featured art), white for
+ * the primary action, focus and progress, and glass used with restraint on
+ * chrome that floats over content.
  *
  * Names are semantic (what a value is for), never literal (what it looks like),
  * so a theme change edits values, not call sites. DESIGN.md mirrors this file.
  */
 export const tokens = {
   color: {
-    canvas: "#0f1012",          // app background, top bar, menus
-    surface: "#1a1c1f",         // cards, panels
-    surfaceRaised: "#24272b",   // hovered rows, highlighted menu items, active nav item
-    hairline: "#2c2f34",        // borders on surfaces
-    divider: "#1d1f22",         // top bar and nav rail edges against the canvas
-    overlayBorder: "rgba(255,255,255,0.18)", // chips over artwork
-    overlayPanel: "rgba(26,28,31,0.82)",     // notices over artwork
-    overlayHairline: "rgba(255,255,255,0.08)",
-    textPrimary: "#f2f2f2",
-    textSecondary: "#a6a8ab",
-    textMuted: "#85888d",       // the floor for small text: 5.3:1 on canvas, 4.8:1 on surface
-    accent: "#e5a00d",          // Plex-amber: primary action, focus ring, progress
-    accentHover: "#f0b232",
-    accentText: "#141414",      // text on accent
-    focusRing: "#e5a00d",
-    danger: "#e5534b",
-    placeholder: "#1f2226",     // poster before its ThumbHash decodes (one frame at most)
-    posterHover: "rgba(8,9,10,0.38)", // dims a hovered poster under its play badge
+    canvas: "#060708",          // app background
+    surface: "#14161a",         // cards, panels, placeholders under art
+    surfaceRaised: "#1e2126",   // hovered rows, highlighted menu items, inputs
+    hairline: "rgba(255,255,255,0.12)", // borders on surfaces
+    divider: "rgba(255,255,255,0.08)",  // separators against the canvas
+    overlayBorder: "rgba(255,255,255,0.32)", // chips over artwork
+    overlayPanel: "rgba(22,24,28,0.72)",     // notices over artwork
+    overlayHairline: "rgba(255,255,255,0.1)",
+    textPrimary: "rgba(255,255,255,0.96)",
+    textSecondary: "rgba(235,235,245,0.68)", // 9.6:1 on canvas
+    textMuted: "rgba(235,235,245,0.52)",     // the floor for small text: 6.1:1 on canvas, 5.2:1 on surface
+    accent: "#ffffff",          // primary action, focus, progress: white, like Apple TV
+    accentHover: "#e9e9ec",
+    accentText: "#050505",      // text on accent
+    focusRing: "#ffffff",
+    danger: "#ff5f57",
+    placeholder: "#16181c",     // poster before its ThumbHash decodes (one frame at most)
+    posterHover: "rgba(6,7,8,0.28)", // dims a hovered poster under its play badge
     video: "#000000",           // the player, so letterboxing disappears
   },
+  /** Labels over artwork and glass, as opacities of white. */
+  label: {
+    primary: "rgba(255,255,255,0.96)",
+    secondary: "rgba(255,255,255,0.72)",
+    tertiary: "rgba(255,255,255,0.5)",
+  },
+  /**
+   * Glass for chrome that floats over content (the top bar once scrolled,
+   * the tab bar, sheets, player controls, buttons over art). Never on
+   * content cards. Each material is a tint, a backdrop filter and one stroke.
+   */
+  material: {
+    thin: "rgba(30,32,38,0.38)",
+    regular: "rgba(26,28,34,0.56)",
+    thick: "rgba(18,20,24,0.78)",
+    blurThin: "blur(20px) saturate(170%)",
+    blurRegular: "blur(36px) saturate(180%)",
+    blurThick: "blur(56px) saturate(190%)",
+    stroke: "inset 0 0 0 0.5px rgba(255,255,255,0.14), inset 0 1px 0 rgba(255,255,255,0.1)",
+    /** Where backdrop-filter is unavailable or transparency is reduced. */
+    solid: "#17191d",
+  },
   font: {
-    family: "'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
-    /** Poster lettering on title cards and the wordmark only. Width comes from `titleCard.stretch`. */
+    family: "'Inter Variable', Inter, -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Roboto, sans-serif",
+    /** Poster lettering on title cards only. Width comes from `titleCard.stretch`. */
     familyDisplay: "'Archivo Variable', Archivo, 'Arial Narrow', sans-serif",
     weight: { regular: 400, medium: 500, semibold: 600, bold: 700, heavy: 800 },
   },
@@ -39,46 +64,57 @@ export const tokens = {
   type: {
     caption: { size: 12, line: 16 },
     small: { size: 13, line: 18 },
-    body: { size: 14, line: 20 },
-    bodyLarge: { size: 16, line: 24 },
-    title: { size: 20, line: 28 },
+    body: { size: 15, line: 22 },
+    bodyLarge: { size: 17, line: 25 },
+    title: { size: 22, line: 28 },
     heading: { size: 28, line: 34 },
-    headline: { size: 40, line: 44 },
+    headline: { size: 34, line: 40 },
+    /** Hero titles; fluid on the web between `displayMin` and `size`. */
+    display: { size: 88, line: 88 },
+    displayMin: 44,
     /** Primary and secondary buttons. */
-    button: { size: 15, line: 20 },
-    /** Technical badges on the detail page. */
+    button: { size: 16, line: 20 },
+    /** Technical badges. */
     chip: { size: 11, line: 14 },
-    wordmark: { size: 19, line: 24 },
+    wordmark: { size: 20, line: 24 },
   },
   /** 4 px grid. */
   space: { 0: 0, 1: 4, 2: 8, 3: 12, 4: 16, 5: 24, 6: 32, 7: 48, 8: 64, 9: 96 },
-  radius: { none: 0, sm: 4, md: 6, lg: 10, pill: 999 },
+  radius: { none: 0, sm: 8, md: 10, card: 12, lg: 20, sheet: 28, pill: 999 },
   /** px */
-  layout: { topBar: 56, navRail: 232, navRailCompact: 72, gutter: 40 },
+  layout: { topBar: 72, tabBar: 64, navRail: 232, navRailCompact: 72, gutter: 56, gutterCompact: 16 },
   poster: {
     /** Card widths per breakpoint; the `small` image (320 px) covers all at 2x. */
-    width: { compact: 120, regular: 150, wide: 176 },
+    width: { compact: 116, regular: 156, wide: 176 },
     aspectRatio: 2 / 3,
     gap: 16,
   },
   shadow: {
-    /** A hovered or focused poster. */
-    lift: "0 12px 28px rgba(0,0,0,0.45)",
-    /** The detail poster and the primary button resting over artwork. */
-    rest: "0 18px 40px rgba(0,0,0,0.5)",
+    /** A card at rest. */
+    card: "0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.32)",
+    /** A hovered or focused card. */
+    lift: "0 2px 6px rgba(0,0,0,0.4), 0 24px 48px rgba(0,0,0,0.55)",
+    /** The detail poster and sheets resting over artwork. */
+    rest: "0 18px 48px rgba(0,0,0,0.5)",
     /** The primary button and the poster play badge. */
-    raised: "0 6px 16px rgba(0,0,0,0.4)",
+    raised: "0 8px 24px rgba(0,0,0,0.3)",
   },
   motion: {
     /** ms */
-    duration: { instant: 80, fast: 160, base: 240, slow: 400 },
+    duration: { instant: 80, fast: 160, base: 240, slow: 400, spring: 520, ambient: 1200 },
     easing: {
       standard: "cubic-bezier(0.2, 0, 0, 1)",
       enter: "cubic-bezier(0, 0, 0, 1)",
       exit: "cubic-bezier(0.3, 0, 1, 1)",
+      /** A critically damped spring with a touch of overshoot: hover lifts, presses. */
+      springSnappy: "linear(0, 0.22 7%, 0.6 16%, 0.86 26%, 0.98 36%, 1.02 46%, 1.01 60%, 1)",
+      /** An overdamped spring: page and sheet movement. */
+      springSmooth: "linear(0, 0.13 8%, 0.43 19%, 0.72 31%, 0.9 44%, 0.98 58%, 1)",
     },
     /** The placeholder -> image cross-fade. */
-    imageFade: 240,
+    imageFade: 320,
+    /** A hovered or focused card's scale. */
+    liftScale: 1.06,
   },
   /**
    * The poster a movie gets when it has no artwork. `@nuvora/core`'s

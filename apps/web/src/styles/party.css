@@ -9,13 +9,17 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 36px;
-  min-width: 36px;
-  padding: 0 8px;
+  justify-content: center;
+  height: 40px;
+  min-width: 40px;
+  padding: 0 10px;
   border: 0;
   border-radius: var(--nv-radius-pill);
-  background: none;
-  color: var(--nv-color-text-secondary);
+  background: var(--nv-material-thin);
+  -webkit-backdrop-filter: var(--nv-material-blur-thin);
+  backdrop-filter: var(--nv-material-blur-thin);
+  box-shadow: var(--nv-material-stroke);
+  color: var(--nv-label-primary);
   font: inherit;
   font-size: var(--nv-type-small-size);
   font-weight: var(--nv-font-weight-medium);
@@ -27,7 +31,7 @@
 
 .together-button:hover,
 .together-button[aria-expanded="true"] {
-  background: var(--nv-color-surface);
+  background: rgba(255, 255, 255, 0.2);
   color: var(--nv-color-text-primary);
 }
 

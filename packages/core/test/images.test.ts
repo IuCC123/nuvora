@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { rgbaToThumbHash, thumbHashToDataURL } from "thumbhash";
-import { placeholderDataUrl } from "../src";
+import { averageColor, placeholderDataUrl } from "../src";
 import { base64ToBytes, bytesToBase64 } from "../src/images";
 
 function sampleImage(w: number, h: number, seed: number): Uint8Array {
@@ -44,4 +44,13 @@ test("base64 round-trips every length against Buffer", () => {
 
 test("rejects characters outside the alphabet", () => {
   expect(() => base64ToBytes("ab$d")).toThrow("invalid base64 at 2");
+});
+
+test("averages a flat teal image to its color, and gives up on garbage", () => {
+  const rgba = new Uint8Array(32 * 32 * 4);
+  for (let i = 0; i < rgba.length; i += 4) rgba.set([30, 110, 115, 255], i);
+  const placeholder = Buffer.from(rgbaToThumbHash(32, 32, rgba)).toString("base64");
+  const [r, g, b] = averageColor({ id: "teal", aspect_ratio: 1, placeholder })!;
+  expect(Math.abs(r - 30) + Math.abs(g - 110) + Math.abs(b - 115)).toBeLessThan(12);
+  expect(averageColor({ id: "bad", aspect_ratio: 1, placeholder: "!!" })).toBeNull();
 });

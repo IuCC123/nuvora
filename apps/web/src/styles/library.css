@@ -3,7 +3,7 @@
  * then the virtual grid whose group headers stick under the toolbar (`--library-sticky`).
  */
 .library {
-  padding: 28px var(--nv-layout-gutter) var(--nv-space-8);
+  padding: calc(var(--nv-layout-top-bar) + 28px) var(--gutter) var(--nv-space-8);
 }
 
 .library-head {
@@ -30,10 +30,12 @@
   position: sticky;
   top: var(--nv-layout-top-bar);
   z-index: 4;
-  margin: 0 calc(-1 * var(--nv-layout-gutter));
-  padding: 10px var(--nv-layout-gutter);
-  background: var(--nv-color-canvas);
-  border-bottom: 1px solid var(--nv-color-divider);
+  margin: 0 calc(-1 * var(--gutter));
+  padding: 10px var(--gutter);
+  background: var(--nv-material-thick);
+  -webkit-backdrop-filter: var(--nv-material-blur-thick);
+  backdrop-filter: var(--nv-material-blur-thick);
+  border-bottom: 0.5px solid var(--nv-color-divider);
 }
 
 .toolbar {

@@ -1,0 +1,41 @@
+/* A genre: its name large over a glow from its newest title's art, then a poster grid. */
+
+.genre-page {
+  position: relative;
+  isolation: isolate;
+  padding: calc(var(--nv-layout-top-bar) + 40px) var(--gutter) 72px;
+}
+
+.genre-page::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 520px;
+  z-index: -1;
+  background: radial-gradient(60% 70% at 20% 0%, color-mix(in oklab, var(--ambient) 45%, transparent), transparent 75%);
+  pointer-events: none;
+}
+
+.genre-head {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 32px;
+}
+
+.genre-head h1 {
+  font-size: clamp(40px, 5vw, 64px);
+  line-height: 1;
+  font-weight: var(--nv-font-weight-bold);
+  letter-spacing: -0.04em;
+}
+
+.genre-head p {
+  color: var(--nv-color-text-secondary);
+  font-size: var(--nv-type-body-large-size);
+}
+
+.genre-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(clamp(112px, 26vw, 176px), 1fr));
+  gap: 28px 18px;
+}

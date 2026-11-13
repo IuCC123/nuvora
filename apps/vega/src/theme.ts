@@ -13,7 +13,7 @@ export const colors = {
   muted: c.textMuted,
   accent: c.accent,
   /** The accent on a focused primary button. */
-  accentFocused: '#F5B52A',
+  accentFocused: '#E6E6E6',
   accentText: c.accentText,
   danger: c.danger,
   placeholder: c.placeholder,

@@ -4,14 +4,14 @@
   position: relative;
   display: flex;
   align-items: center;
-  width: min(360px, 34vw);
-  margin-left: 18px;
+  width: min(560px, 100%);
+  margin-bottom: 28px;
 }
 
 .search-box input {
   width: 100%;
-  height: 36px;
-  padding: 0 36px 0 38px;
+  height: 48px;
+  padding: 0 40px 0 44px;
   border: 1px solid transparent;
   border-radius: var(--nv-radius-pill);
   background: var(--nv-color-surface);
@@ -89,7 +89,7 @@
 /* Results */
 
 .search-page {
-  padding: 28px var(--nv-layout-gutter) 64px;
+  padding: calc(var(--nv-layout-top-bar) + 28px) var(--gutter) 64px;
   transition: opacity var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
 }
 

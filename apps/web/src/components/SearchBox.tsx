@@ -58,6 +58,8 @@ export function SearchBox() {
       <SearchIcon size={18} className="search-box-icon" />
       <input
         ref={input}
+        id="search-field"
+        autoFocus
         type="search"
         name="q"
         value={value}

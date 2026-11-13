@@ -61,10 +61,12 @@ let layout: HomeLayout | null = null;
 
 function home(): HomeResponse {
   const look = { background: layout?.background ?? "none", poster_size: layout?.poster_size ?? "medium" } as const;
-  if (!hasLibraries()) return { rows: [], ...look };
+  if (!hasLibraries()) return { rows: [], featured: [], ...look };
   const recent = [14, 13, 12, 5, 11, 9, 4].map(byId);
   const movie = (id: number) => cards().find((c) => c.id === id) ?? movieCard(catalogItem(id));
-  return { rows: homeRows(recent, movie), ...look };
+  // Only Big Buck Bunny has a backdrop, so it is the hero.
+  const featured = [{ card: { ...byId(2), backdrop: backdrops[2] }, overview: NO_DETAILS.tagline ?? "A giant rabbit takes on three bullying rodents.", genres: ["Animation", "Comedy"], rating: 6.4, runtime_ms: 596_000 }];
+  return { rows: homeRows(recent, movie), featured, ...look };
 }
 
 function homeLayout(): HomeLayout {
@@ -191,6 +193,7 @@ export function blenderItem(id: number): ItemDetail | undefined {
   return {
     kind: "movie",
     details: NO_DETAILS,
+    similar: [],
     id,
     title,
     year,

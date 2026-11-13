@@ -6,17 +6,25 @@
   font-family: var(--nv-font-family);
   font-size: var(--nv-type-body-size);
   line-height: var(--nv-type-body-line);
+  font-optical-sizing: auto;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   caret-color: var(--nv-color-accent);
   scrollbar-color: var(--nv-color-surface-raised) var(--nv-color-canvas);
+  -webkit-tap-highlight-color: transparent;
+  /* The page margin: wide on desktop, 16px on phones. */
+  --gutter: clamp(var(--nv-layout-gutter-compact), 4.4vw, var(--nv-layout-gutter));
+  /* The ambient wash under the hero; screens set it from their art. */
+  --ambient: #1b2a33;
 }
 
 body {
   margin: 0;
   min-height: 100dvh;
+  background: var(--nv-color-canvas);
+  overflow-x: clip;
 }
 
 h1, h2, h3, p, dl, dd, ul {
@@ -47,8 +55,12 @@ button:disabled {
   cursor: default;
 }
 
+img {
+  display: block;
+}
+
 ::selection {
-  background: color-mix(in srgb, var(--nv-color-accent) 35%, transparent);
+  background: rgba(255, 255, 255, 0.24);
   color: var(--nv-color-text-primary);
 }
 
@@ -68,13 +80,13 @@ button:disabled {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--nv-color-hairline);
+  background: #2a2d33;
 }
 
-/* One focus style for every interactive element: keyboard and TV remotes alike. */
+/* One focus style for every interactive element, keyboard and TV remote alike: a white ring that follows the shape. */
 :focus-visible {
   outline: 2px solid var(--nv-color-focus-ring);
-  outline-offset: 2px;
+  outline-offset: 3px;
   border-radius: var(--nv-radius-sm);
 }
 
@@ -87,23 +99,73 @@ button:disabled {
   white-space: nowrap;
 }
 
-/* Buttons */
+/* Glass: chrome over content only. Falls back to a solid surface without backdrop-filter or with reduced transparency. */
+.glass,
+.glass-thin,
+.glass-thick {
+  background: var(--nv-material-regular);
+  -webkit-backdrop-filter: var(--nv-material-blur-regular);
+  backdrop-filter: var(--nv-material-blur-regular);
+  box-shadow: var(--nv-material-stroke);
+}
 
-/* One line, always: the height is fixed, so a wrapped label would spill out. Rows of buttons wrap whole buttons instead. */
+.glass-thin {
+  background: var(--nv-material-thin);
+  -webkit-backdrop-filter: var(--nv-material-blur-thin);
+  backdrop-filter: var(--nv-material-blur-thin);
+}
+
+.glass-thick {
+  background: var(--nv-material-thick);
+  -webkit-backdrop-filter: var(--nv-material-blur-thick);
+  backdrop-filter: var(--nv-material-blur-thick);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass,
+  .glass-thin,
+  .glass-thick {
+    background: var(--nv-material-solid);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass,
+  .glass-thin,
+  .glass-thick {
+    background: var(--nv-material-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Buttons: pills. One line, always: the height is fixed, so a wrapped label would spill out. */
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  height: 44px;
+  height: 48px;
   white-space: nowrap;
-  padding: 0 22px 0 18px;
-  border-radius: var(--nv-radius-md);
+  padding: 0 26px 0 22px;
+  border-radius: var(--nv-radius-pill);
   font-size: var(--nv-type-button-size);
   line-height: var(--nv-type-button-line);
   font-weight: var(--nv-font-weight-semibold);
+  letter-spacing: -0.01em;
   transition:
     background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
-    transform var(--nv-motion-duration-instant) var(--nv-motion-easing-standard);
+    color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    transform var(--nv-motion-duration-spring) var(--nv-motion-easing-spring-snappy);
+}
+
+.btn:focus-visible {
+  border-radius: var(--nv-radius-pill);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+  transition-duration: var(--nv-motion-duration-instant);
 }
 
 .btn-primary {
@@ -112,46 +174,138 @@ button:disabled {
   box-shadow: var(--nv-shadow-raised);
 }
 
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
   background: var(--nv-color-accent-hover);
-}
-
-.btn-primary:active {
-  transform: scale(0.98);
 }
 
 .btn-primary:disabled {
   background: var(--nv-color-surface-raised);
   color: var(--nv-color-text-muted);
   box-shadow: none;
-  transform: none;
 }
 
-.btn-secondary {
-  padding: 0 18px;
-  background: var(--nv-color-surface-raised);
+/* Secondary: glass over art, a raised fill on the canvas. */
+.btn-secondary,
+.btn-glass {
+  padding: 0 22px;
+  background: rgba(255, 255, 255, 0.12);
   color: var(--nv-color-text-primary);
+  box-shadow: var(--nv-material-stroke);
+  -webkit-backdrop-filter: var(--nv-material-blur-thin);
+  backdrop-filter: var(--nv-material-blur-thin);
 }
 
-.btn-secondary:hover {
-  background: var(--nv-color-hairline);
+.btn-secondary:hover:not(:disabled),
+.btn-glass:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.btn-secondary:disabled {
+  color: var(--nv-color-text-muted);
+}
+
+.btn-small {
+  height: 36px;
+  padding: 0 16px;
+  font-size: var(--nv-type-small-size);
+}
+
+/* A round companion to a pill: icon only, same height. */
+.btn-round {
+  width: 48px;
+  padding: 0;
+}
+
+.btn-round.btn-small {
+  width: 36px;
+}
+
+.btn small {
+  font-weight: var(--nv-font-weight-medium);
+  opacity: 0.6;
 }
 
 .icon-btn {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--nv-radius-md);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--nv-radius-pill);
   color: var(--nv-color-text-secondary);
   transition:
     background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
-    color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+    color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
+    transform var(--nv-motion-duration-spring) var(--nv-motion-easing-spring-snappy);
+}
+
+.icon-btn:focus-visible {
+  border-radius: var(--nv-radius-pill);
 }
 
 .icon-btn:hover {
-  background: var(--nv-color-surface-raised);
+  background: rgba(255, 255, 255, 0.1);
   color: var(--nv-color-text-primary);
+}
+
+.icon-btn:active {
+  transform: scale(0.92);
+}
+
+/* Technical badges and small facts over art. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: var(--nv-type-chip-size);
+  line-height: var(--nv-type-chip-line);
+  font-weight: var(--nv-font-weight-semibold);
+  letter-spacing: 0.03em;
+  color: var(--nv-label-secondary);
+  box-shadow: inset 0 0 0 1px var(--nv-color-overlay-border);
+  white-space: nowrap;
+}
+
+/* Skeletons: shimmer instead of spinners. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--nv-color-surface);
+  border-radius: var(--nv-radius-card);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05) 50%, transparent);
+  animation: shimmer 1.6s var(--nv-motion-easing-standard) infinite;
+}
+
+.skeleton-text {
+  height: 12px;
+  border-radius: 6px;
+}
+
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
 }
 
 /* Notice: why something can't happen, over artwork or canvas */
@@ -162,16 +316,18 @@ button:disabled {
   align-items: flex-start;
   max-width: 520px;
   margin-top: 16px;
-  padding: 12px 14px;
-  border-radius: var(--nv-radius-md);
+  padding: 14px 16px;
+  border-radius: var(--nv-radius-card);
   background: var(--nv-color-overlay-panel);
-  border: 1px solid var(--nv-color-overlay-hairline);
+  -webkit-backdrop-filter: var(--nv-material-blur-thin);
+  backdrop-filter: var(--nv-material-blur-thin);
+  box-shadow: var(--nv-material-stroke);
 }
 
 .notice svg {
   flex: none;
-  margin-top: 1px;
-  color: var(--nv-color-accent);
+  margin-top: 2px;
+  color: var(--nv-color-text-primary);
 }
 
 .notice-hint {
@@ -189,8 +345,8 @@ button:disabled {
   flex-direction: column;
   align-items: flex-start;
   gap: 12px;
-  max-width: 480px;
-  padding: 64px var(--nv-layout-gutter);
+  max-width: 520px;
+  padding: calc(var(--nv-layout-top-bar) + 64px) var(--gutter) 64px;
 }
 
 .error-state svg {
@@ -199,9 +355,10 @@ button:disabled {
 
 .error-state h1,
 .empty h2 {
-  font-size: var(--nv-type-title-size);
-  line-height: var(--nv-type-title-line);
-  font-weight: var(--nv-font-weight-semibold);
+  font-size: var(--nv-type-heading-size);
+  line-height: var(--nv-type-heading-line);
+  font-weight: var(--nv-font-weight-bold);
+  letter-spacing: -0.02em;
 }
 
 .error-state p,
@@ -212,12 +369,31 @@ button:disabled {
   margin-bottom: 8px;
 }
 
+/* Page transitions (View Transitions API): a soft crossfade; shared elements morph on their own. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--nv-motion-duration-base);
+  animation-timing-function: var(--nv-motion-easing-standard);
+}
+
+::view-transition-group(*) {
+  animation-duration: var(--nv-motion-duration-spring);
+  animation-timing-function: var(--nv-motion-easing-spring-smooth);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     transition-duration: 0ms !important;
-    animation: none !important;
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
+  }
+
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }

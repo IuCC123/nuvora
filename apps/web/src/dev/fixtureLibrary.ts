@@ -316,6 +316,7 @@ function archiveItem(m: ArchiveMovie): ItemDetail {
   return {
     kind: "movie",
     details: NO_DETAILS,
+    similar: [],
     id: m.id,
     title: m.title,
     year: m.year,
@@ -356,6 +357,7 @@ export function catalogItem(id: number): ItemDetail | undefined {
     return {
       kind: "show",
       details: NO_DETAILS,
+      similar: [],
       id: show.id,
       title: show.title,
       year_range: show.years[0] === show.years[1] ? String(show.years[0]) : `${show.years[0]}–${show.years[1]}`,
@@ -470,14 +472,15 @@ export function homeRows(recentMovies: PosterCard[], movie: (id: number) => Post
   const resume = continueRow(movie);
   const recent = recentRow(recentMovies);
   const rows: HomeRow[] = [
-    ...(resume.length ? [{ kind: "continue_watching" as const, title: "Continue Watching", total: resume.length, items: resume, next: null }] : []),
-    { kind: "recently_added", title: "Recently Added", total: recent.length, items: recent, next: null },
+    ...(resume.length ? [{ kind: "continue_watching" as const, title: "Continue Watching", total: resume.length, items: resume, next: null, genres: [] }] : []),
+    { kind: "recently_added", title: "Recently Added", total: recent.length, items: recent, next: null, genres: [] },
   ];
   for (const lib of libraries()) {
     const sorted = arrange(entriesOf(lib.id) ?? [], parseQuery(new URLSearchParams()), false);
     if (!sorted.length) continue;
     rows.push({
       kind: "library",
+      genres: [],
       title: lib.name,
       library_id: lib.id,
       total: sorted.length,

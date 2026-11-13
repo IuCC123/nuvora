@@ -2,6 +2,11 @@ import { Link } from "@tanstack/react-router";
 import type { PosterCard } from "@nuvora/core";
 import { CheckIcon, PlayIcon } from "./Icon";
 import { CardArt } from "./CardArt";
+import { claimSharedArt } from "../lib/sharedArt";
+import "../styles/cards.css";
+
+/** Hands the card's art to the detail page's hero for the transition. */
+const claim = (e: React.MouseEvent<HTMLElement>) => claimSharedArt(e.currentTarget.querySelector<HTMLElement>(".poster-frame"));
 
 /**
  * A poster that links to what it shows: a movie's or a show's page. An episode
@@ -11,7 +16,7 @@ import { CardArt } from "./CardArt";
 export function PosterCardView({ card }: { card: PosterCard }) {
   const marks = card.progress != null ? `${Math.max(1, Math.round(card.progress * 100))}% watched` : card.watched ? "Watched" : null;
   const second = card.subtitle ?? (card.year != null ? String(card.year) : " ");
-  const frame = (
+  const frame = (play: boolean) => (
     <span className="poster-frame">
       <CardArt image={card.poster} title={card.title} year={card.kind === "episode" ? null : card.year} />
       <PosterMarks progress={card.progress ?? null} watched={card.watched} />
@@ -20,19 +25,21 @@ export function PosterCardView({ card }: { card: PosterCard }) {
           {card.unwatched_count}
         </span>
       )}
-      <span className="poster-hover" aria-hidden>
-        <span className="poster-hover-play">
-          <PlayIcon size={22} />
+      {play && (
+        <span className="poster-hover" aria-hidden>
+          <span className="poster-hover-play glass">
+            <PlayIcon size={22} />
+          </span>
         </span>
-      </span>
+      )}
     </span>
   );
 
   if (card.kind === "episode" && card.show_id != null) {
     return (
       <div className="poster-card-split">
-        <Link to="/episode/$id/play" params={{ id: card.id }} search={{}} className="poster-card" aria-label={[`Play ${card.title}`, card.subtitle, marks].filter(Boolean).join(", ")}>
-          {frame}
+        <Link to="/episode/$id/play" params={{ id: card.id }} search={{}} className="poster-card" data-nav-item aria-label={[`Play ${card.title}`, card.subtitle, marks].filter(Boolean).join(", ")}>
+          {frame(true)}
         </Link>
         <span className="poster-caption">
           <Link to="/show/$id" params={{ id: card.show_id }} className="poster-title poster-title-link">
@@ -53,19 +60,19 @@ export function PosterCardView({ card }: { card: PosterCard }) {
     </span>
   );
   return card.kind === "show" ? (
-    <Link to="/show/$id" params={{ id: card.id }} className="poster-card">
-      {frame}
+    <Link to="/show/$id" params={{ id: card.id }} className="poster-card" data-nav-item onClick={claim}>
+      {frame(false)}
       {caption}
     </Link>
   ) : (
-    <Link to="/movie/$id" params={{ id: card.id }} className="poster-card">
-      {frame}
+    <Link to="/movie/$id" params={{ id: card.id }} className="poster-card" data-nav-item onClick={claim}>
+      {frame(false)}
       {caption}
     </Link>
   );
 }
 
-/** An amber bar along the bottom edge while in progress; a check in the corner once watched. Unwatched carries nothing. Hidden from screen readers, so callers say it in words. */
+/** A white bar along the bottom edge while in progress; a check in the corner once watched. Unwatched carries nothing. Hidden from screen readers, so callers say it in words. */
 export function PosterMarks({ progress, watched }: { progress: number | null; watched: boolean }) {
   return (
     <>

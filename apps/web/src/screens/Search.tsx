@@ -4,6 +4,7 @@ import type { SearchEpisode, SearchPerson } from "@nuvora/core";
 import { Artwork } from "../components/Artwork";
 import { SearchIcon } from "../components/Icon";
 import { PosterCardView } from "../components/PosterCard";
+import { SearchBox } from "../components/SearchBox";
 import { queries } from "../nuvora";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { ErrorState } from "./ErrorState";
@@ -27,6 +28,7 @@ export function Search() {
   if (!query) {
     return (
       <div className="search-page">
+        <SearchBox />
         <div className="search-empty">
           <SearchIcon size={28} />
           <h1>Search your libraries</h1>
@@ -41,6 +43,7 @@ export function Search() {
   const nothing = data.titles.length === 0 && data.episodes.length === 0 && data.people.length === 0;
   return (
     <div className="search-page" aria-busy={isPlaceholderData}>
+      <SearchBox />
       <h1 className="search-heading">
         Results for <q>{query}</q>
       </h1>

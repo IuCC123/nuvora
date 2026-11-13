@@ -1,4 +1,4 @@
-import { thumbHashToRGBA } from "thumbhash";
+import { thumbHashToAverageRGBA, thumbHashToRGBA } from "thumbhash";
 import type { Image } from "./client";
 
 const cache = new Map<string, string>();
@@ -18,6 +18,20 @@ export function placeholderDataUrl(image: Image): string {
   const url = "data:image/png;base64," + bytesToBase64(encodePng(w, h, rgba));
   cache.set(image.id, url);
   return url;
+}
+
+/**
+ * The image's average color as `[r, g, b]` (0-255), from its ThumbHash, so
+ * a screen can tint itself with its art in the first frame, before any image
+ * loads. `null` for a malformed hash.
+ */
+export function averageColor(image: Image): [number, number, number] | null {
+  try {
+    const { r, g, b } = thumbHashToAverageRGBA(base64ToBytes(image.placeholder));
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+  } catch {
+    return null;
+  }
 }
 
 /**
