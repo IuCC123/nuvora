@@ -18,6 +18,15 @@ pub enum HomeRowSpec {
     RecentlyAdded {
         title: Option<String>,
     },
+    Trending {
+        title: Option<String>,
+    },
+    Top {
+        title: Option<String>,
+    },
+    Genres {
+        title: Option<String>,
+    },
     /// A library's cards with the library page's sort and filter, paged
     /// through `GET /api/libraries/{id}/items` with the same query.
     Library {

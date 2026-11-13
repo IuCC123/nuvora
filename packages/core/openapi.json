@@ -4240,6 +4240,78 @@
         ]
       }
     },
+    "/api/genres/{genre}": {
+      "get": {
+        "summary": "Per user (cards carry watch state), with home's ETag. A genre no title\nhas is 404.",
+        "operationId": "get_genre",
+        "parameters": [
+          {
+            "name": "genre",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "`next` from the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Default 40, clamped to 1..=100.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenrePage"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": ""
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/health": {
       "get": {
         "operationId": "health",
@@ -7120,6 +7192,76 @@
           "internal"
         ]
       },
+      "FeaturedItem": {
+        "type": "object",
+        "description": "A title in the home hero.",
+        "required": [
+          "card",
+          "genres"
+        ],
+        "properties": {
+          "card": {
+            "$ref": "#/components/schemas/PosterCard",
+            "description": "The title's card; its `backdrop` is always set."
+          },
+          "genres": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Display names, at most four."
+          },
+          "next": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EpisodeRef",
+                "description": "On shows: the episode Play starts for the signed-in user."
+              }
+            ]
+          },
+          "overview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rating": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "0 to 10."
+          },
+          "runtime_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "On movies.",
+            "minimum": 0
+          },
+          "season_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "On shows: numbered seasons.",
+            "minimum": 0
+          },
+          "tagline": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "FfmpegLogLevel": {
         "type": "string",
         "enum": [
@@ -7240,6 +7382,72 @@
           }
         }
       },
+      "GenrePage": {
+        "type": "object",
+        "description": "A page of one genre.",
+        "required": [
+          "name",
+          "total",
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PosterCard"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass back as `?after=` for the next page; `None` at the end."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "GenreTile": {
+        "type": "object",
+        "description": "A genre on home. `key` opens `GET /api/genres/{key}`.",
+        "required": [
+          "key",
+          "name",
+          "count"
+        ],
+        "properties": {
+          "art": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image",
+                "description": "The backdrop of one of them."
+              }
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Movies and shows in the genre.",
+            "minimum": 0
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "HardwareEncoding": {
         "type": "string",
         "description": "Which encoder converts video; see `nuvora_media::VideoEncoder`.",
@@ -7311,6 +7519,7 @@
         "type": "object",
         "required": [
           "rows",
+          "featured",
           "background",
           "poster_size"
         ],
@@ -7318,6 +7527,13 @@
           "background": {
             "$ref": "#/components/schemas/HomeBackground",
             "description": "From the user's layout (`GET /api/me/home`)."
+          },
+          "featured": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FeaturedItem"
+            },
+            "description": "Titles for the hero, best first, each with a backdrop. Empty when no\ntitle has one."
           },
           "poster_size": {
             "$ref": "#/components/schemas/PosterSize"
@@ -7337,9 +7553,17 @@
           "kind",
           "title",
           "total",
-          "items"
+          "items",
+          "genres"
         ],
         "properties": {
+          "genres": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GenreTile"
+            },
+            "description": "On `genres` rows, whose `items` are empty: the genre tiles."
+          },
           "icon": {
             "type": [
               "string",
@@ -7537,7 +7761,10 @@
         "enum": [
           "continue_watching",
           "recently_added",
-          "library"
+          "library",
+          "trending",
+          "top",
+          "genres"
         ]
       },
       "Image": {
@@ -8158,7 +8385,8 @@
           "title",
           "versions",
           "watch",
-          "details"
+          "details",
+          "similar"
         ],
         "properties": {
           "backdrop": {
@@ -8201,6 +8429,13 @@
             ],
             "format": "int64",
             "minimum": 0
+          },
+          "similar": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PosterCard"
+            },
+            "description": "\"More like this\": titles sharing its genres, then its library's newest."
           },
           "title": {
             "type": "string"
@@ -8656,6 +8891,17 @@
           "watched"
         ],
         "properties": {
+          "backdrop": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Image",
+                "description": "Landscape art: the backdrop; an episode's own frame, else its show's.\nSet on home, row, genre and \"More like this\" cards."
+              }
+            ]
+          },
           "id": {
             "type": "integer",
             "format": "int64"
@@ -9164,7 +9410,10 @@
           "continue_watching",
           "recently_added",
           "all_movies",
-          "library"
+          "library",
+          "trending",
+          "top",
+          "genres"
         ]
       },
       "RowPage": {
@@ -9646,7 +9895,8 @@
           "seasons",
           "watched_count",
           "episode_count",
-          "details"
+          "details",
+          "similar"
         ],
         "properties": {
           "backdrop": {
@@ -9705,6 +9955,13 @@
               "$ref": "#/components/schemas/SeasonSummary"
             },
             "description": "Numbered seasons in order, then Specials (season 0) last."
+          },
+          "similar": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PosterCard"
+            },
+            "description": "\"More like this\": titles sharing its genres, then its library's newest."
           },
           "title": {
             "type": "string"

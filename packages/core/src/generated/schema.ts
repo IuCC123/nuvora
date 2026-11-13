@@ -925,6 +925,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/genres/{genre}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Per user (cards carry watch state), with home's ETag. A genre no title
+         *     has is 404.
+         */
+        get: operations["get_genre"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -1854,6 +1874,31 @@ export interface components {
          * @enum {string}
          */
         ErrorCode: "bad_request" | "validation" | "unauthorized" | "bad_credentials" | "forbidden" | "not_found" | "setup_done" | "username_taken" | "last_admin" | "rate_limited" | "busy" | "update_unavailable" | "subtitles_unavailable" | "internal";
+        /** @description A title in the home hero. */
+        FeaturedItem: {
+            /** @description The title's card; its `backdrop` is always set. */
+            card: components["schemas"]["PosterCard"];
+            /** @description Display names, at most four. */
+            genres: string[];
+            next?: null | components["schemas"]["EpisodeRef"];
+            overview?: string | null;
+            /**
+             * Format: float
+             * @description 0 to 10.
+             */
+            rating?: number | null;
+            /**
+             * Format: int64
+             * @description On movies.
+             */
+            runtime_ms?: number | null;
+            /**
+             * Format: int32
+             * @description On shows: numbered seasons.
+             */
+            season_count?: number | null;
+            tagline?: string | null;
+        };
         /** @enum {string} */
         FfmpegLogLevel: "error" | "warning" | "info" | "verbose";
         /**
@@ -1903,6 +1948,26 @@ export interface components {
             /** @description The listed folder, canonical. Empty for the list of Windows drives. */
             path: string;
         };
+        /** @description A page of one genre. */
+        GenrePage: {
+            items: components["schemas"]["PosterCard"][];
+            name: string;
+            /** @description Pass back as `?after=` for the next page; `None` at the end. */
+            next?: string | null;
+            /** Format: int32 */
+            total: number;
+        };
+        /** @description A genre on home. `key` opens `GET /api/genres/{key}`. */
+        GenreTile: {
+            art?: null | components["schemas"]["Image"];
+            /**
+             * Format: int32
+             * @description Movies and shows in the genre.
+             */
+            count: number;
+            key: string;
+            name: string;
+        };
         /**
          * @description Which encoder converts video; see `nuvora_media::VideoEncoder`.
          * @enum {string}
@@ -1926,11 +1991,18 @@ export interface components {
         HomeResponse: {
             /** @description From the user's layout (`GET /api/me/home`). */
             background: components["schemas"]["HomeBackground"];
+            /**
+             * @description Titles for the hero, best first, each with a backdrop. Empty when no
+             *     title has one.
+             */
+            featured: components["schemas"]["FeaturedItem"][];
             poster_size: components["schemas"]["PosterSize"];
             /** @description Render in order. Clients render unknown row kinds like any other row. */
             rows: components["schemas"]["HomeRow"][];
         };
         HomeRow: {
+            /** @description On `genres` rows, whose `items` are empty: the genre tiles. */
+            genres: components["schemas"]["GenreTile"][];
             /** @description The library's preset icon, on `library` rows that have one. */
             icon?: string | null;
             /** @description The layout row this is (`GET /api/me/home`). */
@@ -1982,7 +2054,7 @@ export interface components {
             sort?: null | components["schemas"]["LibrarySort"];
         };
         /** @enum {string} */
-        HomeRowType: "continue_watching" | "recently_added" | "library";
+        HomeRowType: "continue_watching" | "recently_added" | "library" | "trending" | "top" | "genres";
         /** @description An artwork. URL: `/api/images/{id}/{size}`. Immutable: cache forever. */
         Image: {
             /**
@@ -2174,6 +2246,8 @@ export interface components {
             poster?: null | components["schemas"]["Image"];
             /** Format: int64 */
             runtime_ms?: number | null;
+            /** @description "More like this": titles sharing its genres, then its library's newest. */
+            similar: components["schemas"]["PosterCard"][];
             title: string;
             /** @description Best first. Empty when every file of the movie is currently missing. */
             versions: components["schemas"]["Version"][];
@@ -2323,6 +2397,7 @@ export interface components {
          *     `id` is the episode to play and `show_id` the show to open.
          */
         PosterCard: {
+            backdrop?: null | components["schemas"]["Image"];
             /** Format: int64 */
             id: number;
             kind: components["schemas"]["ItemKind"];
@@ -2507,7 +2582,7 @@ export interface components {
         /** @enum {string} */
         Role: "admin" | "member";
         /** @enum {string} */
-        RowKind: "continue_watching" | "recently_added" | "all_movies" | "library";
+        RowKind: "continue_watching" | "recently_added" | "all_movies" | "library" | "trending" | "top" | "genres";
         /** @description A later page of one row. */
         RowPage: {
             items: components["schemas"]["PosterCard"][];
@@ -2664,6 +2739,8 @@ export interface components {
             poster?: null | components["schemas"]["Image"];
             /** @description Numbered seasons in order, then Specials (season 0) last. */
             seasons: components["schemas"]["SeasonSummary"][];
+            /** @description "More like this": titles sharing its genres, then its library's newest. */
+            similar: components["schemas"]["PosterCard"][];
             title: string;
             /**
              * Format: int32
@@ -6178,6 +6255,53 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
+            };
+        };
+    };
+    get_genre: {
+        parameters: {
+            query?: {
+                /** @description `next` from the previous page. */
+                after?: string;
+                /** @description Default 40, clamped to 1..=100. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                genre: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenrePage"];
+                };
+            };
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

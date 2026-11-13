@@ -40,6 +40,7 @@ pub use accounts::DEFAULT_SERVER_NAME;
 mod admin;
 mod browse;
 mod copies;
+mod discover;
 mod downloads;
 mod hls;
 mod home;
@@ -180,6 +181,7 @@ fn build(state: Option<&AppState>) -> (axum::Router<AppState>, utoipa::openapi::
         .routes(routes!(get_home))
         .routes(routes!(get_row))
         .routes(routes!(get_item))
+        .routes(routes!(discover::get_genre))
         .routes(routes!(search::search))
         .routes(routes!(party::live))
         .routes(routes!(party::people))
@@ -353,6 +355,9 @@ pub fn compression()
 pub struct HomeResponse {
     /// Render in order. Clients render unknown row kinds like any other row.
     pub rows: Vec<HomeRow>,
+    /// Titles for the hero, best first, each with a backdrop. Empty when no
+    /// title has one.
+    pub featured: Vec<discover::FeaturedItem>,
     /// From the user's layout (`GET /api/me/home`).
     pub background: home::HomeBackground,
     pub poster_size: home::PosterSize,
@@ -378,6 +383,8 @@ pub struct HomeRow {
     /// On `library` rows: the library page query. Later pages come from
     /// `GET /api/libraries/{library_id}/items` with this query and `after=next`.
     pub query: Option<HomeRowQuery>,
+    /// On `genres` rows, whose `items` are empty: the genre tiles.
+    pub genres: Vec<discover::GenreTile>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -411,6 +418,12 @@ pub enum RowKind {
     /// One library's movies or shows by title. Home has one per library, in
     /// the order the libraries were added; `title` is the library's name.
     Library,
+    /// The household's most watched titles of the last week. Unpaged.
+    Trending,
+    /// The household's ten most watched titles, ranked: draw the rank. Unpaged.
+    Top,
+    /// Genre tiles in `genres`; `items` is empty. Unpaged.
+    Genres,
 }
 
 #[derive(Deserialize, IntoParams)]
@@ -444,6 +457,9 @@ pub struct PosterCard {
     pub title: String,
     pub year: Option<u16>,
     pub poster: Option<Image>,
+    /// Landscape art: the backdrop; an episode's own frame, else its show's.
+    /// Set on home, row, genre and "More like this" cards.
+    pub backdrop: Option<Image>,
     /// How far the signed-in user is into the movie or episode, 0 to 1.
     /// `None` unless it is in progress; a Next Up episode has none.
     pub progress: Option<f32>,
@@ -512,6 +528,8 @@ pub struct MovieDetail {
     pub versions: Vec<Version>,
     pub watch: watch::WatchState,
     pub details: metadata::Details,
+    /// "More like this": titles sharing its genres, then its library's newest.
+    pub similar: Vec<PosterCard>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -758,6 +776,9 @@ async fn get_row(
                 .library
                 .ok_or_else(|| ApiError::validation("library", "A library row needs ?library="))?,
         )),
+        RowKind::Trending => nuvora_library::RowKind::Trending,
+        RowKind::Top => nuvora_library::RowKind::Top,
+        RowKind::Genres => nuvora_library::RowKind::Genres,
     };
     let after = query
         .after
@@ -908,6 +929,9 @@ fn row_title(row: &nuvora_library::Row) -> String {
         nuvora_library::RowKind::RecentlyAdded => "Recently Added".into(),
         nuvora_library::RowKind::AllMovies => "All Movies".into(),
         nuvora_library::RowKind::Library(_) => row.library_name.clone().unwrap_or_default(),
+        nuvora_library::RowKind::Trending => "Trending Now".into(),
+        nuvora_library::RowKind::Top => "Top 10 on Nuvora".into(),
+        nuvora_library::RowKind::Genres => "Browse by Genre".into(),
     }
 }
 
@@ -987,11 +1011,21 @@ fn home_response(built: nuvora_library::Home, layout: &home::HomeLayout) -> Home
                     .map(|c| c.to_string())
                     .or_else(|| row.library_next.map(|c| c.to_string())),
                 items: row.cards.into_iter().map(PosterCard::from).collect(),
+                genres: row
+                    .genres
+                    .into_iter()
+                    .map(discover::GenreTile::from)
+                    .collect(),
             }
         })
         .collect();
     HomeResponse {
         rows,
+        featured: built
+            .featured
+            .into_iter()
+            .map(discover::FeaturedItem::from)
+            .collect(),
         background: layout.background,
         poster_size: layout.poster_size,
     }
@@ -1004,6 +1038,9 @@ impl From<nuvora_library::RowKind> for RowKind {
             nuvora_library::RowKind::RecentlyAdded => RowKind::RecentlyAdded,
             nuvora_library::RowKind::AllMovies => RowKind::AllMovies,
             nuvora_library::RowKind::Library(_) => RowKind::Library,
+            nuvora_library::RowKind::Trending => RowKind::Trending,
+            nuvora_library::RowKind::Top => RowKind::Top,
+            nuvora_library::RowKind::Genres => RowKind::Genres,
         }
     }
 }
@@ -1030,6 +1067,7 @@ impl From<nuvora_library::Card> for PosterCard {
             title: card.title,
             year: card.year,
             poster: card.poster.map(Image::from),
+            backdrop: card.backdrop.map(Image::from),
             progress: card
                 .watch
                 .resume
@@ -1063,6 +1101,7 @@ impl From<nuvora_library::Item> for ItemDetail {
                 versions: movie.versions.into_iter().map(Version::from).collect(),
                 watch: movie.watch.into(),
                 details: movie.extras.into(),
+                similar: movie.similar.into_iter().map(PosterCard::from).collect(),
             }),
             nuvora_library::Item::Show(show) => ItemDetail::Show(show.into()),
             nuvora_library::Item::Season(season) => ItemDetail::Season(season.into()),
@@ -1708,7 +1747,17 @@ mod tests {
             .iter()
             .map(|r| r["id"].as_str().unwrap())
             .collect();
-        assert_eq!(ids, ["continue-watching", "recently-added", "library-1"]);
+        assert_eq!(
+            ids,
+            [
+                "continue-watching",
+                "top",
+                "recently-added",
+                "trending",
+                "genres",
+                "library-1"
+            ]
+        );
 
         let custom = serde_json::json!({
             "background": "aurora",

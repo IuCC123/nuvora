@@ -47,6 +47,8 @@ pub struct Home {
     /// Read in the same transaction as the rows, so it is the ETag of exactly this body.
     pub rev: CatalogRev,
     pub rows: Vec<Row>,
+    /// Titles for the hero, best first. See [`crate::discover::featured`].
+    pub featured: Vec<crate::discover::Featured>,
 }
 
 /// The first page of one row.
@@ -71,6 +73,8 @@ pub struct Row {
     pub library_next: Option<crate::browse::LibraryCursor>,
     /// Index of the [`crate::HomeRowSpec`] this row was built from.
     pub spec: Option<usize>,
+    /// On a [`RowKind::Genres`] row: the tiles (its `cards` are empty).
+    pub genres: Vec<crate::discover::GenreTile>,
 }
 
 /// A later page of one row, from [`Library::row`](crate::Library::row).
@@ -103,6 +107,14 @@ pub enum RowKind {
     /// One library's movies or shows, as its library page sorts them by
     /// title. Home has one per library, in the order they were added.
     Library(LibraryId),
+    /// The household's most watched titles of the last week. Not paged; on
+    /// home only with three or more.
+    Trending,
+    /// The household's ten most watched titles of all time, ranked. Not
+    /// paged; on home only with three or more.
+    Top,
+    /// Genre tiles instead of cards. Not paged.
+    Genres,
 }
 
 /// An opaque keyset position inside one row: the sort key of the last card of
@@ -210,6 +222,9 @@ pub struct Card {
     pub title: String,
     pub year: Option<u16>,
     pub poster: Option<Artwork>,
+    /// Landscape art: the backdrop; an episode's own frame, else its show's.
+    /// Set on home and row cards; `None` in library grids.
+    pub backdrop: Option<Artwork>,
     /// The requesting user's. A show's is `watched` when every episode is.
     pub watch: WatchState,
     /// What the card's second line says.
@@ -228,6 +243,7 @@ impl Card {
             title,
             year,
             poster: None,
+            backdrop: None,
             watch: WatchState::default(),
             note: CardNote::None,
             show: None,
@@ -288,6 +304,8 @@ pub struct Movie {
     /// The requesting user's.
     pub watch: WatchState,
     pub extras: crate::metadata::read::Extras,
+    /// "More like this".
+    pub similar: Vec<Card>,
 }
 
 impl Movie {
@@ -375,9 +393,67 @@ pub(crate) fn home(conn: &Connection, user: UserId) -> rusqlite::Result<Home> {
             query: None,
             library_next: None,
             spec: None,
+            genres: Vec::new(),
         });
     }
-    Ok(Home { rev, rows })
+    finish_home(conn, user, rev, rows)
+}
+
+/// Landscape art on every card, and the hero's titles.
+fn finish_home(
+    conn: &Connection,
+    user: UserId,
+    rev: CatalogRev,
+    mut rows: Vec<Row>,
+) -> rusqlite::Result<Home> {
+    for row in &mut rows {
+        crate::discover::fill_backdrops(conn, &mut row.cards)?;
+    }
+    let featured = crate::discover::featured(conn, user, now_ms())?;
+    Ok(Home {
+        rev,
+        rows,
+        featured,
+    })
+}
+
+pub(crate) fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
+}
+
+/// A whole unpaged row of `kind` (Trending, Top, Genres); `None` when it
+/// has nothing to show.
+fn unpaged_row(
+    conn: &Connection,
+    kind: RowKind,
+    user: UserId,
+    title: Option<String>,
+    spec: usize,
+) -> rusqlite::Result<Option<Row>> {
+    let (cards, genres) = match kind {
+        RowKind::Trending => (crate::discover::trending(conn, user, now_ms())?, Vec::new()),
+        RowKind::Top => (crate::discover::top(conn, user)?, Vec::new()),
+        RowKind::Genres => (Vec::new(), crate::discover::genre_tiles(conn)?),
+        _ => unreachable!("paged rows are built by row_page"),
+    };
+    if cards.is_empty() && genres.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(Row {
+        kind,
+        total: (cards.len() + genres.len()) as u32,
+        cards,
+        next: None,
+        library_name: None,
+        library_icon: None,
+        title,
+        query: None,
+        library_next: None,
+        spec: Some(spec),
+        genres,
+    }))
 }
 
 /// The rows of a custom home layout, in order. See [`crate::HomeRowSpec`].
@@ -413,7 +489,18 @@ pub(crate) fn home_with(
                     query: None,
                     library_next: None,
                     spec: Some(index),
+                    genres: Vec::new(),
                 });
+            }
+            HomeRowSpec::Trending { title }
+            | HomeRowSpec::Top { title }
+            | HomeRowSpec::Genres { title } => {
+                let kind = match spec {
+                    HomeRowSpec::Trending { .. } => RowKind::Trending,
+                    HomeRowSpec::Top { .. } => RowKind::Top,
+                    _ => RowKind::Genres,
+                };
+                rows.extend(unpaged_row(conn, kind, user, title.clone(), index)?);
             }
             HomeRowSpec::Library {
                 library,
@@ -445,11 +532,12 @@ pub(crate) fn home_with(
                     query: Some(query.clone()),
                     library_next: page.next,
                     spec: Some(index),
+                    genres: Vec::new(),
                 });
             }
         }
     }
-    Ok(Home { rev, rows })
+    finish_home(conn, user, rev, rows)
 }
 
 /// Present movies, as `d`, with their poster as `p` and user `?1`'s watch
@@ -544,6 +632,16 @@ pub(crate) fn row_page(
         (RowKind::AllMovies, None | Some(CursorKey::AllMovies { .. })) => {
             all_movies(conn, after.map(|c| &c.0), limit, user)
         }
+        (RowKind::Trending | RowKind::Top, None) => {
+            let mut cards = if kind == RowKind::Top {
+                crate::discover::top(conn, user)?
+            } else {
+                crate::discover::trending(conn, user, now_ms())?
+            };
+            cards.truncate(limit as usize);
+            Ok((cards.len() as u32, cards, None))
+        }
+        (RowKind::Genres, None) => Ok((0, Vec::new(), None)),
         _ => Err(wrong_cursor()),
     }
 }
@@ -771,7 +869,11 @@ pub(crate) fn item(
     };
     match kind {
         ItemKind::Movie => {}
-        ItemKind::Show => return Ok(Some(Item::Show(shows::show(conn, id, user)?))),
+        ItemKind::Show => {
+            let mut show = shows::show(conn, id, user)?;
+            show.similar = crate::discover::similar(conn, id, user)?;
+            return Ok(Some(Item::Show(show)));
+        }
         ItemKind::Season => return Ok(shows::season(conn, id, user)?.map(Item::Season)),
         ItemKind::Episode => {
             return Ok(shows::episode(conn, id, device, user)?.map(Item::Episode));
@@ -788,6 +890,7 @@ pub(crate) fn item(
         versions: versions(conn, id, device)?,
         watch: watch_state::load(conn, user, id)?,
         extras: crate::metadata::read::extras(conn, id)?,
+        similar: crate::discover::similar(conn, id, user)?,
     })))
 }
 

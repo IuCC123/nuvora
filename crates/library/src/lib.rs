@@ -8,6 +8,8 @@
 mod accounts;
 mod browse;
 mod db;
+mod discover;
+mod genres;
 mod home_layout;
 mod ids;
 mod libraries;
@@ -42,6 +44,8 @@ pub use browse::{
     GroupKey, IndexGroup, LibraryCursor, LibraryPage, LibraryQuery, Order, Resolution, Sort,
     WatchFilter,
 };
+pub use discover::{Featured, GenrePage, GenreTile};
+pub use genres::display_name as genre_name;
 pub use home_layout::HomeRowSpec;
 pub use ids::{ArtworkId, FileId, ItemId, LibraryId, ParseIdError, UserId};
 pub use libraries::{LibraryError, LibraryInfo};
@@ -267,7 +271,8 @@ impl Library {
             .db
             .read(move |c| {
                 let rev = views::rev(c)?;
-                let (_, cards, next) = views::row_page(c, kind, after.as_ref(), limit, user)?;
+                let (_, mut cards, next) = views::row_page(c, kind, after.as_ref(), limit, user)?;
+                discover::fill_backdrops(c, &mut cards)?;
                 Ok(RowPage { rev, cards, next })
             })
             .await?)
@@ -287,6 +292,31 @@ impl Library {
             .inner
             .db
             .read(move |c| views::item(c, id, &device, user))
+            .await?)
+    }
+
+    /// One genre's movies and shows, newest first, `limit` clamped to
+    /// `1..=MAX_ROW_LIMIT`. `after` is a previous page's `next`; a malformed
+    /// one starts over. `None` for a genre no present title has.
+    pub async fn genre(
+        &self,
+        key: String,
+        after: Option<String>,
+        limit: u32,
+        user: UserId,
+    ) -> Result<Option<(CatalogRev, GenrePage)>, QueryError> {
+        let after = after.and_then(|raw| {
+            let (at, id) = raw.split_once('.')?;
+            Some((at.parse().ok()?, id.parse().ok()?))
+        });
+        let limit = limit.clamp(1, MAX_ROW_LIMIT);
+        Ok(self
+            .inner
+            .db
+            .read(move |c| {
+                let rev = views::rev(c)?;
+                Ok(discover::genre_page(c, &key, after, limit, user)?.map(|page| (rev, page)))
+            })
             .await?)
     }
 

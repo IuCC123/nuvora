@@ -35,6 +35,8 @@ pub struct Show {
     pub watched_count: u32,
     pub episode_count: u32,
     pub extras: crate::metadata::read::Extras,
+    /// "More like this"; filled by the item read, empty elsewhere.
+    pub similar: Vec<Card>,
 }
 
 #[derive(Debug, Clone)]
@@ -222,6 +224,7 @@ pub(crate) fn show(conn: &Connection, id: ItemId, user: UserId) -> rusqlite::Res
         episode_count: seasons.iter().map(|s| s.episode_count).sum(),
         seasons,
         extras: crate::metadata::read::extras(conn, id)?,
+        similar: Vec::new(),
     })
 }
 

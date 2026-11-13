@@ -83,6 +83,9 @@ pub enum HomeRowType {
     ContinueWatching,
     RecentlyAdded,
     Library,
+    Trending,
+    Top,
+    Genres,
 }
 
 #[derive(Serialize, Deserialize, ToSchema, Clone, Debug)]
@@ -161,6 +164,7 @@ pub(super) async fn layout_for(
             HomeRowConfig::plain("recently-added", HomeRowType::RecentlyAdded, None),
         ],
     });
+    add_discovery_rows(&mut layout.rows);
     layout.rows.retain(|r| {
         r.row_type != HomeRowType::Library || r.library_id.is_some_and(|id| ids.contains(&id))
     });
@@ -175,6 +179,32 @@ pub(super) async fn layout_for(
     Ok(layout)
 }
 
+/// Rows added after layouts were first saved go where the default puts
+/// them, once: Top after Continue Watching, Trending and genres after
+/// Recently Added. A row the user hid is still in the layout, so it stays
+/// hidden.
+fn add_discovery_rows(rows: &mut Vec<HomeRowConfig>) {
+    let place =
+        |rows: &mut Vec<HomeRowConfig>, id: &str, row_type: HomeRowType, after: HomeRowType| {
+            if rows.iter().any(|r| r.row_type == row_type) {
+                return;
+            }
+            let at = rows
+                .iter()
+                .position(|r| r.row_type == after)
+                .map_or(rows.len(), |i| i + 1);
+            rows.insert(at, HomeRowConfig::plain(id, row_type, None));
+        };
+    place(rows, "top", HomeRowType::Top, HomeRowType::ContinueWatching);
+    place(
+        rows,
+        "trending",
+        HomeRowType::Trending,
+        HomeRowType::RecentlyAdded,
+    );
+    place(rows, "genres", HomeRowType::Genres, HomeRowType::Trending);
+}
+
 /// What the library builds: visible rows only.
 pub(super) fn specs(layout: &HomeLayout) -> Vec<HomeRowSpec> {
     layout
@@ -186,6 +216,9 @@ pub(super) fn specs(layout: &HomeLayout) -> Vec<HomeRowSpec> {
             Some(match r.row_type {
                 HomeRowType::ContinueWatching => HomeRowSpec::ContinueWatching { title },
                 HomeRowType::RecentlyAdded => HomeRowSpec::RecentlyAdded { title },
+                HomeRowType::Trending => HomeRowSpec::Trending { title },
+                HomeRowType::Top => HomeRowSpec::Top { title },
+                HomeRowType::Genres => HomeRowSpec::Genres { title },
                 HomeRowType::Library => HomeRowSpec::Library {
                     library: LibraryId::from_raw(r.library_id?),
                     query: library_query(r.sort, r.order, r.filter, r.resolution, r.hdr),

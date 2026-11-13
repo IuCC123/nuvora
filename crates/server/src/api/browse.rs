@@ -64,6 +64,8 @@ pub struct ShowDetail {
     /// Episodes with a file present, specials included.
     pub episode_count: u32,
     pub details: super::metadata::Details,
+    /// "More like this": titles sharing its genres, then its library's newest.
+    pub similar: Vec<PosterCard>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -568,6 +570,7 @@ impl From<nuvora_library::Show> for ShowDetail {
             watched_count: show.watched_count,
             episode_count: show.episode_count,
             details: show.extras.into(),
+            similar: show.similar.into_iter().map(PosterCard::from).collect(),
         }
     }
 }

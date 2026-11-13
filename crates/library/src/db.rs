@@ -27,6 +27,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0008_icons_and_home.sql"),
     include_str!("../migrations/0009_retry_movie_metadata.sql"),
     include_str!("../migrations/0010_sidecar_subtitles.sql"),
+    include_str!("../migrations/0011_genres.sql"),
 ];
 
 #[derive(Debug, thiserror::Error)]
@@ -63,6 +64,7 @@ impl Db {
         writer.pragma_update(None, "journal_mode", "WAL")?;
         pragmas(&writer)?;
         migrate(&mut writer)?;
+        crate::genres::reindex_if_stale(&mut writer)?;
         let rev = read_rev(&writer)?;
 
         let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
@@ -231,8 +233,8 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            tables, 17,
-            "7 catalog tables + user, session, setting, watch_state, item_credit, metadata_lookup, user_home + sqlite_sequence"
+            tables, 18,
+            "7 catalog tables + user, session, setting, watch_state, item_credit, metadata_lookup, user_home, item_genre + sqlite_sequence"
         );
     }
 

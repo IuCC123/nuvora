@@ -333,6 +333,7 @@ fn store_found(
             found.external_url
         ],
     )?;
+    crate::genres::index_item(tx, item, &found.genres)?;
     for (role, stored) in [("poster", &art.poster), ("backdrop", &art.backdrop)] {
         match stored {
             Some(s) => {
