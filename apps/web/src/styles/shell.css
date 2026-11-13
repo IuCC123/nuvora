@@ -171,6 +171,7 @@
   color: var(--nv-label-secondary);
   font-size: var(--nv-type-small-size);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   animation: fade-in var(--nv-motion-duration-base) var(--nv-motion-easing-enter);
 }
 
@@ -222,7 +223,8 @@
   display: none;
 }
 
-@media (max-width: 1099px) {
+/* Beside the section pill there is room for the scan's words only on wide windows; elsewhere the spinner says it. */
+@media (max-width: 1399px) {
   .scan-pill > :not(.scan-spin) {
     display: none;
   }
