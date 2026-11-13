@@ -6,9 +6,9 @@ import { CloseIcon, SearchIcon } from "./Icon";
 const SETTLE_MS = 180;
 
 /**
- * The top bar's search field. Typing opens the results page and keeps its
- * `?q=` in step (replacing history, so Back leaves search in one step).
- * `/` or Ctrl/⌘+K focuses it from anywhere; Escape clears it, then leaves it.
+ * The Search screen's field. Typing keeps the page's `?q=` in step
+ * (replacing history, so Back leaves search in one step). `/` or Ctrl/⌘+K
+ * (the top bar's shortcut) focuses it; Escape clears it, then leaves it.
  */
 export function SearchBox() {
   const navigate = useNavigate();
@@ -24,18 +24,6 @@ export function SearchBox() {
     if (document.activeElement !== input.current) setValue(urlQuery);
   }, [urlQuery]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName));
-      if ((e.key === "/" && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) || (e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey))) {
-        e.preventDefault();
-        input.current?.focus();
-        input.current?.select();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
   const follow = (q: string) => {
@@ -55,7 +43,7 @@ export function SearchBox() {
         void navigate({ to: "/search", search: value.trim() ? { q: value } : {}, replace: onSearch });
       }}
     >
-      <SearchIcon size={18} className="search-box-icon" />
+      <SearchIcon size={22} className="search-box-icon" />
       <input
         ref={input}
         id="search-field"
@@ -63,7 +51,7 @@ export function SearchBox() {
         type="search"
         name="q"
         value={value}
-        placeholder="Search"
+        placeholder="Movies, shows, episodes, people"
         aria-label="Search movies, shows and people"
         autoComplete="off"
         spellCheck={false}
@@ -93,7 +81,7 @@ export function SearchBox() {
             input.current?.focus();
           }}
         >
-          <CloseIcon size={16} />
+          <CloseIcon size={18} />
         </button>
       ) : (
         <kbd className="search-box-key" aria-hidden>
