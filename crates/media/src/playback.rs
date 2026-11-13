@@ -390,6 +390,7 @@ mod tests {
             video: vec![video],
             audio,
             subtitles: vec![],
+            markers: vec![],
         }
     }
 

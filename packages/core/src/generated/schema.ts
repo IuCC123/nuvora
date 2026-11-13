@@ -2223,6 +2223,8 @@ export interface components {
             password: string;
             username: string;
         };
+        /** @enum {string} */
+        MarkerKind: "recap" | "intro" | "credits";
         MediaDetails: {
             audio: components["schemas"]["AudioTrack"][];
             /** Format: int64 */
@@ -2230,8 +2232,20 @@ export interface components {
             container: string;
             /** Format: int64 */
             duration_ms?: number | null;
+            /**
+             * @description Stretches a player can offer to skip (recap, intro) or treat as the
+             *     end (credits), from the file's named chapters. In order; often empty.
+             */
+            markers: components["schemas"]["MediaMarker"][];
             subtitles: components["schemas"]["SubtitleTrack"][];
             video: components["schemas"]["VideoTrack"][];
+        };
+        MediaMarker: {
+            /** Format: int64 */
+            end_ms: number;
+            kind: components["schemas"]["MarkerKind"];
+            /** Format: int64 */
+            start_ms: number;
         };
         MetadataSettings: {
             /** @description Anime (AniList) and TV (TVmaze) need no key. Movies need a TMDB key. */

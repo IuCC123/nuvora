@@ -114,6 +114,7 @@ function defaultVersion(id: number, title: string, year: number): Version {
       video: [{ codec: "H.264", profile: "High", width: 1920, height: 1080, frame_rate: 24, bit_depth: 8, hdr: null }],
       audio: [{ index: 1, codec: "aac", channels: 2, layout: "Stereo", language: "eng", is_default: true }],
       subtitles: [],
+      markers: [],
     },
   };
 }
@@ -134,6 +135,11 @@ const versionOverrides: Record<number, (v: Version) => Version[]> = {
         bitrate: 7_900_000,
         video: [{ codec: "VP9", profile: "Profile 0", width: 1920, height: 800, frame_rate: 24, bit_depth: 8, hdr: null }],
         audio: [{ index: 1, codec: "opus", channels: 2, layout: "Stereo", language: "eng", is_default: true }],
+        // Tears of Steel's opening titles, so Skip Intro shows in the fixture player; the credits start at 11:52.
+        markers: [
+          { kind: "intro", start_ms: 0, end_ms: 34_000 },
+          { kind: "credits", start_ms: 712_000, end_ms: 734_000 },
+        ],
         subtitles: [
           { index: 2, codec: "SRT", format: "srt", renderable: true, language: "eng", is_default: false, is_forced: false, is_hearing_impaired: false, external: false },
           { index: 3, codec: "SRT", format: "srt", renderable: true, language: "spa", is_default: false, is_forced: false, is_hearing_impaired: false, external: false },

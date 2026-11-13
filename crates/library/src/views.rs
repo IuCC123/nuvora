@@ -952,6 +952,7 @@ pub(crate) fn versions(
                 video: vec![],
                 audio: vec![],
                 subtitles: vec![],
+                markers: vec![],
             };
             (f.id, info)
         })
@@ -968,6 +969,22 @@ pub(crate) fn versions(
         let file = FileId(r.get(0)?);
         if let Some(info) = streams.get_mut(&file) {
             stream_into(r, info)?;
+        }
+    }
+    let mut stmt = conn.prepare_cached(
+        "SELECT m.file_id, m.kind, m.start_ms, m.end_ms FROM media_marker m JOIN media_file f ON f.id = m.file_id \
+         WHERE f.item_id = ?1 ORDER BY m.file_id, m.start_ms",
+    )?;
+    let mut rows = stmt.query([id.0])?;
+    while let Some(r) = rows.next()? {
+        let file = FileId(r.get(0)?);
+        let kind = nuvora_media::MarkerKind::from_name(r.get_ref(1)?.as_str()?);
+        if let (Some(info), Some(kind)) = (streams.get_mut(&file), kind) {
+            info.markers.push(nuvora_media::Marker {
+                kind,
+                start_ms: r.get::<_, i64>(2)?.max(0) as u64,
+                end_ms: r.get::<_, i64>(3)?.max(0) as u64,
+            });
         }
     }
 
@@ -1135,6 +1152,7 @@ pub(crate) fn stream_source(
                     video: vec![],
                     audio: vec![],
                     subtitles: vec![],
+                    markers: vec![],
                 },
             })
         })

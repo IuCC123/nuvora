@@ -109,6 +109,7 @@ export type {
   FeaturedItem,
   GenreTile,
   GenrePage,
+  MediaMarker,
   ScanStatus,
   Version,
   WatchState,

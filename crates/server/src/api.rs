@@ -553,6 +553,24 @@ pub struct MediaDetails {
     pub video: Vec<VideoTrack>,
     pub audio: Vec<AudioTrack>,
     pub subtitles: Vec<subtitles::SubtitleTrack>,
+    /// Stretches a player can offer to skip (recap, intro) or treat as the
+    /// end (credits), from the file's named chapters. In order; often empty.
+    pub markers: Vec<MediaMarker>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct MediaMarker {
+    pub kind: MarkerKind,
+    pub start_ms: u64,
+    pub end_ms: u64,
+}
+
+#[derive(Serialize, ToSchema, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum MarkerKind {
+    Recap,
+    Intro,
+    Credits,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -1161,6 +1179,19 @@ impl From<nuvora_library::Version> for Version {
 impl From<MediaInfo> for MediaDetails {
     fn from(info: MediaInfo) -> Self {
         MediaDetails {
+            markers: info
+                .markers
+                .iter()
+                .map(|m| MediaMarker {
+                    kind: match m.kind {
+                        nuvora_media::MarkerKind::Recap => MarkerKind::Recap,
+                        nuvora_media::MarkerKind::Intro => MarkerKind::Intro,
+                        nuvora_media::MarkerKind::Credits => MarkerKind::Credits,
+                    },
+                    start_ms: m.start_ms,
+                    end_ms: m.end_ms,
+                })
+                .collect(),
             container: container_name(info.container).to_owned(),
             duration_ms: info.duration_ms,
             bitrate: info.bitrate,
@@ -1688,6 +1719,7 @@ mod tests {
                 is_default: true,
             }],
             subtitles: vec![],
+            markers: vec![],
         };
         let media = VersionMedia::Probed {
             info,

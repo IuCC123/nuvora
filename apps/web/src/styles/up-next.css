@@ -24,17 +24,18 @@
   gap: 16px;
   width: min(400px, calc(100% - 2 * var(--player-pad)));
   padding: 12px 16px 12px 12px;
-  border-radius: var(--nv-radius-lg);
-  background: var(--nv-color-surface-raised);
-  border: 1px solid var(--nv-color-overlay-hairline);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+  border-radius: var(--nv-radius-sheet);
+  background: var(--nv-material-thick);
+  -webkit-backdrop-filter: var(--nv-material-blur-thick);
+  backdrop-filter: var(--nv-material-blur-thick);
+  box-shadow: var(--nv-material-stroke), 0 24px 60px rgba(0, 0, 0, 0.55);
   user-select: none;
-  transition: transform var(--nv-motion-duration-base) var(--nv-motion-easing-standard);
+  transition: transform var(--nv-motion-duration-spring) var(--nv-motion-easing-spring-smooth);
   animation: up-next-in var(--nv-motion-duration-base) var(--nv-motion-easing-enter);
 }
 
 .up-next[data-raised="true"] {
-  transform: translateY(-112px);
+  transform: translateY(calc(-1 * var(--player-bar, 118px) - 4px));
 }
 
 @keyframes up-next-in {

@@ -218,8 +218,10 @@ pub(crate) fn upsert_file(
         }
     };
     tx.execute("DELETE FROM media_stream WHERE file_id = ?1", [file_id])?;
+    tx.execute("DELETE FROM media_marker WHERE file_id = ?1", [file_id])?;
     if let Ok(info) = probe {
         insert_streams(tx, file_id, info)?;
+        insert_markers(tx, file_id, info)?;
     }
     place::write_filename_layers(tx, item_id, now_ms)?;
     if let Some((_, old_item)) = existing
@@ -230,6 +232,21 @@ pub(crate) fn upsert_file(
     }
     bump_rev(tx)?;
     Ok(Some(FileId(file_id)))
+}
+
+fn insert_markers(tx: &Transaction<'_>, file_id: i64, info: &MediaInfo) -> rusqlite::Result<()> {
+    let mut stmt = tx.prepare_cached(
+        "INSERT OR IGNORE INTO media_marker (file_id, kind, start_ms, end_ms) VALUES (?1, ?2, ?3, ?4)",
+    )?;
+    for m in &info.markers {
+        stmt.execute(rusqlite::params![
+            file_id,
+            m.kind.as_str(),
+            m.start_ms as i64,
+            m.end_ms as i64
+        ])?;
+    }
+    Ok(())
 }
 
 fn insert_streams(tx: &Transaction<'_>, file_id: i64, info: &MediaInfo) -> rusqlite::Result<()> {
@@ -675,6 +692,7 @@ mod tests {
             }],
             audio: vec![],
             subtitles: vec![],
+            markers: vec![],
         }
     }
 

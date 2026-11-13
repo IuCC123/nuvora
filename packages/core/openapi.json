@@ -8318,13 +8318,22 @@
         },
         "additionalProperties": false
       },
+      "MarkerKind": {
+        "type": "string",
+        "enum": [
+          "recap",
+          "intro",
+          "credits"
+        ]
+      },
       "MediaDetails": {
         "type": "object",
         "required": [
           "container",
           "video",
           "audio",
-          "subtitles"
+          "subtitles",
+          "markers"
         ],
         "properties": {
           "audio": {
@@ -8352,6 +8361,13 @@
             "format": "int64",
             "minimum": 0
           },
+          "markers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MediaMarker"
+            },
+            "description": "Stretches a player can offer to skip (recap, intro) or treat as the\nend (credits), from the file's named chapters. In order; often empty."
+          },
           "subtitles": {
             "type": "array",
             "items": {
@@ -8363,6 +8379,29 @@
             "items": {
               "$ref": "#/components/schemas/VideoTrack"
             }
+          }
+        }
+      },
+      "MediaMarker": {
+        "type": "object",
+        "required": [
+          "kind",
+          "start_ms",
+          "end_ms"
+        ],
+        "properties": {
+          "end_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MarkerKind"
+          },
+          "start_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },

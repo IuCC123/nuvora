@@ -40,3 +40,14 @@ test("the countdown shows for the last ten seconds and follows playback time", (
   expect(upNextCountdown(15, 20)).toBeNull();
   expect(upNextCountdown(0, Number.NaN)).toBeNull();
 });
+
+test("with marked credits the countdown starts where they do", () => {
+  expect(upNextCountdown(1300, 1440, 1330)).toBeNull();
+  expect(upNextCountdown(1330, 1440, 1330)).toBe(10);
+  expect(upNextCountdown(1335.5, 1440, 1330)).toBe(5);
+  expect(upNextCountdown(1340, 1440, 1330)).toBe(0);
+  // Past the countdown, still in the credits: it stays at zero, so the next episode starts.
+  expect(upNextCountdown(1380, 1440, 1330)).toBe(0);
+  // Credits marked in the last seconds act like no marker.
+  expect(upNextCountdown(1430, 1440, 1436)).toBe(10);
+});

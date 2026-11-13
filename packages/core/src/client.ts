@@ -14,6 +14,7 @@ export type RowPage = Schemas["RowPage"];
 export type FeaturedItem = Schemas["FeaturedItem"];
 export type GenreTile = Schemas["GenreTile"];
 export type GenrePage = Schemas["GenrePage"];
+export type MediaMarker = Schemas["MediaMarker"];
 export type PosterCard = Schemas["PosterCard"];
 export type ItemDetail = Schemas["ItemDetail"];
 export type ItemKind = Schemas["ItemKind"];

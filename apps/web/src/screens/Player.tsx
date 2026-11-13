@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useCanGoBack, useNavigate, useParams, useRouter, useRouterState, useSearch } from "@tanstack/react-router";
-import { audioLanguage, formatClock, subtitleLabel, type EpisodeDetail, type EpisodeRef, type StreamingCopy, type OnlineSubtitleResult, type SubtitleTrack, type Version } from "@nuvora/core";
+import { audioLanguage, formatClock, subtitleLabel, type EpisodeDetail, type EpisodeRef, type StreamingCopy, type OnlineSubtitleResult, type SubtitleTrack, type Version, type MediaMarker } from "@nuvora/core";
 import { client, queries, servedClient } from "../nuvora";
 import { ArrowLeftIcon, Back10Icon, Forward10Icon, FullscreenIcon, PauseIcon, PipIcon, PlayIcon, SpinIcon, SubtitlesIcon, VolumeIcon } from "../components/Icon";
 import { Notice, type NoticeText } from "../components/Notice";
@@ -14,6 +14,7 @@ import { Scrubber } from "../components/player/Scrubber";
 import { StyledSubtitles } from "../components/player/StyledSubtitles";
 import { SubtitleMenu } from "../components/player/SubtitleMenu";
 import { UpNext } from "../components/player/UpNext";
+import { SkipMarker } from "../components/player/SkipMarker";
 import { initials } from "@nuvora/core";
 import { usePartyPlayer } from "../components/party/usePartyPlayer";
 import { useHls, type HlsInfo } from "../components/player/useHls";
@@ -185,6 +186,7 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
           : undefined
       }
       subtitleTracks={version?.media?.subtitles ?? NO_TRACKS}
+      markers={version?.media?.markers ?? NO_MARKERS}
       audioLanguage={version?.media ? audioLanguage(version.media.audio) : null}
       subtitleScope={episode ? `show:${episode.show_id}` : `movie:${id}`}
       notice={notice}
@@ -207,6 +209,7 @@ function PlayerScreen({ route, id, file, t }: { route: "/movie/$id/play" | "/epi
 }
 
 const NO_TRACKS: SubtitleTrack[] = [];
+const NO_MARKERS: MediaMarker[] = [];
 
 const AUTO_SWITCH_HINT = "Switched to the 1080p copy: the original needs more than this connection carries. The quality button switches back.";
 
@@ -283,6 +286,8 @@ interface PlayerViewProps {
   about?: About;
   quality?: QualityChoice;
   subtitleTracks: readonly SubtitleTrack[];
+  /** Recap, intro and credits from the file's chapters: Skip buttons, and where Up Next comes up. */
+  markers?: readonly MediaMarker[];
   audioLanguage: string | null;
   /** What a subtitle choice is remembered for: the show for an episode, else the movie. */
   subtitleScope: SubtitleScope;
@@ -300,7 +305,7 @@ interface PlayerViewProps {
 
 type PulseKind = "play" | "pause" | "back" | "forward" | "volume" | "subtitles-on" | "subtitles-off";
 
-export function PlayerView({ catalog, streamId, title, year, episode, onNext, source, mode, startAt: initialStart, durationHint, about, quality, subtitleTracks, audioLanguage, subtitleScope, notice, waiting, streamNote, onBack, onFailed, onTooSlow, onPosition }: PlayerViewProps) {
+export function PlayerView({ catalog, streamId, title, year, episode, onNext, source, mode, startAt: initialStart, durationHint, about, quality, subtitleTracks, markers = NO_MARKERS, audioLanguage, subtitleScope, notice, waiting, streamNote, onBack, onFailed, onTooSlow, onPosition }: PlayerViewProps) {
   const [startAt] = useState(initialStart);
   const src = source?.url;
   const root = useRef<HTMLDivElement>(null);
@@ -634,7 +639,10 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
         )}
       </div>
 
-      {episode?.next && src && !notice && <UpNext video={video} next={episode.next} controlsShown={visible} onPlay={onNext} />}
+      {src && !notice && <SkipMarker video={video} markers={markers} controlsShown={visible} />}
+      {episode?.next && src && !notice && (
+        <UpNext video={video} next={episode.next} creditsAt={creditsAt(markers)} controlsShown={visible} onPlay={onNext} />
+      )}
 
       {waiting && !src && !notice && (
         <div className="player-waiting" role="status" aria-live="polite">
@@ -744,6 +752,12 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
       </div>
     </div>
   );
+}
+
+/** Where the credits start, in seconds, when the file marks them. */
+function creditsAt(markers: readonly MediaMarker[]): number | null {
+  const credits = markers.find((m) => m.kind === "credits");
+  return credits ? credits.start_ms / 1000 : null;
 }
 
 interface ControlButtonProps {

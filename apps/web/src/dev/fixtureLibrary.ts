@@ -287,6 +287,7 @@ function episodeVersion(show: FixtureShow, e: FixtureEpisode): Version {
     playback: { kind: "direct_play", url: `/api/files/${e.id}/stream`, mime_type: "video/mp4" },
     media: {
       container: "mkv",
+      markers: [],
       duration_ms: e.runtime_ms,
       bitrate: 4_200_000,
       video: [{ codec: "H.264", profile: "High", width: 1920, height: 1080, frame_rate: 23.976, bit_depth: 8, hdr: null }],
@@ -334,6 +335,7 @@ function archiveItem(m: ArchiveMovie): ItemDetail {
         playback: { kind: "direct_play", url: `/api/files/${m.id}/stream`, mime_type: "video/mp4" },
         media: {
           container: "mp4",
+          markers: [],
           duration_ms: m.runtime_ms,
           bitrate: 2_000_000 + m.height * 4_000,
           video: [{ codec: res === "4k" ? "HEVC" : "H.264", profile: "Main", width, height: m.height, frame_rate: 24, bit_depth: m.hdr ? 10 : 8, hdr: m.hdr ? "HDR10" : null }],

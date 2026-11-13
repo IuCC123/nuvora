@@ -41,8 +41,8 @@ pub use playback::{
 };
 pub use previews::{PREVIEW_VERSION, PreviewError, PreviewSheets, preview_interval_ms};
 pub use probe::{
-    AudioCodec, AudioStream, ColorInfo, Container, HdrFormat, MediaInfo, PROBE_VERSION, ProbeError,
-    SubtitleCodec, SubtitleStream, VideoCodec, VideoStream, probe,
+    AudioCodec, AudioStream, ColorInfo, Container, HdrFormat, Marker, MarkerKind, MediaInfo,
+    PROBE_VERSION, ProbeError, SubtitleCodec, SubtitleStream, VideoCodec, VideoStream, probe,
 };
 pub use release::{Codec, Content, Hdr, ReleaseName, Source, Tags};
 pub use sidecar::{SIDECAR_EXTENSIONS, SidecarName, sidecar_codec, sidecar_name};

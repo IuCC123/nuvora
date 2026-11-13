@@ -58,10 +58,15 @@ export const UP_NEXT_SECONDS = 10;
 /**
  * Whole seconds left on the Next episode countdown, or `null` while the card
  * should stay hidden. It runs on playback time, so pausing holds it and a
- * seek back hides the card again.
+ * seek back hides the card again. When the file marks where its credits
+ * start (`creditsS`), the card comes up there and counts down from it, so
+ * the next episode starts instead of the credits rolling; otherwise it
+ * shows over the last seconds.
  */
-export function upNextCountdown(timeS: number, durationS: number): number | null {
+export function upNextCountdown(timeS: number, durationS: number, creditsS?: number | null): number | null {
   if (!Number.isFinite(durationS) || durationS <= UP_NEXT_SECONDS * 3) return null;
-  const left = durationS - timeS;
+  const end = creditsS != null && creditsS < durationS - UP_NEXT_SECONDS ? creditsS + UP_NEXT_SECONDS : durationS;
+  const left = end - timeS;
+  if (timeS > end) return creditsS != null && end < durationS ? 0 : null;
   return left <= UP_NEXT_SECONDS ? Math.max(0, Math.ceil(left)) : null;
 }

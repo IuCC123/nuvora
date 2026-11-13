@@ -16,11 +16,14 @@ const RING = 2 * Math.PI * 22;
 export function UpNext({
   video,
   next,
+  creditsAt,
   controlsShown,
   onPlay,
 }: {
   video: HTMLVideoElement | null;
   next: EpisodeRef;
+  /** Seconds where the file's credits start, if it marks them: the card comes up there and plays next when it reaches zero. */
+  creditsAt?: number | null;
   /** The card rises above the control bar while it shows. */
   controlsShown: boolean;
   onPlay: (next: EpisodeRef) => void;
@@ -35,12 +38,19 @@ export function UpNext({
 
   useEffect(() => {
     if (!video) return;
+    let started = false;
     const update = () => {
-      const count = upNextCountdown(video.currentTime, video.duration);
+      const count = upNextCountdown(video.currentTime, video.duration, creditsAt);
       setLeft(count);
-      setExact(Math.max(0, video.duration - video.currentTime));
+      const end = creditsAt != null && count !== null ? creditsAt + UP_NEXT_SECONDS : video.duration;
+      setExact(Math.max(0, end - video.currentTime));
       // Seeking back out of the last seconds arms the card again.
       if (count === null) setCancelled(false);
+      // Over marked credits the episode doesn't end on its own; the countdown reaching zero is the end.
+      if (count === 0 && creditsAt != null && !video.paused && !cancelledRef.current && !started) {
+        started = true;
+        play.current(next);
+      }
     };
     const ended = () => !cancelledRef.current && play.current(next);
     video.addEventListener("timeupdate", update);
@@ -51,12 +61,12 @@ export function UpNext({
       video.removeEventListener("seeked", update);
       video.removeEventListener("ended", ended);
     };
-  }, [video, next]);
+  }, [video, next, creditsAt]);
 
   if (left === null || cancelled) return null;
   const name = hasOwnTitle(next) ? next.title : null;
   return (
-    <section className="up-next" data-raised={controlsShown} aria-labelledby="up-next-title">
+    <section className="up-next glass-thick" data-raised={controlsShown} aria-labelledby="up-next-title">
       <span className="sr-only" role="status">
         Next episode, {next.label}
         {name ? `, ${name}` : ""}, plays in {UP_NEXT_SECONDS} seconds.
@@ -80,8 +90,8 @@ export function UpNext({
             <PlayIcon size={15} />
             Play now
           </button>
-          <button type="button" className="btn btn-quiet btn-small" onClick={() => setCancelled(true)}>
-            Cancel
+          <button type="button" className="btn btn-glass btn-small" onClick={() => setCancelled(true)}>
+            {creditsAt != null ? "Watch credits" : "Cancel"}
           </button>
         </div>
       </div>

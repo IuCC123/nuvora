@@ -11,7 +11,7 @@ use crate::MediaTools;
 /// Bump when parsing changes in a way stored rows should pick up (new field,
 /// better HDR detection). The scanner re-probes every file whose stored
 /// `probe_version` differs, once.
-pub const PROBE_VERSION: u32 = 2;
+pub const PROBE_VERSION: u32 = 3;
 
 /// What is inside one media file.
 #[derive(Debug, Clone, PartialEq)]
@@ -25,6 +25,93 @@ pub struct MediaInfo {
     pub video: Vec<VideoStream>,
     pub audio: Vec<AudioStream>,
     pub subtitles: Vec<SubtitleStream>,
+    /// Stretches a player can skip, from the file's named chapters, in order.
+    pub markers: Vec<Marker>,
+}
+
+/// What a skippable stretch is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarkerKind {
+    /// "Previously on…"
+    Recap,
+    /// The opening titles or theme.
+    Intro,
+    /// The end credits: where the next episode can start.
+    Credits,
+}
+
+impl MarkerKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            MarkerKind::Recap => "recap",
+            MarkerKind::Intro => "intro",
+            MarkerKind::Credits => "credits",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<MarkerKind> {
+        [MarkerKind::Recap, MarkerKind::Intro, MarkerKind::Credits]
+            .into_iter()
+            .find(|k| k.as_str() == name)
+    }
+}
+
+/// A skippable stretch of a file, in milliseconds from its start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Marker {
+    pub kind: MarkerKind,
+    pub start_ms: u64,
+    pub end_ms: u64,
+}
+
+/// The kind a chapter's title names, if it names one: "Opening", "OP1",
+/// "Intro", "Recap", "Previously On", "Ending", "ED", "End Credits".
+/// Numbers, punctuation and case are ignored; anything else (a scene name,
+/// "Chapter 3", "Prologue") is part of the story and is not skipped.
+pub(crate) fn chapter_kind(title: &str) -> Option<MarkerKind> {
+    let words: String = title
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphabetic() { c } else { ' ' })
+        .collect();
+    let name = words.split_whitespace().collect::<Vec<_>>().join(" ");
+    match name.as_str() {
+        "recap" | "previously" | "previously on" | "summary" => Some(MarkerKind::Recap),
+        "intro" | "introduction" | "opening" | "op" | "opening song" | "opening theme"
+        | "opening credits" | "theme song" | "title sequence" | "main title" | "main titles" => {
+            Some(MarkerKind::Intro)
+        }
+        "credits" | "end credits" | "ending credits" | "closing credits" | "ending" | "ed"
+        | "ending song" | "ending theme" | "outro" | "end titles" => Some(MarkerKind::Credits),
+        _ => None,
+    }
+}
+
+/// Markers from ffprobe chapters, with sanity limits: an intro or recap of a
+/// few seconds or several minutes is a mislabelled chapter, not one to skip.
+fn markers(chapters: &[raw::Chapter]) -> Vec<Marker> {
+    let ms = |t: &Option<String>| {
+        t.as_deref()
+            .and_then(|s| s.parse::<f64>().ok())
+            .map(|s| (s * 1000.0).round() as u64)
+    };
+    chapters
+        .iter()
+        .filter_map(|c| {
+            let kind = chapter_kind(c.tags.get("title")?)?;
+            let (start_ms, end_ms) = (ms(&c.start_time)?, ms(&c.end_time)?);
+            let length = end_ms.checked_sub(start_ms)?;
+            let fits = match kind {
+                MarkerKind::Intro | MarkerKind::Recap => (5_000..=300_000).contains(&length),
+                MarkerKind::Credits => length >= 5_000,
+            };
+            fits.then_some(Marker {
+                kind,
+                start_ms,
+                end_ms,
+            })
+        })
+        .collect()
 }
 
 impl MediaInfo {
@@ -176,7 +263,7 @@ impl ProbeError {
     }
 }
 
-/// Run `ffprobe -v error -print_format json -show_format -show_streams` on
+/// Run `ffprobe -v error -print_format json -show_format -show_streams -show_chapters` on
 /// `path` with the tools' timeout (the child is killed on timeout) and parse
 /// the result. Concurrency is the caller's job (the scanner holds a semaphore).
 pub async fn probe(tools: &MediaTools, path: &Path) -> Result<MediaInfo, ProbeError> {
@@ -188,6 +275,7 @@ pub async fn probe(tools: &MediaTools, path: &Path) -> Result<MediaInfo, ProbeEr
             "json",
             "-show_format",
             "-show_streams",
+            "-show_chapters",
         ])
         .arg(path)
         .stdin(Stdio::null())
@@ -285,6 +373,7 @@ pub(crate) fn parse(json: &[u8]) -> Result<MediaInfo, ProbeError> {
         video,
         audio,
         subtitles,
+        markers: markers(&raw.chapters),
     })
 }
 
@@ -447,6 +536,16 @@ mod raw {
         #[serde(default)]
         pub streams: Vec<Stream>,
         pub format: Option<Format>,
+        #[serde(default)]
+        pub chapters: Vec<Chapter>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Chapter {
+        pub start_time: Option<String>,
+        pub end_time: Option<String>,
+        #[serde(default)]
+        pub tags: std::collections::HashMap<String, String>,
     }
 
     #[derive(Deserialize)]
@@ -710,6 +809,66 @@ mod tests {
         assert_eq!(info.video[0].bit_depth, Some(10));
         assert_eq!(info.duration_ms, Some(7_200_500));
         assert_eq!(info.container, Container::Matroska);
+    }
+
+    #[test]
+    fn named_chapters_become_markers_and_story_chapters_do_not() {
+        let json = r#"{"streams":[{"index":0,"codec_type":"video","codec_name":"h264"}],
+            "format":{"format_name":"matroska,webm","duration":"1420.0"},
+            "chapters":[
+              {"start_time":"0.000000","end_time":"62.500000","tags":{"title":"Previously On"}},
+              {"start_time":"62.500000","end_time":"152.500000","tags":{"title":"OP1"}},
+              {"start_time":"152.500000","end_time":"700.000000","tags":{"title":"Part A"}},
+              {"start_time":"700.000000","end_time":"1330.000000","tags":{"title":"Chapter 3"}},
+              {"start_time":"1330.000000","end_time":"1420.000000","tags":{"title":"Ending"}}
+            ]}"#;
+        let markers = parse(json.as_bytes()).unwrap().markers;
+        assert_eq!(
+            markers,
+            [
+                Marker {
+                    kind: MarkerKind::Recap,
+                    start_ms: 0,
+                    end_ms: 62_500
+                },
+                Marker {
+                    kind: MarkerKind::Intro,
+                    start_ms: 62_500,
+                    end_ms: 152_500
+                },
+                Marker {
+                    kind: MarkerKind::Credits,
+                    start_ms: 1_330_000,
+                    end_ms: 1_420_000
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn chapter_titles_name_kinds_whatever_their_spelling() {
+        for (title, kind) in [
+            ("Opening", Some(MarkerKind::Intro)),
+            ("OP", Some(MarkerKind::Intro)),
+            ("Opening Credits", Some(MarkerKind::Intro)),
+            ("INTRO", Some(MarkerKind::Intro)),
+            ("ED2", Some(MarkerKind::Credits)),
+            ("End Credits", Some(MarkerKind::Credits)),
+            ("Recap", Some(MarkerKind::Recap)),
+            ("Prologue", None),
+            ("Chapter 01", None),
+            ("Opening Night", None),
+        ] {
+            assert_eq!(chapter_kind(title), kind, "{title}");
+        }
+    }
+
+    #[test]
+    fn an_intro_too_long_to_be_one_is_not_skipped() {
+        let json = r#"{"streams":[{"index":0,"codec_type":"video","codec_name":"h264"}],
+            "format":{"format_name":"matroska,webm"},
+            "chapters":[{"start_time":"0","end_time":"900","tags":{"title":"Intro"}}]}"#;
+        assert!(parse(json.as_bytes()).unwrap().markers.is_empty());
     }
 
     #[test]
