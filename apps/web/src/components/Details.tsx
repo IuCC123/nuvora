@@ -1,17 +1,18 @@
-import { Fragment, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
-import type { CastMember, Details, Image } from "@nuvora/core";
+import { Fragment, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import type { CastMember, Details, Image, PosterCard } from "@nuvora/core";
 import { Artwork } from "./Artwork";
 import { ChevronLeftIcon, ChevronRightIcon, StarIcon } from "./Icon";
-import { pageStrip, useScrollEdges } from "./Row";
-import "../styles/home.css";
+import { PosterCardView } from "./PosterCard";
+import { pageStrip, Row, useScrollEdges } from "./Row";
 import "../styles/details.css";
 
 /**
- * The top of a detail page, Apple TV style: the backdrop fills the screen and
- * the title, facts, actions and synopsis sit on its lower left. Its bottom
- * edge melts into a blur of the same art and then the canvas. Without a
- * backdrop, the title card's palette washes the hero and `poster` stands on
- * its right.
+ * The top of a detail page, Apple TV style: the backdrop fills the screen,
+ * drifting slowly, and the title, facts, actions and synopsis sit on its
+ * lower left. Its bottom edge melts into a blur of the same art and then the
+ * canvas. Without a backdrop, the title card's palette washes the hero and
+ * `poster` stands on its right. Whichever art is there is the shared element
+ * the opening card morphs into (`data-shared`, see lib/sharedArt).
  */
 export function DetailHero({
   title,
@@ -25,37 +26,57 @@ export function DetailHero({
   children?: ReactNode;
 }) {
   return (
-    <header className="hero">
-      <div className="hero-art" aria-hidden>
+    <header className="title-hero">
+      <div className="title-art" aria-hidden data-shared={backdrop ? "" : undefined}>
         {backdrop ? (
           <>
-            <Artwork image={backdrop} size="large" alt="" fill eager />
-            <span className="hero-blur">
+            <span className="title-drift">
+              <Artwork image={backdrop} size="large" alt="" fill eager />
+            </span>
+            <span className="title-blur">
               <Artwork image={backdrop} size="small" alt="" fill eager />
             </span>
           </>
         ) : (
           <div className="detail-wash" />
         )}
-        <div className="hero-scrim" />
+        <div className="title-scrim" />
       </div>
-      <div className="hero-body">
-        {title && <h1 className="hero-title">{title}</h1>}
+      <div className="title-body">
+        {title && <h1 className="title-name">{title}</h1>}
         {children}
       </div>
-      {poster && <div className="hero-poster">{poster}</div>}
+      {poster && (
+        <div className="title-poster" data-shared="">
+          {poster}
+        </div>
+      )}
     </header>
+  );
+}
+
+/** "More Like This": titles sharing its genres, as a poster row. */
+export function SimilarRow({ cards }: { cards: PosterCard[] | undefined }) {
+  if (!cards?.length) return null;
+  return (
+    <Row id="more-like-this" variant="poster" title="More Like This" itemCount={cards.length}>
+      {cards.map((card) => (
+        <li key={card.id} className="row-item">
+          <PosterCardView card={card} />
+        </li>
+      ))}
+    </Row>
   );
 }
 
 /** Genre, year and length on one line, then the rating and the technical badges. */
 export function HeroMeta({ parts, rating, chips = [] }: { parts: ReactNode[]; rating?: number | null; chips?: string[] }) {
   return (
-    <div className="hero-meta">
+    <div className="title-meta">
       {parts.map((part, i) => (
         <Fragment key={i}>
           {i > 0 && (
-            <span className="hero-sep" aria-hidden>
+            <span className="title-sep" aria-hidden>
               ·
             </span>
           )}
@@ -63,7 +84,7 @@ export function HeroMeta({ parts, rating, chips = [] }: { parts: ReactNode[]; ra
         </Fragment>
       ))}
       {rating != null && (
-        <span className="hero-rating" aria-label={`Rated ${rating.toFixed(1)} out of 10`}>
+        <span className="title-rating" aria-label={`Rated ${rating.toFixed(1)} out of 10`}>
           <StarIcon size={13} />
           {rating.toFixed(1)}
         </span>
@@ -111,7 +132,7 @@ export function Starring({ details }: { details: Details | undefined }) {
   const names = [...new Set(details?.cast.filter((c) => c.kind === "cast").map((c) => c.name))].slice(0, 3);
   if (names.length === 0) return null;
   return (
-    <p className="hero-starring">
+    <p className="title-starring">
       <span>Starring</span> {names.join(", ")}
     </p>
   );
@@ -131,18 +152,6 @@ export function ShelfArrows({ strip, label, itemCount }: { strip: RefObject<HTML
       </button>
     </div>
   );
-}
-
-/** Left and Right walk the strip's links, the way they walk a poster row. */
-export function walkStrip(e: KeyboardEvent<HTMLElement>, selector: string) {
-  if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-  const items = [...e.currentTarget.querySelectorAll<HTMLElement>(selector)];
-  const at = items.indexOf(document.activeElement as HTMLElement);
-  const next = items[at + (e.key === "ArrowRight" ? 1 : -1)];
-  if (at < 0 || !next) return;
-  e.preventDefault();
-  next.focus();
-  next.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 /** Cast, or voices for anime with a Japanese/English switch, in round portraits on one row. */

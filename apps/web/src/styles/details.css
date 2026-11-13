@@ -15,8 +15,9 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   overflow: hidden;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--nv-label-secondary);
   font-size: var(--nv-type-body-large-size);
+  text-wrap: pretty;
   line-height: var(--nv-type-body-large-line);
 }
 
@@ -36,14 +37,15 @@
 }
 
 .overview-more:hover {
-  color: var(--nv-color-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* Shelves */
 
 .shelf {
-  margin-top: 40px;
-  padding: 0 var(--nv-layout-gutter);
+  margin-top: 44px;
+  padding: 0 var(--gutter);
 }
 
 .shelf-head {
@@ -58,6 +60,7 @@
   font-size: var(--nv-type-title-size);
   line-height: var(--nv-type-title-line);
   font-weight: var(--nv-font-weight-semibold);
+  letter-spacing: -0.015em;
 }
 
 .shelf-arrows {
@@ -70,12 +73,12 @@
 .shelf-strip {
   display: flex;
   gap: 20px;
-  margin: -8px calc(-1 * var(--nv-layout-gutter)) -24px;
-  padding: 8px var(--nv-layout-gutter) 24px;
+  margin: -8px calc(-1 * var(--gutter)) -24px;
+  padding: 8px var(--gutter) 24px;
   list-style: none;
   overflow-x: auto;
   overscroll-behavior-x: contain;
-  scroll-padding-inline: var(--nv-layout-gutter);
+  scroll-padding-inline: var(--gutter);
   scrollbar-width: none;
 }
 
@@ -87,7 +90,8 @@
   display: inline-flex;
   padding: 3px;
   border-radius: var(--nv-radius-pill);
-  background: var(--nv-color-surface);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: var(--nv-material-stroke);
 }
 
 .segmented button {
@@ -104,8 +108,8 @@
 }
 
 .segmented button[aria-pressed="true"] {
-  background: var(--nv-color-surface-raised);
-  color: var(--nv-color-text-primary);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--nv-color-accent-text);
 }
 
 /* Cast: round portraits, name and role centered under them. */
@@ -135,7 +139,7 @@
   border-radius: 50%;
   overflow: hidden;
   background: var(--nv-color-surface);
-  box-shadow: inset 0 0 0 1px var(--nv-color-overlay-hairline);
+  box-shadow: var(--nv-shadow-card), inset 0 0 0 0.5px rgba(255, 255, 255, 0.14);
 }
 
 .cast-face .artwork img {
@@ -179,4 +183,31 @@
   font-size: var(--nv-type-small-size);
   line-height: var(--nv-type-small-line);
   overflow-wrap: anywhere;
+}
+
+/* "More Like This" follows the page's shelves rather than a home row's rhythm. */
+.detail > .row {
+  margin-top: 44px;
+}
+
+@media (max-width: 599px) {
+  .cast-card {
+    width: 96px;
+  }
+
+  .cast-photo {
+    width: 88px;
+    height: 88px;
+  }
+
+  .cast-list {
+    gap: 16px;
+  }
+}
+
+/* Touch screens swipe their shelves. */
+@media (hover: none) {
+  .shelf-arrows {
+    display: none;
+  }
 }

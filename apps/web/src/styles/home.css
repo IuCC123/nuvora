@@ -48,6 +48,7 @@
   left: 0;
   right: 0;
   height: 1000px;
+  mask-image: linear-gradient(transparent, #000 280px);
   background:
     radial-gradient(55% 45% at 22% 18%, color-mix(in oklab, var(--ambient) 60%, transparent), transparent 72%),
     radial-gradient(45% 35% at 78% 8%, color-mix(in oklab, var(--ambient) 26%, transparent), transparent 70%);

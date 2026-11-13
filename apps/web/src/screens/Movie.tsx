@@ -18,8 +18,10 @@ import { CheckIcon, PlayIcon, RestartIcon, TrashIcon } from "../components/Icon"
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Notice } from "../components/Notice";
 import { CardArt } from "../components/CardArt";
-import { aboutRows, CastSection, DetailHero, HeroMeta, InfoSection, Overview, Starring, type InfoRow } from "../components/Details";
+import { aboutRows, CastSection, DetailHero, SimilarRow, HeroMeta, InfoSection, Overview, Starring, type InfoRow } from "../components/Details";
 import { titleCardVars } from "../components/TitleCard";
+import { ambientColor } from "../lib/ambient";
+import { useSpatialNav } from "../lib/spatialNav";
 import { hasInteracted } from "../lib/interacted";
 import { languageName } from "../lib/languageName";
 import { playable, playState } from "../lib/playState";
@@ -50,6 +52,8 @@ export function MovieScreen() {
   const card = cachedCard(id, "movie");
   const movie = item.data?.kind === "movie" ? item.data : undefined;
   useDocumentTitle(movie?.title ?? card?.title);
+  const root = useRef<HTMLDivElement>(null);
+  useSpatialNav(root);
 
   if (item.error) {
     return item.error instanceof ApiError && item.error.status === 404 ? (
@@ -67,17 +71,24 @@ export function MovieScreen() {
     </>
   );
   return (
-    <div className="detail" style={titleCardVars(head?.title ?? "")}>
+    <div key={id} ref={root} className="detail" style={detailVars(head)}>
       <DetailHero title={head?.title} backdrop={head?.backdrop} poster={poster}>
         {head && <Meta head={head} movie={movie} />}
-        {movie ? <Actions movie={movie} /> : <div className="hero-actions" />}
+        {movie ? <Actions movie={movie} /> : <div className="title-actions" />}
         <Overview text={movie?.overview} tagline={movie?.details.tagline} />
         <Starring details={movie?.details} />
       </DetailHero>
+      <SimilarRow cards={movie?.similar} />
       <CastSection details={movie?.details} />
       {movie && <InfoSection details={movie.details} columns={infoColumns(movie)} />}
     </div>
   );
+}
+
+/** The title card's palette (for a missing backdrop) and the ambient glow from whichever art there is. */
+function detailVars(head: Head | undefined): React.CSSProperties {
+  const glow = ambientColor(head?.backdrop ?? head?.poster);
+  return { ...titleCardVars(head?.title ?? ""), ...(glow && { "--ambient": glow }) } as React.CSSProperties;
 }
 
 function Meta({ head, movie }: { head: Head; movie: MovieDetail | undefined }) {
@@ -117,10 +128,10 @@ function Actions({ movie }: { movie: MovieDetail }) {
     const resumeFile = movie.versions.some((v) => v.file_id === file_id && playable(v)) ? file_id! : state.fileId;
     const progress = progressOf(movie);
     return (
-      <div className="hero-actions">
+      <div className="title-actions" data-nav-group>
         {at ? (
           <>
-            <Link ref={play} to="/movie/$id/play" params={{ id: movie.id }} search={{ file: resumeFile, t: Math.floor(at.position / 1000) }} className="btn btn-primary btn-hero">
+            <Link ref={play} to="/movie/$id/play" params={{ id: movie.id }} search={{ file: resumeFile, t: Math.floor(at.position / 1000) }} className="btn btn-primary btn-hero" data-nav-item>
               <PlayIcon />
               Resume
               {progress != null && (
@@ -130,12 +141,12 @@ function Actions({ movie }: { movie: MovieDetail }) {
               )}
               {at.duration != null && <span className="btn-aside">{formatRuntime(Math.max(0, at.duration - at.position))} left</span>}
             </Link>
-            <Link to="/movie/$id/play" params={{ id: movie.id }} search={{ file: state.fileId }} className="hero-round" aria-label="Start over" title="Start over">
+            <Link to="/movie/$id/play" params={{ id: movie.id }} search={{ file: state.fileId }} className="title-round" data-nav-item aria-label="Start over" title="Start over">
               <RestartIcon size={20} />
             </Link>
           </>
         ) : (
-          <Link ref={play} to="/movie/$id/play" params={{ id: movie.id }} search={{ file: state.fileId }} className="btn btn-primary btn-hero">
+          <Link ref={play} to="/movie/$id/play" params={{ id: movie.id }} search={{ file: state.fileId }} className="btn btn-primary btn-hero" data-nav-item>
             <PlayIcon />
             Play
           </Link>
@@ -147,8 +158,8 @@ function Actions({ movie }: { movie: MovieDetail }) {
   }
   return (
     <>
-      <div className="hero-actions">
-        <button type="button" className="btn btn-primary btn-hero" disabled aria-describedby="play-notice">
+      <div className="title-actions" data-nav-group>
+        <button type="button" className="btn btn-primary btn-hero" data-nav-item disabled aria-describedby="play-notice">
           <PlayIcon />
           Play
         </button>
@@ -166,7 +177,7 @@ function WatchedToggle({ movie }: { movie: MovieDetail }) {
   return (
     <button
       type="button"
-      className="hero-round"
+      className="title-round" data-nav-item
       aria-pressed={watched}
       aria-label="Watched"
       title={watched ? "Mark as unwatched" : "Mark as watched"}
@@ -200,7 +211,7 @@ function DeleteMovie({ movie }: { movie: MovieDetail }) {
   const files = movie.versions.length;
   return (
     <>
-      <button type="button" className="hero-round" aria-label="Delete movie" title="Delete movie" onClick={() => setConfirming(true)}>
+      <button type="button" className="title-round" data-nav-item aria-label="Delete movie" title="Delete movie" onClick={() => setConfirming(true)}>
         <TrashIcon size={20} />
       </button>
       {confirming && (

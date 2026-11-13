@@ -1,47 +1,92 @@
 /*
- * Detail pages, movie and show: the hero fills the first screen with the backdrop
- * (or a wash in the title card's palette) and carries the title, facts and Play
- * on its lower left. Shelves and the Information block follow on the canvas.
+ * Detail pages, movie and show: the hero fills the first screen with the
+ * backdrop (or a wash in the title card's palette) drifting slowly under the
+ * top bar, and carries the title, facts and Play on its lower left. Shelves
+ * and the Information block follow on the canvas, in the art's ambient glow.
  */
+
+/* Registered so a new title's glow fades in rather than snapping. */
+@property --ambient {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #1b2a33;
+}
+
 .detail {
   position: relative;
   isolation: isolate;
-  min-height: calc(100dvh - var(--nv-layout-top-bar));
+  min-height: 100dvh;
   padding-bottom: var(--nv-space-8);
+  transition: --ambient var(--nv-motion-duration-ambient) var(--nv-motion-easing-standard);
 }
 
-/* Hero */
+/* The art's color, glowing up from under the hero into the shelves. */
+/* It starts at the hero's foot and fades in over its first stretch, so the hand-over from the hero's scrim has no seam. */
+.detail::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: clamp(560px, 92vh, 960px);
+  left: 0;
+  right: 0;
+  height: 1100px;
+  background:
+    radial-gradient(60% 45% at 22% 22%, color-mix(in oklab, var(--ambient) 50%, transparent), transparent 72%),
+    radial-gradient(40% 30% at 85% 12%, color-mix(in oklab, var(--ambient) 24%, transparent), transparent 70%);
+  mask-image: linear-gradient(transparent, #000 260px);
+  pointer-events: none;
+}
 
-/* A little short of the window, so the first shelf peeks in and asks to be scrolled to. */
-.hero {
+/* Hero: a little short of the window, so the first shelf peeks in and asks to be scrolled to. */
+.title-hero {
   position: relative;
   isolation: isolate;
   display: flex;
   align-items: flex-end;
-  gap: var(--nv-layout-gutter);
+  gap: var(--gutter);
   box-sizing: border-box;
-  min-height: clamp(480px, calc(100dvh - var(--nv-layout-top-bar) - 72px), 880px);
-  padding: 120px var(--nv-layout-gutter) 36px;
+  min-height: clamp(560px, 92vh, 960px);
+  padding: calc(var(--nv-layout-top-bar) + 64px) var(--gutter) 48px;
 }
 
-.hero-art {
+.title-art {
   position: absolute;
   inset: 0;
   z-index: -1;
   overflow: hidden;
 }
 
-.hero-art .artwork img {
-  object-position: 50% 20%;
+/* The card that opened this page morphs into whichever art carries the mark. */
+.title-hero [data-shared] {
+  view-transition-name: title-art;
+}
+
+.title-drift {
+  position: absolute;
+  inset: 0;
+  animation: title-drift 40s linear both;
+}
+
+@keyframes title-drift {
+  from {
+    transform: scale(1.02);
+  }
+  to {
+    transform: scale(1.1) translate3d(-1%, -0.6%, 0);
+  }
+}
+
+.title-art .artwork img {
+  object-position: 50% 22%;
 }
 
 /* The art's lower edge dissolves into a blur of itself before the scrim takes it to the canvas. */
-.hero-blur {
+.title-blur {
   position: absolute;
   inset: 0;
-  filter: blur(36px) saturate(1.25);
+  filter: blur(40px) saturate(1.3);
   transform: scale(1.12);
-  mask-image: linear-gradient(0deg, #000 0%, #000 24%, transparent 52%);
+  mask-image: linear-gradient(0deg, #000 0%, #000 22%, transparent 50%);
 }
 
 .detail-wash {
@@ -58,85 +103,77 @@
   content: "";
   position: absolute;
   inset: 0;
-  opacity: 0.16;
+  opacity: 0.14;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
-/* Three scrims: up from the canvas for the page edge, in from the left for the text, a breath down from the top bar. */
-.hero-scrim {
+/* Up from the canvas (tinted by the art) for the page edge, in from the left for the text, down from the top bar. */
+.title-scrim {
   position: absolute;
   inset: 0;
   background:
     linear-gradient(
       0deg,
       var(--nv-color-canvas) 0%,
-      color-mix(in srgb, var(--nv-color-canvas) 78%, transparent) 18%,
-      color-mix(in srgb, var(--nv-color-canvas) 28%, transparent) 44%,
-      transparent 64%
+      color-mix(in oklab, var(--ambient) 14%, var(--nv-color-canvas)) 8%,
+      color-mix(in srgb, var(--nv-color-canvas) 55%, transparent) 30%,
+      transparent 58%
     ),
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--nv-color-canvas) 74%, transparent) 0%,
-      color-mix(in srgb, var(--nv-color-canvas) 42%, transparent) 34%,
-      transparent 62%
-    ),
-    linear-gradient(180deg, color-mix(in srgb, var(--nv-color-canvas) 38%, transparent) 0%, transparent 18%);
+    linear-gradient(90deg, rgba(6, 7, 8, 0.8) 0%, rgba(6, 7, 8, 0.4) 34%, transparent 62%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.45) 0%, transparent 20%);
 }
 
-.hero-body {
+.title-body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   flex: 1;
   min-width: 0;
-  max-width: 660px;
+  max-width: 680px;
+  animation: rise-in var(--nv-motion-duration-ambient) var(--nv-motion-easing-spring-smooth) both;
 }
 
-.hero-title {
-  max-width: 16ch;
-  font-size: clamp(40px, 3.6vw + 12px, 76px);
-  line-height: 1;
-  font-weight: var(--nv-font-weight-heavy);
-  letter-spacing: -0.035em;
+.title-name {
+  max-width: 14ch;
+  font-size: clamp(var(--nv-type-display-min), 4.6vw + 12px, var(--nv-type-display-size));
+  line-height: 0.96;
+  font-weight: var(--nv-font-weight-bold);
+  letter-spacing: -0.045em;
   text-wrap: balance;
-  text-shadow: 0 2px 32px rgba(0, 0, 0, 0.35);
+  text-shadow: 0 2px 40px rgba(0, 0, 0, 0.35);
 }
 
-.hero-meta {
+.title-meta {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px 8px;
-  margin-top: 16px;
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 15px;
+  margin-top: 18px;
+  color: var(--nv-label-secondary);
+  font-size: var(--nv-type-body-size);
   line-height: 22px;
   font-weight: var(--nv-font-weight-medium);
   font-variant-numeric: tabular-nums;
 }
 
-.hero-sep {
-  color: rgba(255, 255, 255, 0.4);
+.title-sep {
+  color: var(--nv-label-tertiary);
 }
 
-.hero-rating {
+.title-rating {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   margin-left: 6px;
-  color: var(--nv-color-text-primary);
+  color: var(--nv-label-primary);
   font-weight: var(--nv-font-weight-semibold);
-}
-
-.hero-rating svg {
-  color: var(--nv-color-accent);
 }
 
 .show-meta-pending {
   width: 260px;
   height: 18px;
-  border-radius: var(--nv-radius-sm);
+  border-radius: 9px;
   background: rgba(255, 255, 255, 0.1);
 }
 
@@ -149,43 +186,28 @@
   list-style: none;
 }
 
-.chip {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: var(--nv-radius-sm);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
-  color: rgba(255, 255, 255, 0.82);
-  font-size: var(--nv-type-chip-size);
-  line-height: 1;
-  font-weight: var(--nv-font-weight-bold);
-  letter-spacing: 0.03em;
-}
-
-.hero-actions {
+.title-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
   min-height: 52px;
-  margin-top: 24px;
+  margin-top: 26px;
 }
 
-.hero-body .notice {
+.title-body .notice {
   margin-top: 14px;
 }
 
 .btn-hero {
   height: 52px;
-  padding: 0 28px 0 22px;
-  border-radius: var(--nv-radius-lg);
+  padding: 0 30px 0 24px;
   font-size: var(--nv-type-body-large-size);
 }
 
 .btn-aside {
   margin-left: -2px;
-  color: color-mix(in srgb, var(--nv-color-accent-text) 70%, var(--nv-color-accent));
+  color: rgba(5, 5, 5, 0.55);
   font-weight: var(--nv-font-weight-medium);
   font-variant-numeric: tabular-nums;
 }
@@ -195,13 +217,14 @@
   width: 44px;
   height: 4px;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--nv-color-accent-text) 22%, transparent);
+  background: rgba(5, 5, 5, 0.16);
   overflow: hidden;
 }
 
 .btn-progress > span {
   display: block;
   height: 100%;
+  border-radius: 2px;
   background: var(--nv-color-accent-text);
   transform-origin: left;
 }
@@ -212,89 +235,95 @@
   box-shadow: none;
 }
 
-/* Round companions to Play: Start over and Watched. Translucent so the art shows through. */
-.hero-round {
+/* Round companions to Play (Start over, Watched, Delete): glass over the art; Watched goes white when on. */
+.title-round {
   display: grid;
   place-items: center;
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-  color: var(--nv-color-text-primary);
+  background: rgba(255, 255, 255, 0.12);
+  -webkit-backdrop-filter: var(--nv-material-blur-thin);
+  backdrop-filter: var(--nv-material-blur-thin);
+  box-shadow: var(--nv-material-stroke);
+  color: var(--nv-label-primary);
   transition:
     background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
     color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
-    transform var(--nv-motion-duration-instant) var(--nv-motion-easing-standard);
+    transform var(--nv-motion-duration-spring) var(--nv-motion-easing-spring-snappy);
 }
 
-.hero-round:hover {
-  background: rgba(255, 255, 255, 0.24);
+.title-round:hover {
+  background: rgba(255, 255, 255, 0.22);
 }
 
-.hero-round:active {
-  transform: scale(0.96);
+.title-round:active {
+  transform: scale(0.92);
 }
 
-.hero-round:focus-visible {
+.title-round:focus-visible {
   border-radius: 50%;
 }
 
-.hero-round[aria-pressed="true"] {
-  background: color-mix(in srgb, var(--nv-color-accent) 20%, rgba(255, 255, 255, 0.08));
-  color: var(--nv-color-accent);
+.title-round[aria-pressed="true"] {
+  background: var(--nv-color-accent);
+  color: var(--nv-color-accent-text);
 }
 
-.hero-starring {
+.title-starring {
   margin-top: 14px;
-  color: rgba(255, 255, 255, 0.86);
-  font-size: var(--nv-type-body-size);
+  color: var(--nv-label-primary);
+  font-size: var(--nv-type-small-size);
+  line-height: var(--nv-type-small-line);
 }
 
-.hero-starring span {
-  color: rgba(255, 255, 255, 0.56);
+.title-starring span {
+  color: var(--nv-label-tertiary);
 }
 
 /* Without a backdrop, the poster or title card stands on the wash's right. */
-.hero-poster {
+.title-poster {
   position: relative;
   flex: none;
-  width: 248px;
+  width: clamp(200px, 18vw, 280px);
   margin-left: auto;
+  animation: rise-in var(--nv-motion-duration-ambient) var(--nv-motion-easing-spring-smooth) both;
 }
 
-.hero-poster > .artwork,
-.hero-poster > .title-card {
+.title-poster > .artwork,
+.title-poster > .title-card {
   border-radius: var(--nv-radius-lg);
   overflow: hidden;
-  box-shadow: var(--nv-shadow-rest);
+  box-shadow: var(--nv-shadow-rest), inset 0 0 0 0.5px rgba(255, 255, 255, 0.12);
 }
 
-.hero-poster .poster-progress {
-  height: 4px;
-  border-radius: 0 0 var(--nv-radius-lg) var(--nv-radius-lg);
+.title-poster .poster-progress {
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
 }
 
-.hero-poster .poster-watched {
-  top: 10px;
-  right: 10px;
-  width: 28px;
-  height: 28px;
+.title-poster .poster-watched {
+  top: 12px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
 }
 
 /* Information */
 
 .info {
-  margin: 48px var(--nv-layout-gutter) 0;
+  margin: 56px var(--gutter) 0;
   padding-top: 32px;
-  border-top: 1px solid var(--nv-color-hairline);
+  border-top: 0.5px solid var(--nv-color-hairline);
 }
 
 .info h2 {
-  margin-bottom: 20px;
+  margin-bottom: 22px;
   font-size: var(--nv-type-title-size);
   line-height: var(--nv-type-title-line);
   font-weight: var(--nv-font-weight-semibold);
+  letter-spacing: -0.015em;
 }
 
 .info-grid {
@@ -342,7 +371,6 @@
   margin-top: 32px;
   color: var(--nv-color-text-muted);
   font-size: var(--nv-type-small-size);
-  text-decoration: none;
 }
 
 .info-source:hover {
@@ -352,30 +380,84 @@
 }
 
 @media (max-width: 900px) {
-  .hero {
-    padding-top: 96px;
-  }
-
-  .hero-poster {
+  .title-poster {
     width: 168px;
   }
 
-  .hero-poster .title-card-title {
+  .title-poster .title-card-title {
     font-size: var(--nv-title-card-type-title-medium);
   }
 }
 
-@media (max-width: 640px) {
-  .hero {
+/* Phones: the art takes the top, the text sits under it, centred. */
+@media (max-width: 599px) {
+  .title-hero {
     min-height: 0;
-    padding-top: 160px;
+    padding: 56vw var(--gutter) 24px;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
   }
 
-  .hero-poster {
-    display: none;
+  .title-art {
+    bottom: auto;
+    height: calc(56vw + 260px);
+  }
+
+  .title-scrim {
+    background:
+      linear-gradient(0deg, var(--nv-color-canvas) 0%, var(--nv-color-canvas) 30%, color-mix(in oklab, var(--ambient) 14%, var(--nv-color-canvas)) 40%, transparent 72%),
+      linear-gradient(180deg, rgba(0, 0, 0, 0.45) 0%, transparent 24%);
+  }
+
+  .title-body {
+    align-items: center;
+    max-width: none;
+    width: 100%;
+  }
+
+  .title-name {
+    font-size: 40px;
+  }
+
+  .title-meta,
+  .title-actions {
+    justify-content: center;
   }
 
   .chips {
     margin-left: 0;
+  }
+
+  .title-actions .btn-hero {
+    flex: 1 1 100%;
+  }
+
+  .title-poster {
+    display: none;
+  }
+
+  .overview {
+    text-align: left;
+  }
+
+  .detail::before {
+    top: calc(56vw + 260px);
+  }
+}
+
+@media (min-width: 1600px) {
+  .title-body {
+    max-width: 780px;
+  }
+
+  .title-meta {
+    font-size: 17px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title-drift {
+    animation: none;
   }
 }

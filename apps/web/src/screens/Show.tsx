@@ -20,15 +20,16 @@ import { CheckIcon, ChevronDownIcon, PlayIcon } from "../components/Icon";
 import { Menu, MenuRadio } from "../components/Menu";
 import { PosterMarks } from "../components/PosterCard";
 import { CardArt } from "../components/CardArt";
-import { aboutRows, CastSection, DetailHero, HeroMeta, InfoSection, Overview, ShelfArrows, Starring, walkStrip, type InfoRow } from "../components/Details";
+import { aboutRows, CastSection, DetailHero, SimilarRow, HeroMeta, InfoSection, Overview, ShelfArrows, Starring, type InfoRow } from "../components/Details";
 import { titleCardVars } from "../components/TitleCard";
+import { ambientColor } from "../lib/ambient";
+import { useSpatialNav } from "../lib/spatialNav";
 import { cachedCard } from "../lib/cachedCard";
 import { preloadPlayer } from "../components/player/preload";
 import { hasInteracted } from "../lib/interacted";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useWatchedToggle } from "../lib/useWatchedToggle";
 import { ErrorState, MissingShow } from "./ErrorState";
-import "../styles/home.css";
 import "../styles/movie.css";
 import "../styles/show.css";
 
@@ -47,6 +48,8 @@ export function ShowScreen() {
   const card = cachedCard(id, "show");
   const show = item.data?.kind === "show" ? item.data : undefined;
   useDocumentTitle(show?.title ?? card?.title);
+  const root = useRef<HTMLDivElement>(null);
+  useSpatialNav(root);
 
   if (item.error || (item.data && !show)) {
     return item.data || (item.error instanceof ApiError && item.error.status === 404) ? (
@@ -66,18 +69,25 @@ export function ShowScreen() {
     </>
   );
   return (
-    <div className="detail" style={titleCardVars(head?.title ?? "")}>
-      <DetailHero title={head?.title} backdrop={show?.backdrop} poster={poster}>
-        {show ? <ShowMeta show={show} /> : head && <div className="hero-meta show-meta-pending" />}
-        {show ? <ShowActions show={show} /> : <div className="hero-actions" />}
+    <div key={id} ref={root} className="detail" style={detailVars(head?.title, show?.backdrop ?? head?.poster)}>
+      <DetailHero title={head?.title} backdrop={show ? show.backdrop : card?.backdrop} poster={poster}>
+        {show ? <ShowMeta show={show} /> : head && <div className="title-meta show-meta-pending" />}
+        {show ? <ShowActions show={show} /> : <div className="title-actions" />}
         <Overview text={show?.overview} tagline={show?.details.tagline} />
         <Starring details={show?.details} />
       </DetailHero>
       {show && season && <Seasons show={show} season={season} />}
+      <SimilarRow cards={show?.similar} />
       <CastSection details={show?.details} />
       {show && <InfoSection details={show.details} columns={[{ title: "About", rows: infoRows(show) }]} />}
     </div>
   );
+}
+
+/** The title card's palette (for a missing backdrop) and the ambient glow from whichever art there is. */
+function detailVars(title: string | undefined, art: Parameters<typeof ambientColor>[0]): React.CSSProperties {
+  const glow = ambientColor(art);
+  return { ...titleCardVars(title ?? ""), ...(glow && { "--ambient": glow }) } as React.CSSProperties;
 }
 
 function ShowMeta({ show }: { show: ShowDetail }) {
@@ -113,9 +123,9 @@ function ShowActions({ show }: { show: ShowDetail }) {
     if (hasInteracted() && document.activeElement === document.body) button.current?.focus({ preventScroll: true });
   }, []);
   return (
-    <div className="hero-actions">
+    <div className="title-actions" data-nav-group>
       {play ? (
-        <Link ref={button} to="/episode/$id/play" params={{ id: play.episode.id }} search={{}} className="btn btn-primary btn-hero">
+        <Link ref={button} to="/episode/$id/play" params={{ id: play.episode.id }} search={{}} className="btn btn-primary btn-hero" data-nav-item>
           <PlayIcon />
           {play.kind === "resume" ? "Resume" : play.kind === "next" ? "Next episode" : "Play"}
           <span className="btn-aside">
@@ -128,7 +138,7 @@ function ShowActions({ show }: { show: ShowDetail }) {
       )}
       <button
         type="button"
-        className="hero-round"
+        className="title-round" data-nav-item
         aria-pressed={allWatched}
         aria-label="Watched"
         title={allWatched ? "Mark show unwatched" : "Mark show watched"}
@@ -267,7 +277,7 @@ function EpisodeList({
   }
   if (!episodes.length) return <p className="episodes-empty">No episodes in this season have files right now.</p>;
   return (
-    <ol ref={strip} className="shelf-strip episodes" onKeyDown={(e) => walkStrip(e, "a.episode-link")}>
+    <ol ref={strip} className="shelf-strip episodes" data-nav-group>
       {episodes.map((e) => (
         <EpisodeCard key={e.id} show={show} episode={e} special={special} upNext={show.next?.id === e.id} />
       ))}
@@ -293,6 +303,7 @@ function EpisodeCard({ show, episode, special, upNext }: { show: ShowDetail; epi
         params={{ id: episode.id }}
         search={{}}
         className="episode-link"
+        data-nav-item
         onFocus={() => void queryClient.prefetchQuery(queries.item(episode.id))}
         onPointerEnter={() => void queryClient.prefetchQuery(queries.item(episode.id))}
       >

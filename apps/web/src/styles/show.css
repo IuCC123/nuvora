@@ -11,20 +11,23 @@
 
 .season-tabs {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 3px;
+  padding: 4px;
   border-radius: var(--nv-radius-pill);
-  background: var(--nv-color-surface);
+  background: rgba(255, 255, 255, 0.08);
+  -webkit-backdrop-filter: var(--nv-material-blur-thin);
+  backdrop-filter: var(--nv-material-blur-thin);
+  box-shadow: var(--nv-material-stroke);
 }
 
 .season-tab {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 32px;
+  height: 34px;
   padding: 0 16px;
   border-radius: var(--nv-radius-pill);
   color: var(--nv-color-text-secondary);
@@ -41,8 +44,9 @@
 }
 
 .season-tab[aria-selected="true"] {
-  background: var(--nv-color-surface-raised);
-  color: var(--nv-color-text-primary);
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--nv-color-accent-text);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
 }
 
 .season-tab:focus-visible {
@@ -50,12 +54,28 @@
 }
 
 .season-tab-check {
-  color: var(--nv-color-text-muted);
+  opacity: 0.6;
 }
 
-.season-menu-btn {
+.seasons .season-menu-btn {
+  height: 40px;
+  padding: 0 14px 0 18px;
+  border-radius: var(--nv-radius-pill);
+  background: rgba(255, 255, 255, 0.1);
+  -webkit-backdrop-filter: var(--nv-material-blur-thin);
+  backdrop-filter: var(--nv-material-blur-thin);
+  box-shadow: var(--nv-material-stroke);
+  color: var(--nv-label-primary);
   font-size: var(--nv-type-button-size);
   font-weight: var(--nv-font-weight-semibold);
+}
+
+.seasons .season-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.seasons .season-menu-btn:focus-visible {
+  border-radius: var(--nv-radius-pill);
 }
 
 .seasons-count {
@@ -89,11 +109,11 @@
 .episode-link {
   display: flex;
   flex-direction: column;
-  border-radius: var(--nv-radius-lg);
+  border-radius: var(--nv-radius-card);
 }
 
 .episode-link:focus-visible {
-  outline-offset: 4px;
+  outline: none;
 }
 
 /* Its own stacking context: the hover badge and progress bar stay under the season menu. */
@@ -102,24 +122,34 @@
   isolation: isolate;
   display: block;
   aspect-ratio: 16 / 9;
-  border-radius: var(--nv-radius-lg);
+  border-radius: var(--nv-radius-card);
   overflow: hidden;
   background: var(--nv-color-surface);
-  box-shadow: 0 0 0 1px var(--nv-color-overlay-hairline);
+  box-shadow: var(--nv-shadow-card), inset 0 0 0 0.5px rgba(255, 255, 255, 0.1);
   transition:
-    transform var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
-    box-shadow var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
+    transform var(--nv-motion-duration-spring) var(--nv-motion-easing-spring-snappy),
+    box-shadow var(--nv-motion-duration-base) var(--nv-motion-easing-standard);
+  will-change: transform;
 }
 
-.episode-link:hover .episode-thumb,
+@media (hover: hover) {
+  .episode-link:hover .episode-thumb {
+    transform: scale(1.04);
+    box-shadow: var(--nv-shadow-lift);
+  }
+}
+
 .episode-link:focus-visible .episode-thumb {
-  transform: translateY(-3px);
+  transform: scale(1.04);
   box-shadow: var(--nv-shadow-lift);
+  outline: 3px solid var(--nv-color-focus-ring);
+  outline-offset: 4px;
 }
 
 .episode-thumb .poster-progress {
-  height: 4px;
-  border-radius: 0;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
 }
 
 /* No frame grab yet (or HDR): the show's palette with the episode number as lettering. */
@@ -166,11 +196,12 @@
   left: 8px;
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: var(--nv-radius-sm);
-  background: color-mix(in srgb, var(--nv-color-canvas) 84%, transparent);
-  color: var(--nv-color-text-primary);
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-color-accent);
+  color: var(--nv-color-accent-text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   font-size: var(--nv-type-chip-size);
   line-height: 1;
   font-weight: var(--nv-font-weight-semibold);
@@ -183,8 +214,8 @@
   -webkit-line-clamp: 2;
   overflow: hidden;
   margin-top: 12px;
-  font-size: var(--nv-type-button-size);
-  line-height: var(--nv-type-button-line);
+  font-size: var(--nv-type-body-size);
+  line-height: 20px;
   font-weight: var(--nv-font-weight-semibold);
   overflow-wrap: anywhere;
 }
@@ -208,9 +239,11 @@
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--nv-color-canvas) 70%, transparent);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
-  color: var(--nv-color-text-secondary);
+  background: var(--nv-material-regular);
+  -webkit-backdrop-filter: var(--nv-material-blur-thin);
+  backdrop-filter: var(--nv-material-blur-thin);
+  box-shadow: var(--nv-material-stroke), 0 1px 6px rgba(0, 0, 0, 0.4);
+  color: var(--nv-label-secondary);
   transition:
     background-color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
     color var(--nv-motion-duration-fast) var(--nv-motion-easing-standard),
@@ -218,18 +251,14 @@
     transform var(--nv-motion-duration-fast) var(--nv-motion-easing-standard);
 }
 
-.episode:hover .episode-mark {
-  transform: translateY(-3px);
-}
-
 .episode-mark:hover {
-  background: var(--nv-color-canvas);
-  color: var(--nv-color-text-primary);
+  background: rgba(60, 62, 70, 0.8);
+  color: var(--nv-label-primary);
 }
 
 .episode-mark[aria-pressed="true"] {
-  background: color-mix(in srgb, var(--nv-color-canvas) 84%, transparent);
-  color: var(--nv-color-accent);
+  background: var(--nv-color-accent);
+  color: var(--nv-color-accent-text);
 }
 
 .episode-mark:focus-visible {
@@ -252,12 +281,28 @@
   box-shadow: none;
 }
 
+.episode-pending .episode-thumb,
+.pending-line {
+  position: relative;
+  overflow: hidden;
+}
+
+.episode-pending .episode-thumb::after,
+.pending-line::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05) 50%, transparent);
+  animation: shimmer 1.6s var(--nv-motion-easing-standard) infinite;
+}
+
 .pending-line {
   display: block;
   width: 70%;
   height: 14px;
   margin-top: 14px;
-  border-radius: var(--nv-radius-sm);
+  border-radius: 7px;
   background: var(--nv-color-surface);
 }
 
