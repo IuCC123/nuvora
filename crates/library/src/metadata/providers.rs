@@ -95,23 +95,48 @@ fn containment(query: &[String], candidate: &[String]) -> f32 {
     hits as f32 / query.len() as f32
 }
 
-/// A candidate matches when one of its titles contains every word of the
-/// query (or all but one, for long queries), and the query covers at least
-/// half of that title, so "Friends" never matches "Friends of the Forest".
-pub(crate) fn matches(query: &str, titles: &[&str]) -> bool {
+/// How well a candidate's best title fits the search.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Fit {
+    /// Holds the search and more: "Comet Lucifer" for "Lucifer".
+    Close,
+    /// The same words: "Tower of God 2nd Season" for "Tower of God 2".
+    Exact,
+}
+
+/// A candidate fits when one of its titles contains every word of the query
+/// (or all but one, for long queries), and the query covers at least half of
+/// that title, so "Friends" never fits "Friends of the Forest".
+pub(crate) fn fit(query: &str, titles: &[&str]) -> Option<Fit> {
     let q = words(query);
     if q.is_empty() {
-        return false;
+        return None;
     }
     let need = if q.len() >= 5 {
         (q.len() - 1) as f32 / q.len() as f32
     } else {
         1.0
     };
-    titles.iter().any(|t| {
-        let c = words(t);
-        !c.is_empty() && containment(&q, &c) >= need && containment(&c, &q) >= 0.5
-    })
+    titles
+        .iter()
+        .filter_map(|t| {
+            let c = words(t);
+            let found = containment(&q, &c);
+            let covered = containment(&c, &q);
+            if c.is_empty() || found < need || covered < 0.5 {
+                return None;
+            }
+            Some(if found == 1.0 && covered == 1.0 {
+                Fit::Exact
+            } else {
+                Fit::Close
+            })
+        })
+        .max()
+}
+
+pub(crate) fn matches(query: &str, titles: &[&str]) -> bool {
+    fit(query, titles).is_some()
 }
 
 /// The searches to try for a show title, most specific first:
@@ -277,12 +302,13 @@ struct AniImage {
 /// space requests with [`ANILIST_SPACING`].
 pub(crate) const ANILIST_SPACING: Duration = Duration::from_millis(2_100);
 
+/// The best-fitting result: the first exact one, else the first close one.
 pub(crate) async fn anilist(
     http: &reqwest::Client,
     search: &str,
     movie: bool,
     year: Option<u16>,
-) -> Result<Option<Found>, ProviderError> {
+) -> Result<Option<(Found, Fit)>, ProviderError> {
     let format = if movie {
         json!(["MOVIE"])
     } else {
@@ -302,16 +328,20 @@ pub(crate) async fn anilist(
     let Some(data) = page.data else {
         return Ok(None);
     };
+    let mut best: Option<(AniMedia, Option<u16>, Fit)> = None;
     for m in data.page.media {
-        let mut titles: Vec<&str> = [&m.title.english, &m.title.romaji, &m.title.native]
-            .into_iter()
-            .flatten()
-            .map(String::as_str)
-            .collect();
-        titles.extend(m.synonyms.iter().map(String::as_str));
-        if !matches(search, &titles) {
+        let fit = {
+            let mut titles: Vec<&str> = [&m.title.english, &m.title.romaji, &m.title.native]
+                .into_iter()
+                .flatten()
+                .map(String::as_str)
+                .collect();
+            titles.extend(m.synonyms.iter().map(String::as_str));
+            fit(search, &titles)
+        };
+        let Some(fit) = fit else {
             continue;
-        }
+        };
         let found_year = m.season_year.or(m.start_date.as_ref().and_then(|d| d.year));
         if movie
             && let (Some(want), Some(got)) = (year, found_year)
@@ -319,9 +349,14 @@ pub(crate) async fn anilist(
         {
             continue;
         }
-        return Ok(Some(anilist_found(m, found_year)));
+        if best.as_ref().is_none_or(|b| fit > b.2) {
+            best = Some((m, found_year, fit));
+        }
+        if fit == Fit::Exact {
+            break;
+        }
     }
-    Ok(None)
+    Ok(best.map(|(m, year, fit)| (anilist_found(m, year), fit)))
 }
 
 fn anilist_found(m: AniMedia, year: Option<u16>) -> Found {
@@ -435,7 +470,7 @@ pub(crate) const TVMAZE_SPACING: Duration = Duration::from_millis(600);
 pub(crate) async fn tvmaze(
     http: &reqwest::Client,
     search: &str,
-) -> Result<Option<Found>, ProviderError> {
+) -> Result<Option<(Found, Fit)>, ProviderError> {
     let resp = http
         .get("https://api.tvmaze.com/singlesearch/shows")
         .query(&[("q", search), ("embed", "cast")])
@@ -447,9 +482,9 @@ pub(crate) async fn tvmaze(
         _ => {}
     }
     let show: TvShow = resp.error_for_status()?.json().await?;
-    if !matches(search, &[&show.name]) {
+    let Some(fit) = fit(search, &[&show.name]) else {
         return Ok(None);
-    }
+    };
     let credits = show
         .embedded
         .map(|e| e.cast)
@@ -468,7 +503,7 @@ pub(crate) async fn tvmaze(
                 .and_then(|i| i.medium.or(i.original)),
         })
         .collect();
-    Ok(Some(Found {
+    let found = Found {
         provider_id: format!("tvmaze:{}", show.id),
         title: show.name,
         original_title: None,
@@ -489,7 +524,8 @@ pub(crate) async fn tvmaze(
         poster_url: show.image.and_then(|i| i.original.or(i.medium)),
         backdrop_url: None,
         credits,
-    }))
+    };
+    Ok(Some((found, fit)))
 }
 
 // ------------------------------------------------------------------- TMDB
@@ -993,6 +1029,21 @@ mod tests {
         assert!(!matches("Tower of God 2", &["Tower of God"]));
         assert!(!matches("Hero", &["My Hero Academia"]));
         assert!(matches("The Office", &["The Office"]));
+    }
+
+    #[test]
+    fn same_words_fit_better_than_more_words() {
+        assert_eq!(fit("Lucifer", &["Lucifer"]), Some(Fit::Exact));
+        assert_eq!(fit("Lucifer", &["Comet Lucifer"]), Some(Fit::Close));
+        assert_eq!(
+            fit("Tower of God 2", &["Tower of God 2nd Season"]),
+            Some(Fit::Exact)
+        );
+        assert_eq!(
+            fit("Lucifer", &["Comet Lucifer", "Lucifer"]),
+            Some(Fit::Exact)
+        );
+        assert_eq!(fit("Friends", &["Friends of the Forest"]), None);
     }
 
     #[test]

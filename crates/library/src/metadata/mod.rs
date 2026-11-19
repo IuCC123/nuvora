@@ -23,7 +23,7 @@ use crate::db::Db;
 use crate::ids::{ArtworkId, ItemId};
 use crate::scan::{self, ScanState, ScanStatus};
 use crate::store::ArtworkStore;
-use providers::{Found, ProviderError};
+use providers::{Fit, Found, ProviderError};
 
 pub(crate) const TMDB_KEY: &str = "tmdb_api_key";
 
@@ -170,7 +170,10 @@ async fn run(
     Ok(())
 }
 
-/// Shows: AniList, then TVmaze, over each title variant. Movies: TMDB when a
+/// Shows: AniList, then TVmaze, over each title variant, taking the first
+/// result with the same words as the title, else the first that holds them,
+/// so "Lucifer" finds the series on TVmaze, not "Comet Lucifer" on AniList.
+/// Movies: TMDB when a
 /// key is set, then AniList's anime films (strict: title and year must agree),
 /// then Wikidata and Wikipedia, which need no key.
 async fn lookup(
@@ -180,19 +183,28 @@ async fn lookup(
 ) -> Result<Option<(Found, Option<String>)>, ProviderError> {
     let variants = providers::title_variants(&p.title);
     if p.kind == "show" {
+        let mut close = None;
         for v in &variants {
             tokio::time::sleep(providers::ANILIST_SPACING).await;
-            if let Some(f) = providers::anilist(http, v, false, p.year).await? {
-                return Ok(Some((f, None)));
+            match providers::anilist(http, v, false, p.year).await? {
+                Some((f, Fit::Exact)) => return Ok(Some((f, None))),
+                Some((f, Fit::Close)) => {
+                    close.get_or_insert(f);
+                }
+                None => {}
             }
         }
         for v in &variants {
             tokio::time::sleep(providers::TVMAZE_SPACING).await;
-            if let Some(f) = providers::tvmaze(http, v).await? {
-                return Ok(Some((f, None)));
+            match providers::tvmaze(http, v).await? {
+                Some((f, Fit::Exact)) => return Ok(Some((f, None))),
+                Some((f, Fit::Close)) => {
+                    close.get_or_insert(f);
+                }
+                None => {}
             }
         }
-        return Ok(None);
+        return Ok(close.map(|f| (f, None)));
     }
     if let Some(key) = tmdb_key {
         tokio::time::sleep(providers::TMDB_SPACING).await;
@@ -201,7 +213,7 @@ async fn lookup(
         }
     }
     tokio::time::sleep(providers::ANILIST_SPACING).await;
-    if let Some(f) = providers::anilist(http, &p.title, true, p.year).await? {
+    if let Some((f, _)) = providers::anilist(http, &p.title, true, p.year).await? {
         return Ok(Some((f, None)));
     }
     tokio::time::sleep(providers::WIKI_SPACING).await;
