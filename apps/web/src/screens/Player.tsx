@@ -28,6 +28,7 @@ import { loadSubtitleStyle, saveSubtitleStyle, type SubtitleScope, type Subtitle
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useMediaState } from "../lib/useMediaState";
 import { useProgressReporting, type ProgressTarget } from "../lib/useProgressReporting";
+import { canFullscreen, exitFullscreen, toggleFullscreen, useFullscreen } from "../platform/fullscreen";
 import { loadVolume, saveVolume } from "../lib/volumeMemory";
 import { loadQuality, saveQuality, type Quality } from "../lib/qualityMemory";
 import { awayFromHome, opensNatively } from "../platform/deviceProfile";
@@ -311,7 +312,7 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
   const root = useRef<HTMLDivElement>(null);
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   const media = useMediaState(video);
-  const [fullscreen, setFullscreen] = useState(false);
+  const fullscreen = useFullscreen();
   const [showDuration, setShowDuration] = useState(false);
   const [pulse, setPulse] = useState<{ kind: PulseKind; n: number; label?: string } | null>(null);
   // Only these hold the controls up. A resting pointer or keyboard focus doesn't: moving and keys wake them for a while.
@@ -361,12 +362,6 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
   const attach = useCallback((el: HTMLVideoElement | null) => {
     if (el) Object.assign(el, loadVolume());
     setVideo(el);
-  }, []);
-
-  useEffect(() => {
-    const onChange = () => setFullscreen(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", onChange);
-    return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
   const pulseTimer = useRef<number>(undefined);
@@ -436,10 +431,7 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
       saveVolume({ volume: video.volume, muted: video.muted });
     },
     fullscreen() {
-      if (document.fullscreenElement) void document.exitFullscreen();
-      // The whole page, not this view: the next episode mounts a new view and full screen carries over.
-      else if (document.fullscreenEnabled) void document.documentElement.requestFullscreen().catch(() => {});
-      else if (videoFullscreen) {
+      if (!toggleFullscreen() && videoFullscreen) {
         try {
           videoFullscreen.call(video);
         } catch {
@@ -469,7 +461,7 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (e.repeat && TOGGLE_KEYS.has(key)) return e.preventDefault();
     if (key === "Escape") {
-      if (document.fullscreenElement) void document.exitFullscreen();
+      if (fullscreen) exitFullscreen();
       else onBack();
     } else if (notice || !video) {
       return;
@@ -513,7 +505,7 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
   const playing = !media.paused || rebuffer.holding;
   const level = media.muted || media.volume === 0 ? "muted" : media.volume < 0.5 ? "low" : "high";
   const pipSupported = document.pictureInPictureEnabled;
-  const canFullscreen = document.fullscreenEnabled || !!videoFullscreen;
+  const fullscreenShown = canFullscreen() || !!videoFullscreen;
 
   return (
     <div
@@ -738,7 +730,7 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
                     <PipIcon />
                   </ControlButton>
                 )}
-                {canFullscreen && (
+                {fullscreenShown && (
                   <ControlButton label={fullscreen ? "Exit full screen" : "Full screen"} tip={`${fullscreen ? "Exit full screen" : "Full screen"} · F`} onClick={actions.fullscreen}>
                     <FullscreenIcon exit={fullscreen} />
                   </ControlButton>
@@ -816,9 +808,9 @@ function useBarHeight(root: RefObject<HTMLDivElement | null>, shown: boolean) {
   return bar;
 }
 
-/** Full screen belongs to the page while the player is open; leaving the player leaves it too. */
+/** Full screen belongs to the player: leaving it leaves full screen too. */
 function useLeaveFullscreen() {
-  useEffect(() => () => void (document.fullscreenElement && document.exitFullscreen().catch(() => {})), []);
+  useEffect(() => () => exitFullscreen({ onlyIfPlayerEntered: true }), []);
 }
 
 /** True until `ms` pass without a `wake()`. */

@@ -21,7 +21,8 @@ export interface DesktopUpdate {
 /**
  * The native side of the Mac and Windows apps (`apps/desktop`), which show
  * this web app in the system's web view; `null` in a browser. Server pages may
- * only call the last four (see `apps/desktop/src-tauri/capabilities`).
+ * only call `switchServer` and the ones after it (see
+ * `apps/desktop/src-tauri/capabilities`).
  */
 export const desktop = isTauri()
   ? {
@@ -34,6 +35,9 @@ export const desktop = isTauri()
       checkUpdate: () => invoke<DesktopUpdate | null>("check_app_update"),
       /** Downloads, installs and restarts the app; resolves only if that fails. */
       installUpdate: () => invoke<void>("install_app_update"),
+      /** The window's own full screen (see `fullscreen.ts`); apps older than 0.8.1 reject both. */
+      isFullscreen: () => invoke<boolean>("is_fullscreen"),
+      setFullscreen: (on: boolean) => invoke<void>("set_fullscreen", { on }),
     }
   : null;
 

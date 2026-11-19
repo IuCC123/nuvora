@@ -12,12 +12,15 @@ mod discovery;
 mod server;
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use discovery::{Discovered, FoundServer};
 use serde::Serialize;
 use server::{Current, SavedServer};
 use tauri::webview::NewWindowResponse;
-use tauri::{AppHandle, Manager, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Manager, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::{Update, UpdaterExt};
 use tauri_plugin_window_state::StateFlags;
@@ -30,6 +33,10 @@ struct ConnectPage(Url);
 /// An update found by `check_app_update`, kept for `install_app_update`.
 #[derive(Default)]
 struct PendingUpdate(Mutex<Option<Update>>);
+
+/// Whether the window is full screen, as the page last heard.
+#[derive(Default)]
+struct Fullscreen(AtomicBool);
 
 pub fn run() {
     tauri::Builder::default()
@@ -51,6 +58,7 @@ pub fn run() {
         .manage(Current::default())
         .manage(Discovered::default())
         .manage(PendingUpdate::default())
+        .manage(Fullscreen::default())
         .invoke_handler(tauri::generate_handler![
             saved_server,
             discovered_servers,
@@ -60,7 +68,14 @@ pub fn run() {
             app_info,
             check_app_update,
             install_app_update,
+            set_fullscreen,
+            is_fullscreen,
         ])
+        .on_window_event(|window, event| {
+            if let WindowEvent::Resized(_) = event {
+                tell_fullscreen(window.app_handle());
+            }
+        })
         .setup(|app| {
             app.state::<Discovered>().start();
             let window = open_window(app.handle())?;
@@ -182,6 +197,35 @@ fn switch_server(app: AppHandle) -> Result<(), String> {
     let mut page = app.state::<ConnectPage>().0.clone();
     page.set_query(Some("pick"));
     window.navigate(page).map_err(|e| e.to_string())
+}
+
+/// The player's full screen is the window's (see the web app's
+/// `platform/fullscreen.ts`): the web view's own would move the page into a
+/// second window and, on a Mac, leave "Click to Exit Full Screen" in this one.
+#[tauri::command]
+fn set_fullscreen(window: WebviewWindow, on: bool) -> Result<(), String> {
+    window.set_fullscreen(on).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn is_fullscreen(window: WebviewWindow) -> Result<bool, String> {
+    window.is_fullscreen().map_err(|e| e.to_string())
+}
+
+/// Tells the page when the window enters or leaves full screen, however that
+/// happened: the player's button, the green button or the View menu. A Mac
+/// window only counts as out of full screen once its animation ends, which
+/// it marks with a resize.
+fn tell_fullscreen(app: &AppHandle) {
+    let Some(window) = app.get_webview_window(MAIN) else {
+        return;
+    };
+    let on = window.is_fullscreen().unwrap_or(false);
+    if app.state::<Fullscreen>().0.swap(on, Ordering::Relaxed) != on {
+        let _ = window.eval(format!(
+            "dispatchEvent(new CustomEvent('nuvora-fullscreen', {{ detail: {on} }}))"
+        ));
+    }
 }
 
 #[derive(Serialize)]
