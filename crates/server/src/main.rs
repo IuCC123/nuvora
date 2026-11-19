@@ -185,6 +185,10 @@ async fn serve(args: config::ServeArgs) -> Result<(), BoxError> {
         }
     });
     tokio::spawn(scheduled_scans(library.clone(), transcoder));
+    if let Some(dir) = args.web_dir.clone() {
+        tracing::info!(dir = %dir.display(), "serving the web app from a folder");
+        web::serve_from(dir);
+    }
     let app = api::router(state)
         .fallback(web::serve_app)
         .layer(api::compression());

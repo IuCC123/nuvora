@@ -2386,6 +2386,7 @@ dependencies = [
  "librqbit",
  "mdns-sd",
  "mime",
+ "mime_guess",
  "nix",
  "nuvora-library",
  "nuvora-media",

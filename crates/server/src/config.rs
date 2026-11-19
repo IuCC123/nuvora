@@ -89,6 +89,10 @@ pub struct ServeArgs {
     /// repository, or a stand-in when testing updates).
     #[arg(long, env = "NUVORA_UPDATE_FEED", hide = true)]
     pub update_feed: Option<String>,
+    /// Serve the web app from this folder instead of the copy built into the
+    /// server, so a UI change shows without rebuilding it (`scripts/deploy-dev.sh`).
+    #[arg(long, env = "NUVORA_WEB_DIR", hide = true)]
+    pub web_dir: Option<PathBuf>,
 }
 
 /// `--hardware-encoding` or `NUVORA_HARDWARE_ENCODING`. Empty means unset,
@@ -292,6 +296,7 @@ mod tests {
             hardware_encoding: None,
             updates: None,
             update_feed: None,
+            web_dir: None,
         }
     }
 
@@ -413,7 +418,8 @@ mod tests {
                 "NUVORA_DISCOVERY",
                 "NUVORA_HARDWARE_ENCODING",
                 "NUVORA_UPDATES",
-                "NUVORA_UPDATE_FEED"
+                "NUVORA_UPDATE_FEED",
+                "NUVORA_WEB_DIR"
             ]
         );
         if cfg!(unix) {

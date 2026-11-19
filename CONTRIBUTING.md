@@ -24,7 +24,7 @@ To point the web app's dev server at another server, set `NUVORA_SERVER=http://h
 
 **The Mac and Windows apps** (`apps/desktop`) are Tauri. `bun run --cwd apps/desktop dev` opens one against your local server.
 
-**To try your checkout as the Docker image**, run `scripts/install.sh --build`. To build it on a server you reach over SSH and switch that server to it, run `scripts/deploy-dev.sh user@host`; `--rollback` goes back to the released image. To keep a build running on a Mac without Docker, `scripts/macos-service.sh install --bin target/release/nuvora --data-dir ~/Nuvora` makes it a background service; `status` and `uninstall` do what they say.
+**To try your checkout as the Docker image**, run `scripts/install.sh --build`. To run your checkout on a server you reach over SSH, run `scripts/deploy-dev.sh user@host`: it builds the web app locally and the server program on the server, only when Rust code changed, so a UI change is live in seconds; `--rollback` goes back to the released image. To keep a build running on a Mac without Docker, `scripts/macos-service.sh install --bin target/release/nuvora --data-dir ~/Nuvora` makes it a background service; `status` and `uninstall` do what they say.
 
 ## Test it
 
