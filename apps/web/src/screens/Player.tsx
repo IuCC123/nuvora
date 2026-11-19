@@ -286,7 +286,7 @@ interface PlayerViewProps {
   about?: About;
   quality?: QualityChoice;
   subtitleTracks: readonly SubtitleTrack[];
-  /** Recap, intro and credits from the file's chapters: Skip buttons, and where Up Next comes up. */
+  /** Recap, intro and credits, from the file's chapters or the audio its episodes share: Skip buttons, and where Up Next comes up. */
   markers?: readonly MediaMarker[];
   audioLanguage: string | null;
   /** What a subtitle choice is remembered for: the show for an episode, else the movie. */
@@ -314,7 +314,8 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
   const [fullscreen, setFullscreen] = useState(false);
   const [showDuration, setShowDuration] = useState(false);
   const [pulse, setPulse] = useState<{ kind: PulseKind; n: number; label?: string } | null>(null);
-  const [held, setHeld] = useState({ focus: false, hover: false, drag: false, menu: false });
+  // Only these hold the controls up. A resting pointer or keyboard focus doesn't: moving and keys wake them for a while.
+  const [held, setHeld] = useState({ drag: false, menu: false });
   const { awake, wake, sleep } = useAwake(AUTO_HIDE_MS);
   const [ready, setReady] = useState(false);
   const lastPointer = useRef("mouse");
@@ -353,7 +354,7 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
   const known = Number.isFinite(media.duration) && media.duration > 0;
   // iPhone Safari has no element full screen, only the video's own player.
   const videoFullscreen = (video as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null)?.webkitEnterFullscreen;
-  const visible = !!notice || awake || media.paused || held.focus || held.hover || held.drag || held.menu;
+  const visible = !!notice || awake || media.paused || held.drag || held.menu;
   const hold = (key: keyof typeof held, value: boolean) => setHeld((h) => (h[key] === value ? h : { ...h, [key]: value }));
 
   // Volume is applied before the element can start playing, so a quiet setting never blips at full volume.
@@ -660,12 +661,8 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
         </div>
       )}
 
-      <div
-        className="player-chrome"
-        onFocus={(e) => hold("focus", e.target.matches(":focus-visible"))}
-        onBlur={() => hold("focus", false)}
-      >
-        <header className="player-top" onPointerEnter={(e) => e.pointerType === "mouse" && hold("hover", true)} onPointerLeave={() => hold("hover", false)}>
+      <div className="player-chrome" onFocus={(e) => e.target.matches(":focus-visible") && wake()}>
+        <header className="player-top">
           <button type="button" className="player-btn player-back" aria-label={title ? `Back to ${title}` : "Back"} data-tip="Back · Esc" onMouseDown={(e) => e.preventDefault()} onClick={onBack}>
             <ArrowLeftIcon />
           </button>
@@ -689,7 +686,7 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
         </header>
 
         {src && !notice && (
-          <div ref={bar} className="player-bottom" onPointerEnter={(e) => e.pointerType === "mouse" && hold("hover", true)} onPointerLeave={() => hold("hover", false)}>
+          <div ref={bar} className="player-bottom">
             <div className="player-timeline">
               <span className="player-time">{formatClock(shownTime * 1000)}</span>
               <Scrubber video={video} duration={shownDuration} pendingTime={ready ? undefined : shownTime} buffered={media.buffered} previews={previews ?? null} onSeek={actions.seek} onDragChange={(d) => hold("drag", d)} />
@@ -732,7 +729,8 @@ export function PlayerView({ catalog, streamId, title, year, episode, onNext, so
                     {quality.current === "copy" ? "1080p" : "Original"}
                   </button>
                 )}
-                {subtitles.tracks.length > 0 && (
+                {/* A file with no subtitles of its own can still find some online. */}
+                {(subtitles.tracks.length > 0 || catalog?.fileId != null) && (
                   <SubtitleMenu subtitles={subtitles} style={subtitleStyle} onStyle={changeSubtitleStyle} onOpenChange={holdForMenu} />
                 )}
                 {pipSupported && (
