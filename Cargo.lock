@@ -2350,7 +2350,7 @@ dependencies = [
 
 [[package]]
 name = "nuvora-library"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "blake3",
  "futures",
@@ -2369,7 +2369,7 @@ dependencies = [
 
 [[package]]
 name = "nuvora-media"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "fast_image_resize",
  "image",
@@ -2386,7 +2386,7 @@ dependencies = [
 
 [[package]]
 name = "nuvora-server"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "argon2",
  "axum",
@@ -2422,7 +2422,7 @@ dependencies = [
 
 [[package]]
 name = "nuvora-torrent"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -2446,7 +2446,7 @@ dependencies = [
 
 [[package]]
 name = "nuvora-transcode"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "blake3",
  "nix",
