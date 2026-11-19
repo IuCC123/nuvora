@@ -39,6 +39,7 @@ const tearsOfSteel: Version = {
       { index: 2, codec: "subrip", format: "srt", renderable: true, language: "eng", is_default: false, is_forced: false, is_hearing_impaired: false, external: false },
       { index: 3, codec: "subrip", format: "srt", renderable: true, language: "spa", is_default: false, is_forced: false, is_hearing_impaired: false, external: false },
     ],
+    markers: [],
   },
 };
 
