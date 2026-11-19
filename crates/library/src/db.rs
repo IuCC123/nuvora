@@ -29,6 +29,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0010_sidecar_subtitles.sql"),
     include_str!("../migrations/0011_genres.sql"),
     include_str!("../migrations/0012_markers.sql"),
+    include_str!("../migrations/0013_audio_markers.sql"),
 ];
 
 #[derive(Debug, thiserror::Error)]
@@ -234,8 +235,8 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            tables, 19,
-            "7 catalog tables + user, session, setting, watch_state, item_credit, metadata_lookup, user_home, item_genre, media_marker + sqlite_sequence"
+            tables, 20,
+            "7 catalog tables + user, session, setting, watch_state, item_credit, metadata_lookup, user_home, item_genre, media_marker, audio_marker_show + sqlite_sequence"
         );
     }
 

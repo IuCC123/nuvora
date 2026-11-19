@@ -218,7 +218,11 @@ pub(crate) fn upsert_file(
         }
     };
     tx.execute("DELETE FROM media_stream WHERE file_id = ?1", [file_id])?;
-    tx.execute("DELETE FROM media_marker WHERE file_id = ?1", [file_id])?;
+    // Markers found by sound stay: the show's signature says when they're stale.
+    tx.execute(
+        "DELETE FROM media_marker WHERE file_id = ?1 AND source = 'chapters'",
+        [file_id],
+    )?;
     if let Ok(info) = probe {
         insert_streams(tx, file_id, info)?;
         insert_markers(tx, file_id, info)?;

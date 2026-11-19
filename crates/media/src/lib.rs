@@ -9,6 +9,7 @@
 
 mod artwork;
 mod encoder;
+mod fingerprint;
 mod hls;
 mod matroska;
 mod mp4;
@@ -28,6 +29,9 @@ pub use artwork::{
     RenderedArtwork,
 };
 pub use encoder::{DEFAULT_VAAPI_DEVICE, EncodeOptions, VideoEncoder, hardware_candidates};
+pub use fingerprint::{
+    AUDIO_PRINT_VERSION, AudioPrint, AudioPrintError, SharedAudio, find_markers,
+};
 pub use hls::{
     HlsError, INIT_SEGMENT, Run, RunProgress, SEGMENT_SECONDS, Segments, keyframes, landing,
 };

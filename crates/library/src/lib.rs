@@ -13,6 +13,7 @@ mod genres;
 mod home_layout;
 mod ids;
 mod libraries;
+mod markers;
 mod metadata;
 mod online_subtitles;
 mod previews;
@@ -80,6 +81,9 @@ pub struct LibraryConfig {
     /// Look up descriptions, artwork and cast online after each scan. The
     /// server does; tests don't, so they never depend on the network.
     pub online_metadata: bool,
+    /// Find recap, intro and credits markers by sound after each scan. The
+    /// server does; tests don't, so the catalog only changes when they say.
+    pub audio_markers: bool,
 }
 
 /// One library from the config file or `--movies`. `key` is the stable identity
@@ -154,6 +158,7 @@ struct Inner {
     scan: scan::ScanHandle,
     metadata: metadata::MetadataHandle,
     previews: previews::PreviewHandle,
+    markers: Option<markers::MarkerHandle>,
 }
 
 impl Library {
@@ -183,6 +188,7 @@ impl Library {
         let preview_store =
             Arc::new(previews::PreviewStore::new(config.data_dir.join("previews")).map_err(io)?);
         let preview_tools = config.tools.clone();
+        let marker_tools = config.tools.clone();
         let scan = scan::ScanHandle::spawn(scan::ScanContext {
             db: db.clone(),
             store: Arc::clone(&store),
@@ -202,6 +208,18 @@ impl Library {
             preview_tools,
             scan.subscribe(),
         );
+        let markers = match config.audio_markers {
+            true => Some(
+                markers::MarkerHandle::spawn(
+                    db.clone(),
+                    config.data_dir.join("audio-prints"),
+                    marker_tools,
+                    scan.subscribe(),
+                )
+                .map_err(io)?,
+            ),
+            false => None,
+        };
         Ok(Library {
             inner: Arc::new(Inner {
                 db,
@@ -209,6 +227,7 @@ impl Library {
                 scan,
                 metadata,
                 previews,
+                markers,
             }),
         })
     }
@@ -414,8 +433,13 @@ impl Library {
     }
 
     /// The seek previews of `file`, or `None` while they are still to be made
-    /// (or it can't have any). Asking moves the file to the front of the queue.
+    /// (or it can't have any). Asking moves the file to the front of the queue,
+    /// and its show to the front of the markers queue: the player asks when
+    /// it opens a video.
     pub async fn previews(&self, file: FileId) -> Result<Option<Previews>, QueryError> {
+        if let Some(markers) = &self.inner.markers {
+            markers.hurry(file);
+        }
         let key = self
             .inner
             .db
@@ -522,6 +546,7 @@ mod tests {
             probe_concurrency: NonZeroUsize::new(4).unwrap(),
             settle_window: Duration::ZERO,
             online_metadata: false,
+            audio_markers: false,
         })
         .await
         .unwrap()
@@ -1044,6 +1069,7 @@ mod tests {
             probe_concurrency: NonZeroUsize::new(4).unwrap(),
             settle_window: Duration::from_secs(60),
             online_metadata: false,
+            audio_markers: false,
         })
         .await
         .unwrap();
@@ -1161,6 +1187,7 @@ mod tests {
             probe_concurrency: NonZeroUsize::new(1).unwrap(),
             settle_window: Duration::ZERO,
             online_metadata: false,
+            audio_markers: false,
         })
         .await
         .unwrap();

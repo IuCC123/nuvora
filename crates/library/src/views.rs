@@ -972,8 +972,11 @@ pub(crate) fn versions(
         }
     }
     let mut stmt = conn.prepare_cached(
+        // A kind found by sound only where no chapter names it.
         "SELECT m.file_id, m.kind, m.start_ms, m.end_ms FROM media_marker m JOIN media_file f ON f.id = m.file_id \
-         WHERE f.item_id = ?1 ORDER BY m.file_id, m.start_ms",
+         WHERE f.item_id = ?1 AND (m.source = 'chapters' OR NOT EXISTS (SELECT 1 FROM media_marker c \
+         WHERE c.file_id = m.file_id AND c.kind = m.kind AND c.source = 'chapters')) \
+         ORDER BY m.file_id, m.start_ms",
     )?;
     let mut rows = stmt.query([id.0])?;
     while let Some(r) = rows.next()? {

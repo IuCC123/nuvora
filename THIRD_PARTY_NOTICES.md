@@ -29,6 +29,7 @@ Nuvora includes or uses the following software. Each is © its authors and used 
 
 - **FFmpeg** (ffprobe and ffmpeg), run as separate programs, never linked. The Docker image installs Debian's `ffmpeg` package, built under GPL-2.0-or-later; its source is available from Debian (https://packages.debian.org/source/trixie/ffmpeg).
 - Rust crates including axum, tokio, rusqlite (with SQLite, public domain), reqwest, serde, image, utoipa and rust-embed, under MIT and/or Apache-2.0.
+- **rusty-chromaprint**, a Rust port of Chromaprint's audio fingerprinting, used to find intros, recaps and credits that episodes share, MIT. https://github.com/darksv/rusty-chromaprint
 
 ## Data
 

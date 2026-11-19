@@ -26,6 +26,7 @@ async fn open(root: &Path, data: &Path, kind: LibraryKind) -> Library {
         probe_concurrency: NonZeroUsize::new(4).unwrap(),
         settle_window: Duration::ZERO,
         online_metadata: false,
+        audio_markers: false,
     })
     .await
     .unwrap()

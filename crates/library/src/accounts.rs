@@ -672,6 +672,7 @@ mod tests {
             probe_concurrency: NonZeroUsize::new(1).unwrap(),
             settle_window: Duration::ZERO,
             online_metadata: false,
+            audio_markers: false,
         })
         .await
         .unwrap()
