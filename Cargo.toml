@@ -4,7 +4,7 @@ members = ["crates/media", "crates/library", "crates/torrent", "crates/transcode
 
 [workspace.package]
 edition = "2024"
-version = "0.7.5"
+version = "0.8.0"
 license = "AGPL-3.0-only"
 
 [workspace.lints.rust]
